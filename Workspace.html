@@ -3267,39 +3267,107 @@ async function openAdminPanel(){
   wrap.addEventListener('click',e=>{if(e.target===wrap)closeAdmin();});
   await renderAdminBody();
 }
+async function adminAddBatch(path, arr){
+  const r=await fetch(SB_URL+'/rest/v1/'+path,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(arr)});
+  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+}
+function buildAccessEditor(container, groups, entsByGroup, initGroups, initEnts){
+  const gset=new Set(initGroups||[]), eset=new Set(initEnts||[]);
+  let html='<div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;max-height:240px;overflow:auto;font-size:13px;background:#fbfcfe">';
+  groups.forEach(g=>{
+    const ents=entsByGroup[g.code]||[]; const multi=ents.length>1;
+    html+='<div style="margin:5px 0"><label style="display:flex;align-items:center;gap:8px;font-weight:600;color:#0d2947;cursor:pointer"><input type="checkbox" class="ae-g" data-g="'+g.code+'"'+(gset.has(g.code)?' checked':'')+'> '+g.name+'</label>';
+    if(multi){
+      html+='<div class="ae-ents" data-g="'+g.code+'" style="margin:2px 0 6px 26px">';
+      ents.forEach(en=>{ html+='<label style="display:flex;align-items:center;gap:8px;color:#33475b;font-weight:400;padding:2px 0;cursor:pointer"><input type="checkbox" class="ae-e" data-g="'+g.code+'" data-e="'+en.code+'"'+(eset.has(en.code)?' checked':'')+'> '+en.name+'</label>'; });
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+  container.innerHTML=html;
+  function sync(){
+    container.querySelectorAll('.ae-g').forEach(gc=>{
+      const wrap=container.querySelector('.ae-ents[data-g="'+gc.dataset.g+'"]');
+      if(wrap){ wrap.querySelectorAll('.ae-e').forEach(ec=>{ ec.disabled=gc.checked; if(gc.checked) ec.checked=false; }); wrap.style.opacity=gc.checked?0.4:1; }
+    });
+  }
+  container.querySelectorAll('.ae-g').forEach(gc=>gc.addEventListener('change',sync)); sync();
+  return function(){
+    const gsel=[], esel=[];
+    container.querySelectorAll('.ae-g').forEach(gc=>{ if(gc.checked) gsel.push(gc.dataset.g); });
+    container.querySelectorAll('.ae-e').forEach(ec=>{ if(ec.checked && !ec.disabled) esel.push(ec.dataset.e); });
+    return {groups:gsel, entities:esel};
+  };
+}
+async function applyAccess(email, sel, curGroups, curEnts){
+  const ng=new Set(sel.groups), ne=new Set(sel.entities);
+  const add=[];
+  sel.groups.forEach(g=>{ if(!(curGroups||[]).includes(g)) add.push({email, group_code:g}); });
+  sel.entities.forEach(e=>{ if(!(curEnts||[]).includes(e)) add.push({email, entity_code:e}); });
+  const dels=[];
+  (curGroups||[]).forEach(g=>{ if(!ng.has(g)) dels.push('entity_grants?email=eq.'+encodeURIComponent(email)+'&group_code=eq.'+encodeURIComponent(g)); });
+  (curEnts||[]).forEach(e=>{ if(!ne.has(e)) dels.push('entity_grants?email=eq.'+encodeURIComponent(email)+'&entity_code=eq.'+encodeURIComponent(e)); });
+  for(const d of dels) await adminDel(d);
+  if(add.length) await adminAddBatch('entity_grants', add);
+}
+function openAccessEditor(user, groups, entsByGroup, onSaved){
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(8,20,36,.5);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,system-ui,sans-serif';
+  ov.innerHTML='<div style="background:#fff;max-width:440px;width:100%;border-radius:14px;padding:22px 22px 18px;box-shadow:0 24px 60px rgba(0,0,0,.4)">'
+    +'<div style="font-family:Sora,sans-serif;font-weight:700;font-size:16px;color:#0d2947;margin-bottom:4px">Edit access</div>'
+    +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:14px">'+user.email+' — tick whole companies or individual sub-entities.</div>'
+    +'<div id="ae-box"></div>'
+    +'<div id="ae-msg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button id="ae-cancel" style="border:1px solid #cdd7e1;background:#fff;border-radius:9px;padding:9px 16px;font-size:13px;cursor:pointer">Cancel</button><button id="ae-save" style="border:0;background:#0d2947;color:#fff;border-radius:9px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer">Save access</button></div></div>';
+  document.body.appendChild(ov);
+  const getSel=buildAccessEditor(document.getElementById('ae-box'), groups, entsByGroup, user.groups, user.entities);
+  const close=()=>ov.remove();
+  document.getElementById('ae-cancel').onclick=close;
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  document.getElementById('ae-save').onclick=async()=>{
+    const b=document.getElementById('ae-save'); b.disabled=true; b.textContent='Saving…';
+    try{ await applyAccess(user.email, getSel(), user.groups, user.entities); close(); if(onSaved) await onSaved(); }
+    catch(e){ const m=document.getElementById('ae-msg'); if(m) m.textContent='Failed: '+e.message; b.disabled=false; b.textContent='Save access'; }
+  };
+}
 async function renderAdminBody(){
   const body=document.getElementById('mag-admin-body'); if(!body) return;
-  let users=[],groups=[];
+  let users=[],groups=[],ents=[];
   try{
-    const [u,g]=await Promise.all([ adminFn('list_users',{}), sbFetch('groups?select=code,name&order=sort_order') ]);
-    users=u.users||[]; groups=g;
-  }catch(e){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load users: '+e.message+'</div>'; return; }
+    const [u,g,e]=await Promise.all([ adminFn('list_users',{}), sbFetch('groups?select=code,name&order=sort_order'), sbFetch('entities?select=code,name,group_code&order=sort_order') ]);
+    users=u.users||[]; groups=g; ents=e;
+  }catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+err.message+'</div>'; return; }
   const gname={}; groups.forEach(g=>gname[g.code]=g.name);
-  const opts=groups.map(g=>'<option value="'+g.code+'">'+g.name+'</option>').join('');
+  const ename={}; ents.forEach(e=>ename[e.code]=e.name);
+  const entsByGroup={}; ents.forEach(e=>{(entsByGroup[e.group_code]=entsByGroup[e.group_code]||[]).push(e);});
   const th='text-align:left;font-size:11px;color:#7a8aa0;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px';
   const td='padding:8px;font-size:13px;border-top:1px solid #eef2f7;vertical-align:top';
+  const chip=(t,kind)=>'<span style="display:inline-block;border-radius:20px;padding:2px 9px;font-size:11px;margin:2px 3px 2px 0;'+(kind==='g'?'background:#e7f0fa;color:#1d6fb8;font-weight:600':'background:#eef2f7;color:#33475b')+'">'+t+'</span>';
   let h='';
   h+='<div style="font-family:Sora,sans-serif;font-weight:700;font-size:14px;color:#0d2947;margin-bottom:8px">Create a login</div>';
-  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">'
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
     +'<input id="cu-email" type="email" placeholder="name@magnumestate.pro" style="flex:1 1 190px;padding:10px 12px;border:1px solid #cdd7e1;border-radius:9px;font-size:13px">'
-    +'<input id="cu-pass" type="text" placeholder="Set a password" style="flex:1 1 140px;padding:10px 12px;border:1px solid #cdd7e1;border-radius:9px;font-size:13px">'
-    +'<select id="cu-group" style="padding:10px 12px;border:1px solid #cdd7e1;border-radius:9px;font-size:13px"><option value="">— PT access —</option>'+opts+'</select></div>';
-  h+='<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#33475b;margin-bottom:8px"><input type="checkbox" id="cu-admin"> Make this user an administrator (full access to all PTs)</label>';
+    +'<input id="cu-pass" type="text" placeholder="Set a password" style="flex:1 1 150px;padding:10px 12px;border:1px solid #cdd7e1;border-radius:9px;font-size:13px"></div>';
+  h+='<div style="font-size:12px;color:#5a6b7b;margin-bottom:5px">Access — tick whole companies or individual sub-entities (you can pick several):</div>';
+  h+='<div id="cu-access"></div>';
+  h+='<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#33475b;margin:10px 0 8px"><input type="checkbox" id="cu-admin"> Make administrator instead (full access to all PTs)</label>';
   h+='<button id="cu-add" style="border:0;border-radius:9px;background:#0d2947;color:#fff;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Create user</button>';
   h+='<div id="cu-msg" style="font-size:12px;margin:8px 0 22px;min-height:1px"></div>';
   h+='<div style="font-family:Sora,sans-serif;font-weight:700;font-size:14px;color:#0d2947;margin-bottom:8px">Users</div>';
   h+='<table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Email</th><th style="'+th+'">Access</th><th style="'+th+'">Last sign-in</th><th style="'+th+'"></th></tr></thead><tbody>';
   if(!users.length) h+='<tr><td style="'+td+';color:#7a8aa0" colspan="4">No users yet.</td></tr>';
   users.forEach(u=>{
-    const e=(u.email||'').toLowerCase();
-    const access = u.is_admin ? '<span style="background:#e7f0fa;color:#1d6fb8;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">Admin — all PTs</span>'
-      : ((u.groups&&u.groups.length) ? u.groups.map(gc=>'<span style="display:inline-block;background:#eef2f7;border-radius:20px;padding:2px 6px 2px 9px;font-size:11px;margin:2px 3px 2px 0">'+(gname[gc]||gc)+' <a href="#" class="rv" data-e="'+encodeURIComponent(e)+'" data-g="'+gc+'" style="color:#b3261e;text-decoration:none">×</a></span>').join('') : '<span style="color:#7a8aa0;font-size:12px">no access</span>');
-    const last = u.last_sign_in_at ? new Date(u.last_sign_in_at).toISOString().slice(0,10) : '—';
-    const self = (e===MY_EMAIL);
+    const e=(u.email||'').toLowerCase(); const self=(e===MY_EMAIL);
+    let access;
+    if(u.is_admin) access=chip('Admin — all PTs','g');
+    else { const parts=(u.groups||[]).map(g=>chip(gname[g]||g,'g')).concat((u.entities||[]).map(en=>chip(ename[en]||en,'e'))); access=parts.length?parts.join(''):'<span style="color:#7a8aa0;font-size:12px">no access</span>'; }
+    const last=u.last_sign_in_at?new Date(u.last_sign_in_at).toISOString().slice(0,10):'—';
     h+='<tr><td style="'+td+'">'+e+(self?' <span style="color:#7a8aa0">(you)</span>':'')+'</td>'
-      +'<td style="'+td+'">'+access+(u.is_admin?'':'<div style="margin-top:5px"><select class="ag-sel" data-e="'+encodeURIComponent(e)+'" style="font-size:11px;border:1px solid #dde5ee;border-radius:6px;padding:3px"><option value="">+ add PT</option>'+opts+'</select></div>')+'</td>'
+      +'<td style="'+td+'">'+access+'</td>'
       +'<td style="'+td+';white-space:nowrap;color:#5a6b7b;font-size:12px">'+last+'</td>'
       +'<td style="'+td+';text-align:right;white-space:nowrap">'
+        +(u.is_admin?'':'<button class="ea" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #cdd7e1;background:#fff;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Edit access</button>')
         +'<button class="sp" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #cdd7e1;background:#fff;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Set password</button>'
         +(u.is_admin?(self?'':'<button class="ua" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #cdd7e1;background:#fff;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Remove admin</button>'):'<button class="ma" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #cdd7e1;background:#fff;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Make admin</button>')
         +(self?'':'<button class="du" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #e4c3c0;background:#fff;color:#b3261e;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Delete</button>')
@@ -3308,30 +3376,33 @@ async function renderAdminBody(){
   h+='</tbody></table><div id="um-msg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>';
   body.innerHTML=h;
   const setMsg=(id,t,ok)=>{const m=document.getElementById(id); if(m){m.style.color=ok?'#2b7a4b':'#b3261e'; m.textContent=t;}};
+  const getCreateSel=buildAccessEditor(document.getElementById('cu-access'), groups, entsByGroup, [], []);
+  const usersByEmail={}; users.forEach(u=>usersByEmail[(u.email||'').toLowerCase()]=u);
   document.getElementById('cu-add').onclick=async()=>{
     const email=(document.getElementById('cu-email').value||'').trim().toLowerCase();
     const password=document.getElementById('cu-pass').value||'';
-    const group_code=document.getElementById('cu-group').value||'';
     const make_admin=document.getElementById('cu-admin').checked;
     if(!/.+@.+\..+/.test(email)) return setMsg('cu-msg','Enter a valid email.');
     if(password.length<6) return setMsg('cu-msg','Password must be at least 6 characters.');
     const b=document.getElementById('cu-add'); b.disabled=true; b.textContent='Creating…';
-    try{ await adminFn('create_user',{email,password,group_code:group_code||undefined,make_admin}); await renderAdminBody(); setMsg('cu-msg','✅ '+email+' created — they can sign in now.',true); }
-    catch(e){ setMsg('cu-msg','Failed: '+e.message); b.disabled=false; b.textContent='Create user'; }
+    try{
+      await adminFn('create_user',{email,password,make_admin});
+      if(!make_admin){ await applyAccess(email, getCreateSel(), [], []); }
+      await renderAdminBody(); setMsg('cu-msg','✅ '+email+' created — they can sign in now.',true);
+    }catch(e){ setMsg('cu-msg','Failed: '+e.message); b.disabled=false; b.textContent='Create user'; }
   };
+  body.querySelectorAll('.ea').forEach(btn=>btn.onclick=()=>{ const u=usersByEmail[decodeURIComponent(btn.dataset.e)]; if(u) openAccessEditor(u, groups, entsByGroup, renderAdminBody); });
   body.querySelectorAll('.sp').forEach(btn=>btn.onclick=async()=>{
     const em=decodeURIComponent(btn.dataset.e); const np=prompt('Set a new password for '+em+' (min 6 characters):'); if(np===null) return;
     if((np||'').length<6) return setMsg('um-msg','Password must be at least 6 characters.');
     try{ await adminFn('set_password',{email:em,password:np}); setMsg('um-msg','✅ Password updated for '+em,true); }catch(e){ setMsg('um-msg','Failed: '+e.message); }
   });
   body.querySelectorAll('.du').forEach(btn=>btn.onclick=async()=>{
-    const em=decodeURIComponent(btn.dataset.e); if(!confirm('Delete user '+em+'? This removes their login and all their access.')) return;
+    const em=decodeURIComponent(btn.dataset.e); if(!confirm('Delete user '+em+'? This removes their login and all access.')) return;
     try{ await adminFn('delete_user',{email:em}); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); }
   });
   body.querySelectorAll('.ma').forEach(btn=>btn.onclick=async()=>{ try{ await adminAdd('app_admins',{email:decodeURIComponent(btn.dataset.e)}); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); } });
   body.querySelectorAll('.ua').forEach(btn=>btn.onclick=async()=>{ try{ await adminDel('app_admins?email=eq.'+btn.dataset.e); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); } });
-  body.querySelectorAll('.rv').forEach(a=>a.onclick=async(ev)=>{ ev.preventDefault(); try{ await adminDel('entity_grants?email=eq.'+a.dataset.e+'&group_code=eq.'+encodeURIComponent(a.dataset.g)); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); } });
-  body.querySelectorAll('.ag-sel').forEach(sel=>sel.onchange=async()=>{ const g=sel.value; if(!g) return; try{ await adminAdd('entity_grants',{email:decodeURIComponent(sel.dataset.e),group_code:g}); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); } });
 }
 async function boot(){
   let s = sessionFromHash() || getSess();
