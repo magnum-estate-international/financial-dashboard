@@ -3185,6 +3185,17 @@ async function runDashboard(){
   EIDS=Object.keys(ENT);
   if(!EIDS.length){ showNoAccess(); return; }
   LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
+  // months approved after the original Q2 export appear automatically
+  try{
+    const pers=await sbFetch('periods?select=code,label&order=sort_order');
+    const sel=document.getElementById('monthSel');
+    pers.forEach(p=>{
+      if(MONTHS[p.code]) return;
+      MONTHS[p.code]=p.label; Q2_MONTHS.push(p.code); LOANS_BY_MONTH[p.code]=[];
+      if(sel){ const o=document.createElement('option'); o.value=p.code; o.textContent=p.label;
+        sel.insertBefore(o, sel.querySelector('option[value="Q2"]')); }
+    });
+  }catch(e){}
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
@@ -3262,11 +3273,22 @@ function showUserBar(){
   b.id='mag-userbar';
   b.style.cssText='position:fixed;top:10px;right:12px;z-index:9998;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border:1px solid #d7e0ea;border-radius:12px;padding:5px 6px 5px 13px;font-family:Familjen Grotesk,system-ui,sans-serif;font-size:12px;color:#33475b;box-shadow:0 3px 10px rgba(0,0,0,.08)';
   b.innerHTML='<span>'+email+'</span>'
+    +'<button id="mag-entry-open" style="border:0;border-radius:12px;background:#5b8db8;color:#fff;font-size:11.5px;padding:5px 12px;cursor:pointer">✎ Update data</button>'
     +(IS_ADMIN?'<button id="mag-admin-open" style="border:0;border-radius:12px;background:#d97757;color:#fff;font-size:11.5px;padding:5px 12px;cursor:pointer">⚙ Manage access</button>':'')
     +'<button id="mag-signout" style="border:0;border-radius:12px;background:#d97757;color:#fff;font-size:11.5px;padding:5px 11px;cursor:pointer">Sign out</button>';
   document.body.appendChild(b);
   document.getElementById('mag-signout').onclick=signOut;
   const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
+  const eb=document.getElementById('mag-entry-open'); if(eb) eb.onclick=openEntryPanel;
+  if(IS_ADMIN) refreshPendingBadge();
+}
+async function refreshPendingBadge(){
+  try{
+    const r=await fetch(SB_URL+'/rest/v1/entry_submissions?select=id&status=eq.pending',{headers:{...authHeaders(),'Prefer':'count=exact','Range':'0-0','Range-Unit':'items'}});
+    const n=parseInt((r.headers.get('content-range')||'/0').split('/')[1],10)||0;
+    const eb=document.getElementById('mag-entry-open');
+    if(eb) eb.textContent = n>0 ? ('✎ Update data ('+n+' pending)') : '✎ Update data';
+  }catch(e){}
 }
 /* ── Admin panel (visible to admins only) ─────────────────────────────── */
 async function adminAdd(path,body){
@@ -3427,6 +3449,156 @@ async function renderAdminBody(){
   });
   body.querySelectorAll('.ma').forEach(btn=>btn.onclick=async()=>{ try{ await adminAdd('app_admins',{email:decodeURIComponent(btn.dataset.e)}); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); } });
   body.querySelectorAll('.ua').forEach(btn=>btn.onclick=async()=>{ try{ await adminDel('app_admins?email=eq.'+btn.dataset.e); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); } });
+}
+/* ── Data entry & approvals (every user submits for their PT; admins review) ── */
+const FLOW_LBL={revenue:'Revenue',opex:'Operating expense',financing_in:'Financing in (loan/capital received)',financing_out:'Financing out (loan given / repayment)'};
+const FLOW_KIND={revenue:'revenue',opex:'opex',financing_in:'financing',financing_out:'financing'};
+const escH=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function fmtIDR(n){ return new Intl.NumberFormat('id-ID').format(Math.round(Number(n)||0)); }
+let ENTRY_DIRTY=false;
+function closeEntry(){
+  const m=document.getElementById('mag-entry'); if(m) m.remove();
+  if(ENTRY_DIRTY){ ENTRY_DIRTY=false; location.reload(); }
+}
+async function rpcReview(id,decision,note){
+  const r=await fetch(SB_URL+'/rest/v1/rpc/review_submission',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({sub_id:id,decision:decision,rnote:note||null})});
+  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+}
+async function openEntryPanel(){
+  const old=document.getElementById('mag-entry'); if(old) old.remove();
+  const wrap=document.createElement('div'); wrap.id='mag-entry';
+  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(47,72,88,.4);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Familjen Grotesk,system-ui,sans-serif';
+  wrap.innerHTML='<div style="background:#fff;color:#3d5a72;max-width:760px;width:100%;border-radius:12px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:Lora,serif;font-weight:700;font-size:18px;color:#2f4858">Update data</div><button id="mag-entry-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
+    +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:18px;line-height:1.5">Submit revenue, expense or financing figures for your PT. '+(IS_ADMIN?'As administrator you approve entries before they count in the consolidation.':'An administrator reviews each entry before it appears in the consolidated numbers.')+'</div>'
+    +'<div id="mag-entry-body">Loading…</div></div>';
+  document.body.appendChild(wrap);
+  document.getElementById('mag-entry-x').onclick=closeEntry;
+  wrap.addEventListener('click',e=>{if(e.target===wrap)closeEntry();});
+  await renderEntryBody();
+}
+async function renderEntryBody(){
+  const body=document.getElementById('mag-entry-body'); if(!body) return;
+  let pers=[],cats=[],subs=[];
+  try{
+    [pers,cats,subs]=await Promise.all([
+      sbFetch('periods?select=code,label&order=sort_order'),
+      sbFetch('categories?select=name,kind&order=name'),
+      sbFetch('entry_submissions?select=*&order=id.desc&limit=300')
+    ]);
+  }catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+escH(err.message)+'</div>'; return; }
+  const th='text-align:left;font-size:11px;color:#7a8aa0;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px';
+  const td='padding:8px;font-size:12.5px;border-top:1px solid #eef2f7;vertical-align:top';
+  const chip=st=>{const c={pending:['#8a6d1a','#faf3d9','⏳ pending'],approved:['#2b7a4b','#e3f2e8','✓ approved'],rejected:['#b3261e','#fbe9e7','✗ rejected']}[st]||['#33475b','#eef2f7',st];
+    return '<span style="display:inline-block;border-radius:12px;padding:2px 9px;font-size:11px;font-weight:600;background:'+c[1]+';color:'+c[0]+'">'+c[2]+'</span>';};
+  const perName={}; pers.forEach(p=>perName[p.code]=p.label);
+  const eName=id=>(ENT[id]?ENT[id].name:id);
+  let h='';
+  // ── Admin: pending approvals ──
+  const pending=subs.filter(s=>s.status==='pending');
+  if(IS_ADMIN){
+    h+='<div style="font-family:Lora,serif;font-weight:700;font-size:14px;color:#2f4858;margin-bottom:8px">Pending approvals'+(pending.length?' ('+pending.length+')':'')+'</div>';
+    if(!pending.length) h+='<div style="font-size:12.5px;color:#7a8aa0;margin-bottom:20px">Nothing waiting for review.</div>';
+    else{
+      h+='<div style="overflow-x:auto;margin:0 -4px 22px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">From</th><th style="'+th+'">Entity · Month</th><th style="'+th+'">Entry</th><th style="'+th+';text-align:right">Amount (IDR)</th><th style="'+th+'"></th></tr></thead><tbody>';
+      pending.forEach(s=>{
+        h+='<tr><td style="'+td+';word-break:break-word">'+escH(s.email)+'<div style="color:#7a8aa0;font-size:11px;white-space:nowrap">'+new Date(s.created_at).toISOString().slice(0,10)+'</div></td>'
+          +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#7a8aa0;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+'</div></td>'
+          +'<td style="'+td+'"><b>'+escH(FLOW_LBL[s.flow]||s.flow)+'</b> — '+escH(s.label)+'<div style="color:#7a8aa0;font-size:11px">'+escH(s.category)+(s.note?' · '+escH(s.note):'')+'</div></td>'
+          +'<td style="'+td+';text-align:right;white-space:nowrap;font-weight:600">'+fmtIDR(s.amount_idr)+'</td>'
+          +'<td style="'+td+';text-align:right;min-width:120px"><button class="ap" data-id="'+s.id+'" style="border:0;background:#2b7a4b;color:#fff;border-radius:12px;padding:5px 11px;font-size:12px;cursor:pointer;margin:2px">Approve</button>'
+          +'<button class="rj" data-id="'+s.id+'" style="border:1px solid #e5b8b3;background:#fff;color:#b3261e;border-radius:12px;padding:4px 10px;font-size:12px;cursor:pointer;margin:2px">Reject</button></td></tr>';
+      });
+      h+='</tbody></table></div>';
+    }
+  }
+  // ── Entry form ──
+  h+='<div style="font-family:Lora,serif;font-weight:700;font-size:14px;color:#2f4858;margin-bottom:8px">Submit an update</div>';
+  const inp='padding:10px 12px;border:1px solid #d8d5cb;border-radius:12px;font-size:13px;box-sizing:border-box';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    +'<select id="en-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+    +'<select id="en-per" style="'+inp+'">'+pers.map(p=>'<option value="'+escH(p.code)+'">'+escH(p.label)+'</option>').join('')+'<option value="__new">＋ New month…</option></select>'
+    +'</div>'
+    +'<div id="en-newper" style="display:none;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    +'<input id="en-pcode" placeholder="Code, e.g. JUL" maxlength="12" style="'+inp+';text-transform:uppercase">'
+    +'<input id="en-plabel" placeholder="Label, e.g. July 2026" style="'+inp+'"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    +'<select id="en-flow" style="'+inp+'">'+Object.keys(FLOW_LBL).map(f=>'<option value="'+f+'">'+FLOW_LBL[f]+'</option>').join('')+'</select>'
+    +'<input id="en-cat" list="mag-cat-dl" placeholder="Category (pick or type)" style="'+inp+'"><datalist id="mag-cat-dl"></datalist></div>'
+    +'<div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:8px">'
+    +'<input id="en-desc" placeholder="Description, e.g. Villa rental income week 1" maxlength="200" style="'+inp+'">'
+    +'<input id="en-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'"></div>'
+    +'<input id="en-note" placeholder="Note for the reviewer (optional)" style="'+inp+';width:100%;margin-bottom:10px">'
+    +'<button id="en-send" style="border:0;border-radius:12px;background:#d97757;color:#fff;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Submit for approval</button>'
+    +'<div id="en-msg" style="font-size:12px;margin:8px 0 22px;min-height:1px"></div>';
+  // ── Submission history ──
+  const hist=IS_ADMIN?subs.filter(s=>s.status!=='pending'):subs;
+  h+='<div style="font-family:Lora,serif;font-weight:700;font-size:14px;color:#2f4858;margin-bottom:8px">'+(IS_ADMIN?'Reviewed submissions':'My submissions')+'</div>';
+  if(!hist.length) h+='<div style="font-size:12.5px;color:#7a8aa0">None yet.</div>';
+  else{
+    h+='<div style="overflow-x:auto;margin:0 -4px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Date</th>'+(IS_ADMIN?'<th style="'+th+'">From</th>':'')+'<th style="'+th+'">Entity · Month</th><th style="'+th+'">Entry</th><th style="'+th+';text-align:right">Amount (IDR)</th><th style="'+th+'">Status</th></tr></thead><tbody>';
+    hist.slice(0,60).forEach(s=>{
+      h+='<tr><td style="'+td+';white-space:nowrap;color:#5a6b7b;font-size:12px">'+new Date(s.created_at).toISOString().slice(0,10)+'</td>'
+        +(IS_ADMIN?'<td style="'+td+';word-break:break-word">'+escH(s.email)+'</td>':'')
+        +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#7a8aa0;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+'</div></td>'
+        +'<td style="'+td+'">'+escH(FLOW_LBL[s.flow]||s.flow)+' — '+escH(s.label)
+        +(s.status==='rejected'&&s.review_note?'<div style="color:#b3261e;font-size:11px">Reason: '+escH(s.review_note)+'</div>':'')+'</td>'
+        +'<td style="'+td+';text-align:right;white-space:nowrap">'+fmtIDR(s.amount_idr)+'</td>'
+        +'<td style="'+td+';white-space:nowrap">'+chip(s.status)
+        +(s.status==='pending'&&s.email===MY_EMAIL?' <button class="cx" data-id="'+s.id+'" style="border:1px solid #d8d5cb;background:#fff;border-radius:12px;padding:3px 9px;font-size:11.5px;cursor:pointer">Cancel</button>':'')
+        +'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+  h+='<div id="en-lmsg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>';
+  body.innerHTML=h;
+  const setMsg=(id,t,ok)=>{const m=document.getElementById(id); if(m){m.style.color=ok?'#2b7a4b':'#b3261e'; m.textContent=t;}};
+  // category suggestions follow the chosen type
+  const flowSel=document.getElementById('en-flow'), catDl=document.getElementById('mag-cat-dl');
+  function fillCats(){ const k=FLOW_KIND[flowSel.value];
+    catDl.innerHTML=cats.filter(c=>c.kind===k).map(c=>'<option value="'+escH(c.name)+'">').join(''); }
+  flowSel.addEventListener('change',fillCats); fillCats();
+  const perSel=document.getElementById('en-per'), npRow=document.getElementById('en-newper');
+  perSel.addEventListener('change',()=>{ npRow.style.display=perSel.value==='__new'?'grid':'none'; });
+  document.getElementById('en-send').onclick=async()=>{
+    const entity=document.getElementById('en-ent').value;
+    let pcode=perSel.value, plabel=null;
+    if(pcode==='__new'){
+      pcode=(document.getElementById('en-pcode').value||'').trim().toUpperCase();
+      plabel=(document.getElementById('en-plabel').value||'').trim();
+      if(!/^[A-Z0-9]{2,12}$/.test(pcode)) return setMsg('en-msg','Month code must be 2–12 letters/digits, e.g. JUL.');
+      if(!plabel) return setMsg('en-msg','Give the new month a label, e.g. July 2026.');
+    }
+    const flow=flowSel.value;
+    const category=(document.getElementById('en-cat').value||'').trim()||'Other';
+    const label=(document.getElementById('en-desc').value||'').trim();
+    const amt=Number((document.getElementById('en-amt').value||'').replace(/[^0-9-]/g,''));
+    const note=(document.getElementById('en-note').value||'').trim()||null;
+    if(!label) return setMsg('en-msg','Add a short description.');
+    if(!amt) return setMsg('en-msg','Enter the amount in IDR (digits only, e.g. 12500000).');
+    const b=document.getElementById('en-send'); b.disabled=true; b.textContent='Submitting…';
+    try{
+      await adminAdd('entry_submissions',{entity_code:entity,period_code:pcode,period_label:plabel,flow:flow,category:category,label:label,amount_idr:amt,note:note});
+      await renderEntryBody();
+      const m2=document.getElementById('en-msg'); if(m2){m2.style.color='#2b7a4b'; m2.textContent='✅ Submitted — '+(IS_ADMIN?'approve it above to apply it.':'waiting for admin approval.');}
+      if(IS_ADMIN) refreshPendingBadge();
+    }catch(e){ setMsg('en-msg','Failed: '+e.message); b.disabled=false; b.textContent='Submit for approval'; }
+  };
+  body.querySelectorAll('.ap').forEach(btn=>btn.onclick=async()=>{
+    btn.disabled=true; btn.textContent='…';
+    try{ await rpcReview(parseInt(btn.dataset.id,10),'approved'); ENTRY_DIRTY=true; await renderEntryBody(); refreshPendingBadge(); }
+    catch(e){ setMsg('en-lmsg','Failed: '+e.message); btn.disabled=false; btn.textContent='Approve'; }
+  });
+  body.querySelectorAll('.rj').forEach(btn=>btn.onclick=async()=>{
+    const why=prompt('Reason for rejecting (shown to the submitter, optional):'); if(why===null) return;
+    btn.disabled=true;
+    try{ await rpcReview(parseInt(btn.dataset.id,10),'rejected',why||null); await renderEntryBody(); refreshPendingBadge(); }
+    catch(e){ setMsg('en-lmsg','Failed: '+e.message); btn.disabled=false; }
+  });
+  body.querySelectorAll('.cx').forEach(btn=>btn.onclick=async()=>{
+    try{ await adminDel('entry_submissions?id=eq.'+btn.dataset.id+'&status=eq.pending'); await renderEntryBody(); if(IS_ADMIN) refreshPendingBadge(); }
+    catch(e){ setMsg('en-lmsg','Failed: '+e.message); }
+  });
 }
 async function boot(){
   let s = sessionFromHash() || getSess();
