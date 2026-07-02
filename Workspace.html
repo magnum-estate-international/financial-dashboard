@@ -3052,14 +3052,51 @@ function renderAll(){
 const SB_URL='https://nbnfsflcbueibcfvcwrh.supabase.co';
 const SB_KEY='sb_publishable_SS5C_Td7eDCIlKYay4C4Qg_HBjsJewD';
 const SB_SHORT={"mei":["Magnum Estate","(MEI)"],"bbu":["Berawa Bali","Utama"],"ssvh":["Sky Stars","Hospitality"],"ssvbm":["Sky Stars","Building Mgmt"],"ssvd":["Sky Stars","Developer"],"kso":["KSO TUS","Umalas Signature"],"supdev":["PT SUP","Developer"],"tush":["PT SUP","Hospitality"],"supbm":["PT SUP","BM"],"ulr":["Umalas Lounge","Rooftop"],"icgg":["IC Group","& Subs"],"icalam":["IC Alam",""],"ics":["IC Sanur","(Magnum Sanur)"],"icdev":["IC Amara","Developer"],"icbm":["IC Amara","Building Mgmt"],"ichp":["IC Amara","Hospitality"]};
+
+/* ── Auth (passwordless email magic-link) ─────────────────────────────── */
+const SESS_KEY='mag_fin_sess';
+function getSess(){ try{return JSON.parse(localStorage.getItem(SESS_KEY));}catch(e){return null;} }
+function setSess(s){ localStorage.setItem(SESS_KEY, JSON.stringify(s)); }
+function clearSess(){ localStorage.removeItem(SESS_KEY); }
+function jwtEmail(t){ try{return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).email||'';}catch(e){return '';} }
+async function sendMagicLink(email){
+  const r=await fetch(SB_URL+'/auth/v1/otp?redirect_to='+encodeURIComponent(location.origin+location.pathname),
+    {method:'POST',headers:{apikey:SB_KEY,'Content-Type':'application/json'},
+     body:JSON.stringify({email:email, create_user:true})});
+  if(!r.ok){ const t=await r.text(); throw new Error('Could not send link ('+r.status+'): '+t); }
+}
+function sessionFromHash(){
+  if(!location.hash) return null;
+  const p=new URLSearchParams(location.hash.slice(1));
+  const at=p.get('access_token');
+  if(!at) return null;
+  const s={access_token:at, refresh_token:p.get('refresh_token'),
+           expires_at: Date.now()+ (parseInt(p.get('expires_in')||'3600',10)*1000)};
+  history.replaceState(null,'',location.pathname+location.search);
+  return s;
+}
+async function refreshSess(s){
+  const r=await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token',
+    {method:'POST',headers:{apikey:SB_KEY,'Content-Type':'application/json'},
+     body:JSON.stringify({refresh_token:s.refresh_token})});
+  if(!r.ok) throw new Error('refresh failed '+r.status);
+  const d=await r.json();
+  return {access_token:d.access_token, refresh_token:d.refresh_token, expires_at:Date.now()+d.expires_in*1000};
+}
+function signOut(){ clearSess(); location.reload(); }
+
+/* ── Data fetch (authenticated) ───────────────────────────────────────── */
+let SESSION=null;
+function authHeaders(){ return {apikey:SB_KEY, Authorization:'Bearer '+(SESSION?SESSION.access_token:SB_KEY)}; }
 async function sbFetch(p){
-  const r=await fetch(SB_URL+'/rest/v1/'+p,{headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY}});
-  if(!r.ok) throw new Error('Supabase '+p+' -> '+r.status); return r.json();
+  const r=await fetch(SB_URL+'/rest/v1/'+p,{headers:authHeaders()});
+  if(!r.ok) throw new Error('Supabase '+p+' -> '+r.status);
+  return r.json();
 }
 async function sbFetchAll(base){
   let out=[],from=0,page=1000;
   for(;;){
-    const r=await fetch(SB_URL+'/rest/v1/'+base,{headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,'Range':from+'-'+(from+page-1),'Range-Unit':'items'}});
+    const r=await fetch(SB_URL+'/rest/v1/'+base,{headers:{...authHeaders(),'Range':from+'-'+(from+page-1),'Range-Unit':'items'}});
     if(!r.ok) throw new Error('Supabase '+base+' -> '+r.status);
     const c=await r.json(); out=out.concat(c); if(c.length<page) break; from+=page;
   }
@@ -3093,19 +3130,78 @@ async function loadFromSupabase(){
     TX:[...bs.TX,...bs.TX_MULTI,...bs.TX_MS,...bs.TX_ICG_OPEX],
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
-async function boot(){
-  try{
-    const D=await loadFromSupabase();
-    ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
-    HIGHLIGHTS=D.HIGHLIGHTS;TX=D.TX;TX_MULTI=D.TX_MULTI;TX_MS=D.TX_MS;TX_ICG_OPEX=D.TX_ICG_OPEX;
-    EIDS=Object.keys(ENT);
-    console.log('[dashboard] Live data loaded from Supabase:',EIDS.length,'entities,',TX.length,'transactions.');
-  }catch(err){
-    console.error('[dashboard] Supabase load failed - showing embedded snapshot instead.',err);
-  }
+async function runDashboard(){
+  const D=await loadFromSupabase();
+  ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
+  HIGHLIGHTS=D.HIGHLIGHTS;TX=D.TX;TX_MULTI=D.TX_MULTI;TX_MS=D.TX_MS;TX_ICG_OPEX=D.TX_ICG_OPEX;
+  EIDS=Object.keys(ENT);
+  if(!EIDS.length){ showNoAccess(); return; }
   renderAll();
+  showUserBar();
 }
 
+/* ── Login / gate UI ──────────────────────────────────────────────────── */
+function loginShell(inner){
+  return '<div id="mag-auth" style="position:fixed;inset:0;z-index:99999;background:linear-gradient(160deg,#0d2947,#0a1f38);display:flex;align-items:center;justify-content:center;font-family:Inter,system-ui,sans-serif">'
+    +'<div style="background:#fff;max-width:400px;width:90%;padding:34px 30px;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4)">'
+    +'<div style="font-family:Sora,sans-serif;font-weight:700;font-size:19px;color:#0d2947;margin-bottom:4px">Magnum Estate — Financials</div>'
+    +'<div style="font-size:13px;color:#5a6b7b;margin-bottom:22px">Sign in with your company email</div>'+inner+'</div></div>';
+}
+function showLogin(msg){
+  const d=document.createElement('div');
+  d.innerHTML=loginShell(
+    '<input id="mag-email" type="email" placeholder="you@magnumestate.pro" autocomplete="email" '
+    +'style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #cdd7e1;border-radius:9px;font-size:14px;margin-bottom:12px">'
+    +'<button id="mag-send" style="width:100%;padding:12px;border:0;border-radius:9px;background:#0d2947;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Email me a login link</button>'
+    +'<div id="mag-msg" style="font-size:12.5px;color:#5a6b7b;margin-top:14px;line-height:1.5">'+(msg||'')+'</div>');
+  document.body.appendChild(d.firstChild);
+  const btn=document.getElementById('mag-send'), em=document.getElementById('mag-email'), mg=document.getElementById('mag-msg');
+  async function go(){
+    const email=(em.value||'').trim();
+    if(!/.+@.+\..+/.test(email)){ mg.textContent='Please enter a valid email.'; return; }
+    btn.disabled=true; btn.textContent='Sending…';
+    try{ await sendMagicLink(email);
+      mg.innerHTML='✅ Check <b>'+email+'</b> for a login link. Open it on this device — it signs you straight in.';
+    }catch(e){ mg.textContent='⚠️ '+e.message; btn.disabled=false; btn.textContent='Email me a login link'; }
+  }
+  btn.onclick=go; em.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+}
+function showNoAccess(){
+  const email=SESSION?jwtEmail(SESSION.access_token):'';
+  const d=document.createElement('div');
+  d.innerHTML=loginShell('<div style="font-size:13.5px;color:#5a6b7b;line-height:1.6">You are signed in as <b>'+email
+    +'</b>, but this account has no company assigned to it yet.<br><br>Ask the administrator to grant your email access.</div>'
+    +'<button id="mag-out" style="width:100%;margin-top:18px;padding:11px;border:1px solid #cdd7e1;border-radius:9px;background:#fff;color:#0d2947;font-size:13px;font-weight:600;cursor:pointer">Sign out</button>');
+  document.body.appendChild(d.firstChild);
+  document.getElementById('mag-out').onclick=signOut;
+}
+function showUserBar(){
+  if(document.getElementById('mag-userbar')) return;
+  const email=SESSION?jwtEmail(SESSION.access_token):'';
+  const b=document.createElement('div');
+  b.id='mag-userbar';
+  b.style.cssText='position:fixed;top:10px;right:12px;z-index:9998;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border:1px solid #d7e0ea;border-radius:999px;padding:5px 6px 5px 13px;font-family:Inter,system-ui,sans-serif;font-size:12px;color:#33475b;box-shadow:0 3px 10px rgba(0,0,0,.08)';
+  b.innerHTML='<span>'+email+'</span><button id="mag-signout" style="border:0;border-radius:999px;background:#0d2947;color:#fff;font-size:11.5px;padding:5px 11px;cursor:pointer">Sign out</button>';
+  document.body.appendChild(b);
+  document.getElementById('mag-signout').onclick=signOut;
+}
+
+/* ── Boot / gate ──────────────────────────────────────────────────────── */
+async function boot(){
+  let s = sessionFromHash() || getSess();
+  if(s && s.refresh_token && s.expires_at && s.expires_at < Date.now()+30000){
+    try{ s=await refreshSess(s); }catch(e){ s=null; }
+  }
+  if(!s || !s.access_token){ showLogin(); return; }
+  SESSION=s; setSess(s);
+  try{
+    await runDashboard();
+  }catch(err){
+    // one refresh+retry on auth error, else force re-login
+    if(s.refresh_token){ try{ SESSION=await refreshSess(s); setSess(SESSION); await runDashboard(); return; }catch(e){} }
+    clearSess(); showLogin('Your session expired — please sign in again.');
+  }
+}
 document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
 boot();
 </script>
