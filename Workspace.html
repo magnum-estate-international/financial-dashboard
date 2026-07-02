@@ -618,7 +618,7 @@ let LOANS_JUN=[
   {f:'PT Magnum Estate Int\u2019l',t:'PT Berawa Bali Utama',ty:'Repayment',amt:47000000},
   {f:'IC Amara',t:'PT Berawa Bali Utama',ty:'Repayment',amt:9000000}
 ];
-const LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
+let LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
 
 // ─── KEY TRANSACTIONS ────────────────────────────────────────────────────────
 let HIGHLIGHTS=[
@@ -3130,12 +3130,39 @@ async function loadFromSupabase(){
     TX:[...bs.TX,...bs.TX_MULTI,...bs.TX_MS,...bs.TX_ICG_OPEX],
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
+function rebuildScopeSelect(){
+  const sel=document.getElementById('scopeSel'); if(!sel) return;
+  const order=[], byG={};
+  EIDS.forEach(id=>{const g=ENT[id].grp; if(!byG[g]){byG[g]=[];order.push(g);} byG[g].push(id);});
+  const noun=EIDS.length===1?'Entity':'Entities';
+  let h='<option value="all">🌐 All — Consolidated ('+EIDS.length+' '+noun+')</option>';
+  order.forEach(g=>{const ids=byG[g];
+    if(ids.length>1){ h+='<option value="g:'+g+'">▸ '+(GRPNAME[g]||g)+'</option>';
+      ids.forEach(id=>{h+='<option value="e:'+id+'">&nbsp;&nbsp;&nbsp;'+ENT[id].name+'</option>';}); }
+    else { h+='<option value="e:'+ids[0]+'">'+ENT[ids[0]].name+'</option>'; }
+  });
+  sel.innerHTML=h; sel.value='all';
+}
+function applyScopeChrome(){
+  const fullAccess = EIDS.length >= 16;               // admin / all-groups user
+  document.querySelectorAll('details').forEach(d=>{
+    const sm=d.querySelector('summary');
+    if(sm && /Reconciliation/i.test(sm.textContent)) d.style.display = fullAccess ? '' : 'none';
+  });
+  if(!fullAccess){
+    const sub=document.querySelector('.brand .sub');
+    if(sub) sub.textContent = EIDS.map(id=>ENT[id].name).join(' · ');
+  }
+}
 async function runDashboard(){
   const D=await loadFromSupabase();
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
   HIGHLIGHTS=D.HIGHLIGHTS;TX=D.TX;TX_MULTI=D.TX_MULTI;TX_MS=D.TX_MS;TX_ICG_OPEX=D.TX_ICG_OPEX;
   EIDS=Object.keys(ENT);
   if(!EIDS.length){ showNoAccess(); return; }
+  LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
+  rebuildScopeSelect();
+  applyScopeChrome();
   renderAll();
   showUserBar();
 }
