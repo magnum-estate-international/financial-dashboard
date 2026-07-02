@@ -266,6 +266,16 @@ a{color:#4550d8}
 <div class="divlabel" id="secRecoLabel">📌 Points of Attention — Recommendations for Management</div>
 <div id="recoGrid" class="reco-grid"></div>
 
+<div class="divlabel" id="secBalLabel">🏦 Balance Reconciliation — Saldo Awal / Saldo Akhir</div>
+<div class="panel" style="margin-bottom:16px">
+  <h2>Balance check</h2>
+  <div class="pn-sub" id="balSub">Saldo awal + net movement (per the report) should equal the reported saldo akhir. A difference means the report is incomplete or the balance needs review.</div>
+  <div class="table-scroll" style="max-height:360px"><table>
+    <thead><tr><th>Entity</th><th class="num" style="text-align:right">Saldo awal</th><th class="num" style="text-align:right">Net movement</th><th class="num" style="text-align:right">Expected closing</th><th class="num" style="text-align:right">Saldo akhir (reported)</th><th class="num" style="text-align:right">Selisih</th><th>Status</th></tr></thead>
+    <tbody id="balBody"></tbody>
+  </table></div>
+</div>
+
 <div class="panel" style="margin-bottom:16px">
   <h2>Revenue vs Operating Expense by Entity</h2>
   <div class="pn-sub">Operating figures only (log scale) · click a bar to filter that entity</div>
@@ -3159,9 +3169,61 @@ function renderRecos(a){
     : '<div class="reco info"><div class="ric">'+RECO_ICONS.info+'</div><div><h4>No pressing issues for this view<span class="rtag">Review</span></h4><p>Figures for this scope and period look balanced. Switch scope or month to check other entities.</p></div></div>';
 }
 
+// ─── BALANCE RECONCILIATION (saldo awal / saldo akhir vs reported movement) ──
+function balFor(id){
+  const per=(typeof BAL!=='undefined'&&BAL[id])||{};
+  if(MONTH!=='Q2'){ const b=per[MONTH]||{}; return {open:b.open??null, close:b.close??null}; }
+  let open=null, close=null;
+  for(const m of Q2_MONTHS){ const b=per[m]; if(b&&b.open!=null){ open=b.open; break; } }
+  for(let i=Q2_MONTHS.length-1;i>=0;i--){ const b=per[Q2_MONTHS[i]]; if(b&&b.close!=null){ close=b.close; break; } }
+  return {open,close};
+}
+function renderBalances(){
+  const tb=document.getElementById('balBody'); if(!tb) return;
+  const lbl=document.getElementById('secBalLabel');
+  if(lbl) lbl.textContent='🏦 Balance Reconciliation — Saldo Awal / Saldo Akhir ('+(MONTHS[MONTH]||MONTH)+')';
+  const ids=scopeIds();
+  const chipOK='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#ddf3e9;color:#1f8a61;white-space:nowrap">✓ Sesuai</span>';
+  const chipDiff='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#fde3e9;color:#c73e57;white-space:nowrap">⚠ Selisih</span>';
+  const chipNone='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#eef0fe;color:#4550d8;white-space:nowrap">no balance yet</span>';
+  const td='padding:9px 10px;vertical-align:middle';
+  let rows='', tOpen=0,tClose=0,tMove=0,tHave=0;
+  ids.forEach(id=>{
+    const e=eff(id); const move=e.rev-e.opex+e.finIn-e.finOut;
+    const b=balFor(id);
+    if(b.open==null&&b.close==null){ return; }
+    const expected=(b.open!=null)?b.open+move:null;
+    const diff=(expected!=null&&b.close!=null)?b.close-expected:null;
+    const ok=diff!=null&&Math.abs(diff)<=1;
+    if(b.open!=null&&b.close!=null){ tOpen+=b.open; tClose+=b.close; tMove+=move; tHave++; }
+    rows+='<tr><td style="'+td+'">'+escH(ENT[id]?ENT[id].name:id)+'</td>'
+      +'<td class="num" style="'+td+'">'+(b.open!=null?fmt(b.open):'—')+'</td>'
+      +'<td class="num" style="'+td+'">'+(move>=0?'+':'−')+fmt(Math.abs(move))+'</td>'
+      +'<td class="num" style="'+td+'">'+(expected!=null?fmt(expected):'—')+'</td>'
+      +'<td class="num" style="'+td+'">'+(b.close!=null?fmt(b.close):'—')+'</td>'
+      +'<td class="num" style="'+td+';font-weight:700;'+(diff==null?'':(ok?'color:#1f8a61':'color:#c73e57'))+'">'+(diff!=null?((diff>=0?'+':'−')+fmt(Math.abs(diff))):'—')+'</td>'
+      +'<td style="'+td+'">'+(diff==null?chipNone:(ok?chipOK:chipDiff))+'</td></tr>';
+  });
+  if(!rows){
+    tb.innerHTML='<tr><td colspan="7" style="padding:14px 10px;color:#333b4d;font-size:12.5px">Belum ada saldo untuk periode ini — isi <b>Saldo awal</b> dan <b>Saldo akhir</b> lewat tombol <b>✎ Update data</b> (pilih PT &amp; bulan), lalu dashboard akan otomatis mengecek apakah laporan sudah sesuai.</td></tr>';
+    return;
+  }
+  if(tHave>1){
+    const texp=tOpen+tMove, tdiff=tClose-texp, tok=Math.abs(tdiff)<=1;
+    rows+='<tr style="border-top:2px solid #141b2d"><td style="'+td+';font-weight:800">Total (complete rows)</td>'
+      +'<td class="num" style="'+td+';font-weight:700">'+fmt(tOpen)+'</td>'
+      +'<td class="num" style="'+td+';font-weight:700">'+(tMove>=0?'+':'−')+fmt(Math.abs(tMove))+'</td>'
+      +'<td class="num" style="'+td+';font-weight:700">'+fmt(texp)+'</td>'
+      +'<td class="num" style="'+td+';font-weight:700">'+fmt(tClose)+'</td>'
+      +'<td class="num" style="'+td+';font-weight:800;'+(tok?'color:#1f8a61':'color:#c73e57')+'">'+(tdiff>=0?'+':'−')+fmt(Math.abs(tdiff))+'</td>'
+      +'<td style="'+td+'">'+(tok?chipOK:chipDiff)+'</td></tr>';
+  }
+  tb.innerHTML=rows;
+}
+
 function renderAll(){
   const a=agg();
-  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);
+  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
@@ -3274,6 +3336,7 @@ function applyScopeChrome(){
     if(sub) sub.textContent = EIDS.map(id=>ENT[id].name).join(' · ');
   }
 }
+let BAL={};
 async function runDashboard(){
   const D=await loadFromSupabase();
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
@@ -3292,6 +3355,15 @@ async function runDashboard(){
         sel.insertBefore(o, sel.querySelector('option[value="Q2"]')); }
     });
   }catch(e){}
+  // opening / closing balances per entity+month (reconciliation benchmark)
+  try{
+    BAL={};
+    (await sbFetch('entity_period_balances?select=entity_code,period_code,opening_idr,closing_idr')).forEach(b=>{
+      (BAL[b.entity_code]=BAL[b.entity_code]||{})[b.period_code]={
+        open:b.opening_idr==null?null:Number(b.opening_idr),
+        close:b.closing_idr==null?null:Number(b.closing_idr)};
+    });
+  }catch(e){ BAL={}; }
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
@@ -3674,6 +3746,9 @@ async function renderEntryBody(){
     +'<div id="en-newper" style="display:none;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
     +'<input id="en-pcode" placeholder="Code, e.g. JUL" maxlength="12" style="'+inp+';text-transform:uppercase">'
     +'<input id="en-plabel" placeholder="Label, e.g. July 2026" style="'+inp+'"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    +'<input id="en-open" inputmode="numeric" placeholder="Saldo awal — opening balance (IDR, optional)" style="'+inp+'">'
+    +'<input id="en-close" inputmode="numeric" placeholder="Saldo akhir — closing balance (IDR, optional)" style="'+inp+'"></div>'
     +'<div style="border:1px dashed #c8cdf9;background:#f7f8fd;border-radius:14px;padding:12px 14px;margin-bottom:10px">'
       +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px">📎 Documents <span style="font-weight:500;color:#3a4254">— rekap bank, rekening koran, voucher payment (PDF/photo/Excel, max 10 MB each)</span></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
@@ -3782,6 +3857,19 @@ async function renderEntryBody(){
       }
       b.textContent='Submitting…';
       await adminAdd('entry_submissions',{entity_code:entity,period_code:pcode,period_label:plabel,flow:flow,category:category,label:label,amount_idr:amt,note:note,attachments:atts});
+      // optional saldo awal / saldo akhir -> upsert balance row (keep the other side if only one entered)
+      const openRaw=(document.getElementById('en-open').value||'').replace(/[^0-9-]/g,'');
+      const closeRaw=(document.getElementById('en-close').value||'').replace(/[^0-9-]/g,'');
+      if(openRaw!==''||closeRaw!==''){
+        const prev=(BAL[entity]&&BAL[entity][pcode])||{};
+        const bp={entity_code:entity,period_code:pcode,updated_by:MY_EMAIL,updated_at:new Date().toISOString(),
+          opening_idr: openRaw!==''?Number(openRaw):(prev.open!=null?prev.open:null),
+          closing_idr: closeRaw!==''?Number(closeRaw):(prev.close!=null?prev.close:null)};
+        const rb=await fetch(SB_URL+'/rest/v1/entity_period_balances',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(bp)});
+        if(!rb.ok) throw new Error((await rb.text())||('HTTP '+rb.status));
+        (BAL[entity]=BAL[entity]||{})[pcode]={open:bp.opening_idr,close:bp.closing_idr};
+        ENTRY_DIRTY=true;
+      }
       EN_FILES=[];
       await renderEntryBody();
       if(flow!=='docs') ENTRY_DIRTY=true;
