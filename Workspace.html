@@ -4,161 +4,158 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-id="th-modified">Group Consolidated Financial Dashboard · May 2026 · 17 Entities</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Familjen+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
-  --blue-900:#eaf2ff;--blue-700:#7dd3fc;--blue-500:#7dd3fc;--blue-300:#4f77ad;--blue-100:#28508b;--blue-50:#16345f;
-  --sand:#7dd3fc;--sand-soft:#28508b;--ink:#eaf2ff;--muted:#9fb8d9;--green:#6ee7b7;--red:#fda4af;--amber:#fde68a;--amber-bg:rgba(253,230,138,.14);
-  --card:rgba(6,26,58,.55);--shadow:0 0 0 1.5px rgba(125,211,252,.65);--shadow-sm:none;
-  --line:1.5px solid rgba(234,242,255,.5);--dash:1px dashed rgba(234,242,255,.35);
+  --blue-900:#2f4858;--blue-700:#3d5a72;--blue-500:#5b8db8;--blue-300:#a9c4da;--blue-100:#dde9f2;--blue-50:#eef4f8;
+  --sand:#d97757;--sand-soft:#f4ddd2;--ink:#3d5a72;--muted:#64809b;--green:#3d8a63;--red:#c14953;--amber:#a87a1c;--amber-bg:#faf3e0;
+  --card:#ffffff;--shadow:0 14px 36px -16px rgba(63,90,114,.22),0 2px 6px -2px rgba(63,90,114,.08);
+  --shadow-sm:0 6px 18px -10px rgba(63,90,114,.16),0 1px 3px rgba(63,90,114,.05);
+  --border:1px solid #e5e2d8;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-::selection{background:#7dd3fc;color:#082044}
+::selection{background:#f4ddd2;color:#7a3b22}
 html{scroll-behavior:smooth}
-body{font-family:'IBM Plex Sans',sans-serif;color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;
+body{font-family:'Familjen Grotesk',sans-serif;color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;
   background:
-    linear-gradient(rgba(255,255,255,.07) 1.5px,transparent 1.5px) 0 0/140px 140px,
-    linear-gradient(90deg,rgba(255,255,255,.07) 1.5px,transparent 1.5px) 0 0/140px 140px,
-    linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px) 0 0/28px 28px,
-    linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) 0 0/28px 28px,
-    #0d2b5c;
-  background-attachment:fixed}
+    radial-gradient(900px 420px at 88% -6%,rgba(217,119,87,.07),transparent 60%),
+    radial-gradient(800px 400px at -8% 14%,rgba(91,141,184,.07),transparent 55%),
+    #faf9f5}
 .wrap{max-width:1280px;margin:0 auto;padding:0 26px 56px}
-header.hero{position:relative;overflow:hidden;color:var(--ink);border-radius:0;padding:30px 0 26px;
-  background:rgba(6,26,58,.35);border-bottom:1.5px solid rgba(234,242,255,.55)}
-header.hero::after{content:"DWG · FIN-CONSOL · SCALE 1:1";position:absolute;right:28px;bottom:10px;
-  font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;color:#7dd3fc;opacity:.8}
+header.hero{position:relative;overflow:hidden;color:var(--ink);border-radius:12px 0 30px 30px;padding:36px 0 32px;
+  background:#f4f2ea;border-bottom:1px solid #e5e2d8}
+header.hero::after{content:"✳";position:absolute;right:34px;top:26px;font-size:30px;color:#d97757;opacity:.85}
 header .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;position:relative;z-index:1}
 .brand{display:flex;align-items:center;gap:16px}
-.mark{width:54px;height:54px;border-radius:0;flex:none;background:transparent;border:1.5px solid rgba(234,242,255,.7);
-  display:grid;place-items:center;box-shadow:inset 0 0 0 4px rgba(125,211,252,.15);
-  font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:12px;letter-spacing:1px;color:#7dd3fc}
-.brand h1{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:21px;letter-spacing:.5px;line-height:1.2;text-transform:uppercase}
-.brand .sub{font-size:10px;color:#9fb8d9;letter-spacing:2.6px;text-transform:uppercase;margin-top:6px;font-family:'IBM Plex Mono',monospace}
-.hero-meta{text-align:right;font-size:12.5px;color:#9fb8d9;font-family:'IBM Plex Mono',monospace}
-.hero-meta .period{font-family:'IBM Plex Mono',monospace;font-size:17px;color:#7dd3fc;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
-.toolbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:18px auto 20px;max-width:1280px;padding:13px 18px;
-  background:rgba(9,32,68,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-  border-radius:0;border:var(--line);position:sticky;top:0;z-index:30}
+.mark{width:54px;height:54px;border-radius:16px;flex:none;background:#d97757;
+  display:grid;place-items:center;box-shadow:0 6px 16px -6px rgba(217,119,87,.55);
+  font-family:'Lora',serif;font-weight:600;font-size:13px;letter-spacing:.5px;color:#fff}
+.brand h1{font-family:'Lora',serif;font-weight:600;font-size:26px;letter-spacing:-.2px;line-height:1.15;color:var(--blue-900)}
+.brand .sub{font-size:11px;color:var(--muted);letter-spacing:2.2px;text-transform:uppercase;margin-top:6px;font-weight:500}
+.hero-meta{text-align:right;font-size:13px;color:var(--muted)}
+.hero-meta .period{font-family:'Lora',serif;font-size:22px;color:var(--blue-900);font-weight:600}
+.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:-24px auto 20px;max-width:1280px;padding:14px 20px;
+  background:rgba(255,255,255,.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-radius:18px;box-shadow:var(--shadow);border:1px solid #eceae1;position:sticky;top:12px;z-index:30}
 .spacer{flex:1}
-.btn{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;cursor:pointer;border:1.5px solid rgba(234,242,255,.6);
-  padding:9px 14px;border-radius:0;display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--ink);
-  transition:background .15s,color .15s,border-color .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn{font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border:var(--border);padding:9px 16px;border-radius:12px;
+  display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--blue-700);
+  transition:background .15s,border-color .15s,transform .1s}
 .btn:active{transform:translateY(1px)}
-.btn:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
-.btn-ghost{background:transparent;color:var(--ink)}
-.btn-ghost:hover{background:#7dd3fc;color:#082044;border-color:#7dd3fc}
+.btn:focus-visible{outline:2px solid #d97757;outline-offset:2px}
+.btn-ghost{background:#fff;color:var(--blue-700)}
+.btn-ghost:hover{background:#f4f2ea;border-color:#d8d5cb}
 .fl{display:flex;flex-direction:column;gap:4px}
-.fl label{font-size:9px;font-weight:600;color:#7dd3fc;text-transform:uppercase;letter-spacing:2px;font-family:'IBM Plex Mono',monospace}
-select{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:500;color:var(--ink);background:#0a2450;
-  border:1.5px solid rgba(234,242,255,.55);border-radius:0;padding:8px 12px;cursor:pointer;max-width:460px;transition:border-color .15s,box-shadow .15s}
-select:hover{border-color:#7dd3fc}
-select:focus-visible{outline:none;border-color:#7dd3fc;box-shadow:0 0 0 3px rgba(125,211,252,.25)}
-option{background:#0a2450;color:#eaf2ff}
-.ebanner{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 16px;background:var(--card);
-  border-radius:0;border:var(--dash);font-size:13px;flex-wrap:wrap}
-.dot{width:10px;height:10px;border-radius:0;flex:none;outline:1px solid rgba(234,242,255,.5);outline-offset:2px}
-.alert{border-radius:0;padding:15px 20px;margin-bottom:16px;display:flex;gap:14px;font-size:13px;line-height:1.6;
-  background:var(--card);border:var(--line)}
-.alert.info{border-left:5px solid #7dd3fc}
-.alert.deficit{border-left:5px solid var(--red)}
-.alert strong{font-family:'IBM Plex Mono',monospace;font-size:13.5px;display:block;margin-bottom:3px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.fl label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.4px}
+select{font-family:inherit;font-size:13.5px;font-weight:600;color:var(--blue-900);background:#fff;
+  border:1px solid #d8d5cb;border-radius:12px;padding:9px 12px;cursor:pointer;max-width:460px;
+  box-shadow:0 1px 2px rgba(63,90,114,.05);transition:border-color .15s,box-shadow .15s}
+select:hover{border-color:var(--blue-300)}
+select:focus-visible{outline:none;border-color:#d97757;box-shadow:0 0 0 3px rgba(217,119,87,.18)}
+.ebanner{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:11px 18px;background:var(--card);
+  border-radius:14px;box-shadow:var(--shadow-sm);border:var(--border);font-size:13px;flex-wrap:wrap}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.alert{border-radius:16px;padding:16px 20px;margin-bottom:16px;display:flex;gap:14px;font-size:13px;line-height:1.65;
+  background:var(--card);box-shadow:var(--shadow-sm);border:var(--border)}
+.alert.info{border-left:4px solid var(--blue-500);background:linear-gradient(90deg,var(--blue-50),var(--card) 50%)}
+.alert.deficit{border-left:4px solid var(--red);background:linear-gradient(90deg,#f9ecea,var(--card) 50%)}
+.alert strong{font-family:'Lora',serif;font-size:15px;display:block;margin-bottom:3px;color:var(--blue-900)}
 .alert .ic{font-size:19px;flex-shrink:0;margin-top:1px}
-.divlabel{font-size:10px;font-weight:600;color:#7dd3fc;text-transform:uppercase;letter-spacing:2.6px;margin:28px 0 12px;
-  display:flex;align-items:center;gap:12px;font-family:'IBM Plex Mono',monospace}
-.divlabel::after{content:'';flex:1;height:0;border-top:var(--dash)}
-.kpi4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+.divlabel{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.8px;margin:26px 0 12px;
+  display:flex;align-items:center;gap:12px}
+.divlabel::after{content:'';flex:1;height:1px;background:#e5e2d8}
+.kpi4{display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:15px}
 .kpi5{grid-template-columns:repeat(5,1fr)}
-.pcard{background:var(--card);border-radius:0;padding:18px 20px;border:var(--line);position:relative;overflow:hidden;
-  transition:border-color .15s,box-shadow .15s}
-.pcard.dark{background:#071c3d;color:var(--ink);border:1.5px solid #7dd3fc}
-.pcard.dark .lab{color:#7dd3fc}
-.pcard.green-hl{border-top:5px solid var(--green)}
-.pcard.red-hl{border-top:5px solid var(--red)}
-.pcard.amber-hl{border-top:5px solid #7dd3fc}
-.pcard.blue-hl{border-top:5px solid #7dd3fc}
-.pcard.cap-hl{border-top:5px solid var(--amber);background:rgba(253,230,138,.06)}
-.pcard .lab{font-size:9.5px;text-transform:uppercase;letter-spacing:2px;font-weight:600;color:#9fb8d9;font-family:'IBM Plex Mono',monospace}
-.pcard .big{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:21px;letter-spacing:-.5px;line-height:1.12;
-  margin-top:9px;font-variant-numeric:lining-nums tabular-nums}
-.pcard .big.sz30{font-size:25px}
+.pcard{background:var(--card);border-radius:18px;box-shadow:var(--shadow-sm);padding:21px 22px;
+  border:var(--border);position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
+.pcard.dark{color:#f6f4ec;border:none;background:linear-gradient(150deg,#33506a,#2f4858 65%)}
+.pcard.dark .lab{color:#a9c4da}
+.pcard.green-hl{border-top:3px solid var(--green)}
+.pcard.red-hl{border-top:3px solid var(--red)}
+.pcard.amber-hl{border-top:3px solid var(--sand)}
+.pcard.blue-hl{border-top:3px solid var(--blue-500)}
+.pcard.cap-hl{border-top:3px solid #d97757;background:linear-gradient(180deg,#fbf3ee,var(--card) 70%)}
+.pcard .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;color:var(--muted)}
+.pcard .big{font-family:'Lora',serif;font-weight:600;font-size:24px;letter-spacing:-.3px;line-height:1.12;
+  margin-top:9px;font-variant-numeric:lining-nums tabular-nums;color:var(--blue-900)}
+.pcard.dark .big{color:#f6f4ec}
+.pcard .big.sz30{font-size:29px}
 .pcard .meta{font-size:12px;margin-top:7px;color:var(--muted);line-height:1.55}
 .pcard .flowrow{display:flex;flex-direction:column;gap:6px;margin-top:13px}
 .pcard .flowrow div{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px;
-  border-bottom:var(--dash);padding-bottom:5px}
+  border-bottom:1px dashed #e9e6dc;padding-bottom:5px}
 .pcard .flowrow div:last-child{border-bottom:none;padding-bottom:0}
-.pcard .flowrow b{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--ink);font-family:'IBM Plex Mono',monospace;font-weight:500}
-.pcard.dark .flowrow div{border-bottom-color:rgba(125,211,252,.3);color:#9fb8d9}
-.pcard.dark .flowrow b{color:#eaf2ff}
+.pcard .flowrow b{font-size:13px;font-variant-numeric:tabular-nums;color:var(--blue-900)}
+.pcard.dark .flowrow div{border-bottom-color:rgba(255,255,255,.16);color:#c3d5e4}
+.pcard.dark .flowrow b{color:#fff}
 .pos{color:var(--green)}.neg{color:var(--red)}.amb{color:var(--amber)}
 .grid{display:grid;gap:16px}
 .cols-eq{grid-template-columns:1fr 1fr}
-.panel{background:var(--card);border-radius:0;padding:22px;border:var(--line)}
-.panel h2{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--ink);margin-bottom:2px;text-transform:uppercase;letter-spacing:.6px}
+.panel{background:var(--card);border-radius:18px;box-shadow:var(--shadow-sm);padding:24px;border:var(--border)}
+.panel h2{font-family:'Lora',serif;font-size:18px;font-weight:600;color:var(--blue-900);margin-bottom:2px}
 .panel .pn-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
 .chart-box{position:relative;height:250px}
 .bd{display:flex;flex-direction:column;gap:10px}
-.bd-total{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:10px;margin-bottom:8px;border-bottom:1.5px solid rgba(234,242,255,.5)}
-.bd-total .lab{font-size:9.5px;text-transform:uppercase;letter-spacing:2px;color:#9fb8d9;font-weight:600;font-family:'IBM Plex Mono',monospace}
-.bd-total .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px;font-variant-numeric:lining-nums tabular-nums}
+.bd-total{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:10px;margin-bottom:8px;border-bottom:1px solid #eceae1}
+.bd-total .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted);font-weight:600}
+.bd-total .v{font-family:'Lora',serif;font-weight:600;font-size:19px;font-variant-numeric:lining-nums tabular-nums;color:var(--blue-900)}
 .bd-row{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:baseline}
-.bd-row .bl{font-size:12.5px;font-weight:400}
-.bd-row .bv{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
-.bd-row .bp{font-size:10.5px;color:var(--muted);font-weight:400;margin-left:5px}
-.bd-bar{grid-column:1/-1;height:5px;border-radius:0;background:rgba(234,242,255,.12);overflow:hidden}
-.bd-bar span{display:block;height:100%;border-radius:0}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#7dd3fc;font-weight:600;
-  padding:9px 10px;border-bottom:1.5px solid rgba(234,242,255,.55);background:#0a2450;font-family:'IBM Plex Mono',monospace}
-td{padding:10px;border-bottom:var(--dash);vertical-align:middle}
-tr:hover td{background:rgba(125,211,252,.08)}
+.bd-row .bl{font-size:12.5px;font-weight:500}
+.bd-row .bv{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bd-row .bp{font-size:10.5px;color:var(--muted);font-weight:500;margin-left:5px}
+.bd-bar{grid-column:1/-1;height:5px;border-radius:3px;background:#f0eee5;overflow:hidden}
+.bd-bar span{display:block;height:100%;border-radius:3px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:600;
+  padding:10px;border-bottom:1px solid #dcd9cf;background:var(--card)}
+td{padding:10.5px 10px;border-bottom:1px solid #f0eee5;vertical-align:middle}
+tr:hover td{background:#faf7f0}
 .table-scroll th{position:sticky;top:0;z-index:2}
-.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:500;white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-size:12px}
-.pill{display:inline-block;padding:3px 10px;border-radius:0;font-size:10px;font-weight:600;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
-.tag{display:inline-block;font-size:9.5px;font-weight:600;padding:3px 8px;border-radius:0;letter-spacing:.6px;text-transform:uppercase;font-family:'IBM Plex Mono',monospace}
-.tag.in{background:rgba(110,231,183,.15);color:#6ee7b7;border:1px solid rgba(110,231,183,.4)}
-.tag.out{background:rgba(253,164,175,.14);color:#fda4af;border:1px solid rgba(253,164,175,.4)}
-.tag.loan{background:rgba(125,211,252,.14);color:#7dd3fc;border:1px solid rgba(125,211,252,.4)}
-.tag.rep{background:rgba(190,242,100,.12);color:#d3f28a;border:1px solid rgba(211,242,138,.35)}
-.tag.cap{background:rgba(253,230,138,.14);color:#fde68a;border:1px solid rgba(253,230,138,.4)}
-.table-scroll{max-height:430px;overflow:auto;border-radius:0;scrollbar-width:thin;scrollbar-color:#7dd3fc transparent}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:600;white-space:nowrap}
+.tag{display:inline-block;font-size:10px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:.3px}
+.tag.in{background:#e2f0e8;color:#2c6b4a}.tag.out{background:#f9e7e6;color:#9d3a42}
+.tag.loan{background:var(--blue-50);color:var(--blue-700)}.tag.rep{background:#e8efe3;color:#4a6b3a}
+.tag.cap{background:#f4ddd2;color:#964c2f;font-weight:700}
+.table-scroll{max-height:430px;overflow:auto;border-radius:12px;scrollbar-width:thin;scrollbar-color:#c9c5b8 transparent}
 .table-scroll::-webkit-scrollbar{width:8px;height:8px}
-.table-scroll::-webkit-scrollbar-thumb{background:#28508b;border-radius:0}
-.table-scroll::-webkit-scrollbar-thumb:hover{background:#7dd3fc}
-.section-title{display:flex;align-items:center;justify-content:space-between;margin:30px 0 14px;flex-wrap:wrap;gap:10px}
-.section-title h2{font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--ink);font-weight:700;text-transform:uppercase;letter-spacing:.8px}
+.table-scroll::-webkit-scrollbar-thumb{background:#e0ddd2;border-radius:8px}
+.table-scroll::-webkit-scrollbar-thumb:hover{background:#c9c5b8}
+.section-title{display:flex;align-items:center;justify-content:space-between;margin:28px 0 14px;flex-wrap:wrap;gap:10px}
+.section-title h2{font-family:'Lora',serif;font-size:21px;color:var(--blue-900);font-weight:600}
 .section-title .hint{font-size:12px;color:var(--muted)}
-details.fold{background:var(--card);border-radius:0;border:var(--line);overflow:hidden;margin-bottom:14px}
-details.fold>summary{list-style:none;cursor:pointer;padding:15px 22px;display:flex;align-items:center;justify-content:space-between;
-  font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:var(--ink);transition:background .15s;text-transform:uppercase;letter-spacing:.6px}
-details.fold>summary:hover{background:rgba(125,211,252,.08)}
-details.fold>summary:focus-visible{outline:2px solid #7dd3fc;outline-offset:-2px}
+details.fold{background:var(--card);border-radius:18px;box-shadow:var(--shadow-sm);border:var(--border);overflow:hidden;margin-bottom:14px}
+details.fold>summary{list-style:none;cursor:pointer;padding:17px 24px;display:flex;align-items:center;justify-content:space-between;
+  font-family:'Lora',serif;font-size:16px;font-weight:600;color:var(--blue-900);transition:background .15s}
+details.fold>summary:hover{background:#faf7f0}
+details.fold>summary:focus-visible{outline:2px solid #d97757;outline-offset:-2px;border-radius:18px}
 details.fold>summary::-webkit-details-marker{display:none}
-details.fold>summary .chev{transition:transform .2s;color:#7dd3fc;font-size:13px}
+details.fold>summary .chev{transition:transform .2s;color:#d97757;font-size:13px}
 details.fold[open]>summary .chev{transform:rotate(90deg)}
-details.fold>summary .hint{font-family:'IBM Plex Sans';font-size:12px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
-.fold-body{padding:0 22px 20px}
-.overlay{position:fixed;inset:0;background:rgba(4,16,36,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+details.fold>summary .hint{font-family:'Familjen Grotesk';font-size:12px;color:var(--muted);font-weight:500}
+.fold-body{padding:0 24px 22px}
+.overlay{position:fixed;inset:0;background:rgba(47,72,88,.4);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+  display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .overlay.show{display:flex}
-.modal{background:#0a2450;border-radius:0;border:1.5px solid rgba(234,242,255,.6);box-shadow:0 0 0 6px rgba(125,211,252,.12);width:100%;max-width:640px;max-height:88vh;overflow:auto;color:var(--ink)}
-.modal-head{padding:18px 24px 12px;border-bottom:1.5px solid rgba(234,242,255,.4);display:flex;justify-content:space-between;
-  align-items:center;position:sticky;top:0;background:#0a2450;z-index:2}
-.modal-head h3{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--ink);font-weight:700;text-transform:uppercase;letter-spacing:.6px}
-.modal-body{padding:18px 24px 24px}
-.x{cursor:pointer;border:1.5px solid rgba(234,242,255,.6);background:transparent;width:34px;height:34px;border-radius:0;color:var(--ink);
-  font-size:18px;display:grid;place-items:center;transition:background .15s,color .15s}
-.x:hover{background:#7dd3fc;color:#082044;border-color:#7dd3fc}
-footer{text-align:center;color:var(--muted);font-size:11.5px;margin-top:36px;line-height:1.9;font-family:'IBM Plex Mono',monospace}
-footer::before{content:"— END OF SHEET —";display:block;margin:0 auto 14px;color:#7dd3fc;font-size:9px;letter-spacing:3px}
-.clickable{cursor:pointer;transition:border-color .15s,box-shadow .15s}
-.clickable:hover{border-color:#7dd3fc;box-shadow:var(--shadow)}
-a{color:#7dd3fc}
-:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
+.modal{background:var(--card);border-radius:20px;box-shadow:0 36px 80px -22px rgba(30,45,58,.4);width:100%;max-width:640px;max-height:88vh;overflow:auto;border:var(--border)}
+.modal-head{padding:20px 26px 13px;border-bottom:1px solid #eceae1;display:flex;justify-content:space-between;
+  align-items:center;position:sticky;top:0;background:var(--card);z-index:2}
+.modal-head h3{font-family:'Lora',serif;font-size:19px;color:var(--blue-900);font-weight:600}
+.modal-body{padding:18px 26px 26px}
+.x{cursor:pointer;border:var(--border);background:#fff;width:34px;height:34px;border-radius:10px;color:var(--blue-700);
+  font-size:18px;display:grid;place-items:center;transition:background .15s}
+.x:hover{background:#f4f2ea}
+footer{text-align:center;color:var(--muted);font-size:12px;margin-top:36px;line-height:1.9}
+footer::before{content:"✳";display:block;margin:0 auto 10px;color:#d97757;font-size:16px;opacity:.8}
+.clickable{cursor:pointer;transition:transform .18s,box-shadow .2s,border-color .2s}
+.clickable:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:#e8c9ba}
+a{color:var(--blue-500)}
+:focus-visible{outline:2px solid #d97757;outline-offset:2px}
 @media(max-width:980px){.kpi4,.kpi5,.cols-eq{grid-template-columns:1fr}.wrap{padding:0 14px 40px}.toolbar{position:static}}
 @media(min-width:981px) and (max-width:1300px){.kpi5{grid-template-columns:repeat(3,1fr)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
-@media print{.toolbar,.ebanner button{display:none}body{background:#fff;color:#111}.pcard,.panel,details.fold{background:#fff;color:#111;border-color:#333}}
+@media print{.toolbar,.ebanner button{display:none}}
 </style>
 <meta property="og:title" content="Group Consolidated Financial Dashboard · May 2026 · 17 Entities" data-id="th-modified" ><meta name="description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:url" content="https://salmon-emmie-62.tiiny.site/" data-id="th-modified" ><meta property="og:type" content="website" data-id="th-modified" ></head>
 <body>
@@ -2605,7 +2602,7 @@ function agg(){
   return a;
 }
 const pill = id => `<span class="pill" style="background:${ENT[id].color}22;color:${ENT[id].color}">${ENT[id].name}</span>`;
-const CATCOLORS=['#7dd3fc','#34d399','#fde68a','#fb7185','#c4b5fd','#a3e635','#f0abfc','#fdba74','#93c5fd','#6ee7b7','#fcd34d','#f9a8d4','#5eead4','#6b83a8','#e2b98f','#86efac','#eab308','#fda4af','#a5b4fc','#d8b4fe','#fbbf24','#67e8f9','#bef264','#f472b6'];
+const CATCOLORS=['#5b8db8','#d97757','#4a9a72','#c14953','#8d7bb8','#7a9a4a','#3d7a8a','#c9a227','#a0522d','#4f6fb0','#64809b','#d47a35','#2d8f6f','#b3b0a4','#8a5a33','#3a7c6b','#b8945a','#7a4f2c','#9c7c3e','#5e3d23','#8e3b5c','#2f7fb8','#996515','#705a9e'];
 
 function setScope(v){
   if(v==='all'){GF='all';EF='all';}
@@ -2641,11 +2638,11 @@ function renderBanner(){
   if(EF!=='all'){label=ENT[EF].name; color=ENT[EF].color;}
   else if(GF!=='all'){label=GRPNAME[GF];}
   else label=`Consolidated — All Groups (${scopeIds().length} entities)`;
-  const monthTag=`<span style="background:var(--blue-100);color:var(--blue-700);padding:2px 9px;border-radius:0;font-weight:700;font-size:11px;margin-right:4px">${MONTHS[MONTH]}</span>`;
+  const monthTag=`<span style="background:var(--blue-100);color:var(--blue-700);padding:2px 9px;border-radius:12px;font-weight:700;font-size:11px;margin-right:4px">${MONTHS[MONTH]}</span>`;
   let warn='';
   if(MONTH!=='MAY'){
     const n=monthIds().length;
-    warn=`<span style="margin-left:auto;background:var(--amber-bg);color:var(--amber);padding:4px 10px;border-radius:0;font-size:11.5px;font-weight:600">⚠ ${MONTHS[MONTH]}: data tersedia untuk ICG Group + PT BBU (${n} entitas)</span>`;
+    warn=`<span style="margin-left:auto;background:var(--amber-bg);color:var(--amber);padding:4px 10px;border-radius:12px;font-size:11.5px;font-weight:600">⚠ ${MONTHS[MONTH]}: data tersedia untuk ICG Group + PT BBU (${n} entitas)</span>`;
   }
   bn.innerHTML=`${monthTag}<span class="dot" style="background:${color}"></span><span><strong>Showing:</strong> ${label}</span>`+warn+
     ((EF!=='all'||GF!=='all')&&!warn?`<button class="btn btn-ghost" style="margin-left:auto" onclick="document.getElementById('scopeSel').value='all';setScope('all')">✕ Clear filter</button>`:'');
@@ -2889,16 +2886,16 @@ function renderEntChart(){
   const revD=ids.map(id=>{const v=eff(id).rev;return v>0?v:null;});
   const oxD=ids.map(id=>{const v=eff(id).opex;return v>0?v:null;});
   if(entChart) entChart.destroy();
-  Chart.defaults.font.family='IBM Plex Sans, sans-serif'; Chart.defaults.color='#c9dcf5';
+  Chart.defaults.font.family='Familjen Grotesk, sans-serif'; Chart.defaults.color='#64809b';
   entChart=new Chart(document.getElementById('entChart'),{type:'bar',
     data:{labels,datasets:[
-      {label:'Operating Revenue',data:revD,backgroundColor:'#34d399',borderRadius:0},
-      {label:'Operating Expense',data:oxD,backgroundColor:'#fb7185',borderRadius:0}]},
+      {label:'Operating Revenue',data:revD,backgroundColor:'#4a9a72',borderRadius:6},
+      {label:'Operating Expense',data:oxD,backgroundColor:'#c65f54',borderRadius:6}]},
     options:{responsive:true,maintainAspectRatio:false,
       onClick:(ev,els)=>{if(els.length)pickEntity(ids[els[0].index]);},
       plugins:{legend:{position:'top',labels:{boxWidth:11,padding:12}},
         tooltip:{callbacks:{title:items=>ENT[ids[items[0].dataIndex]].name,label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
-      scales:{y:{type:'logarithmic',ticks:{callback:v=>{const l=Math.log10(v);return Number.isInteger(l)?('IDR '+fmtB(v)):'';}},grid:{color:'rgba(234,242,255,.14)'}},
+      scales:{y:{type:'logarithmic',ticks:{callback:v=>{const l=Math.log10(v);return Number.isInteger(l)?('IDR '+fmtB(v)):'';}},grid:{color:'#eceae1'}},
         x:{grid:{display:false},ticks:{font:{size:10}}}}}});
 }
 function renderOpexChart(a){
@@ -2908,10 +2905,10 @@ function renderOpexChart(a){
   const rest=items.slice(10).reduce((s,e)=>s+e[1],0);
   const labels=top.map(e=>e[0]).concat(rest>0?['Other categories']:[]);
   const vals=top.map(e=>e[1]).concat(rest>0?[rest]:[]);
-  const cols=labels.map((_,i)=>i<10?CATCOLORS[i%CATCOLORS.length]:'#6b83a8');
+  const cols=labels.map((_,i)=>i<10?CATCOLORS[i%CATCOLORS.length]:'#b3b0a4');
   if(opexChart) opexChart.destroy();
   opexChart=new Chart(document.getElementById('opexChart'),{type:'doughnut',
-    data:{labels,datasets:[{data:vals,backgroundColor:cols,borderWidth:2,borderColor:'#0d2b5c'}]},
+    data:{labels,datasets:[{data:vals,backgroundColor:cols,borderWidth:2,borderColor:'#ffffff'}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
       plugins:{legend:{position:'right',labels:{boxWidth:10,padding:8,font:{size:10.5}}},
         tooltip:{callbacks:{label:c=>` ${c.label}: IDR ${fmt(c.parsed)} (${(c.parsed/a.opex*100).toFixed(1)}%)`}}}}});
@@ -3023,7 +3020,7 @@ function openBDItem(type,encKey){
     const lbl=byEntLbl[id]?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${byEntLbl[id]}</div>`:'';
     t+=`<tr><td>${pill(id)}${lbl}</td><td class="num ${cls}">${fmt(v)}</td></tr>`;});
   t+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-  h+=`<h4 style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--blue-900);margin:4px 0 8px">By Entity${MONTH==='MAY'?' <span style="font-weight:400;color:var(--muted);font-size:11px">(original report labels shown below each entity)</span>':''}</h4>`;
+  h+=`<h4 style="font-family:'Lora',serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">By Entity${MONTH==='MAY'?' <span style="font-weight:400;color:var(--muted);font-size:11px">(original report labels shown below each entity)</span>':''}</h4>`;
   h+= any?t:`<p style="color:var(--muted);font-size:13px">No entities with this item in scope.</p>`;
   const tx=TX.filter(x=>(MONTH==='Q2'?true:(x.mo||'MAY')===MONTH)&&ids.includes(x.e)&&x.type===type&&canon(x.k)===key);
   // Per-entity residual: By-Entity total minus the itemized TX rows shown. The gap (e.g. an entity whose
@@ -3033,7 +3030,7 @@ function openBDItem(type,encKey){
   const residual={};
   Object.keys(byEnt).forEach(id=>{ const r=(byEnt[id]||0)-(txByEnt[id]||0); if(Math.abs(r)>0.5) residual[id]=r; });
   const hasResidual=Object.keys(residual).length>0;
-  h+=`<h4 style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--blue-900);margin:16px 0 8px">Transaction Detail${tx.length?` (${tx.length})`:''}</h4>`;
+  h+=`<h4 style="font-family:'Lora',serif;font-size:14px;color:var(--blue-900);margin:16px 0 8px">Transaction Detail${tx.length?` (${tx.length})`:''}</h4>`;
   if(tx.length||hasResidual){
     let s=0;
     h+=`<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Date</th><th>Entity</th><th>Description</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
@@ -3197,9 +3194,9 @@ async function runDashboard(){
 
 /* ── Login / gate UI ──────────────────────────────────────────────────── */
 function loginShell(inner){
-  return '<div id="mag-auth" style="position:fixed;inset:0;z-index:99999;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px) 0 0/28px 28px,linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px) 0 0/28px 28px,#0d2b5c;display:flex;align-items:center;justify-content:center;font-family:IBM Plex Sans,system-ui,sans-serif">'
-    +'<div style="background:#fff;color:#1c2530;max-width:400px;width:90%;padding:34px 30px;border-radius:0;box-shadow:0 32px 80px rgba(0,0,0,.45)">'
-    +'<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:19px;color:#0d0f12;margin-bottom:4px">Magnum Estate — Financials</div>'
+  return '<div id="mag-auth" style="position:fixed;inset:0;z-index:99999;background:radial-gradient(640px 420px at 50% 18%,rgba(217,119,87,.09),transparent 60%),#f5f3ec;display:flex;align-items:center;justify-content:center;font-family:Familjen Grotesk,system-ui,sans-serif">'
+    +'<div style="background:#fff;color:#3d5a72;max-width:400px;width:90%;padding:34px 30px;border-radius:12px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35)">'
+    +'<div style="font-family:Lora,serif;font-weight:700;font-size:19px;color:#2f4858;margin-bottom:4px">Magnum Estate — Financials</div>'
     +'<div style="font-size:13px;color:#5a6b7b;margin-bottom:22px">Sign in with your company email</div>'+inner+'</div></div>';
 }
 async function adminFn(action,payload){
@@ -3217,11 +3214,11 @@ async function signInPassword(email,password){
 function showLogin(msg){
   const d=document.createElement('div');
   d.innerHTML=loginShell(
-    '<input id="mag-email" type="email" placeholder="you@magnumestate.pro" autocomplete="username" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #0d0f12;border-radius:0;font-size:14px;margin-bottom:10px">'
-    +'<input id="mag-pass" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #0d0f12;border-radius:0;font-size:14px;margin-bottom:12px">'
-    +'<button id="mag-signin" style="width:100%;padding:12px;border:0;border-radius:0;background:#7dd3fc;color:#082044;font-size:14px;font-weight:600;cursor:pointer">Sign in</button>'
+    '<input id="mag-email" type="email" placeholder="you@magnumestate.pro" autocomplete="username" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d8d5cb;border-radius:12px;font-size:14px;margin-bottom:10px">'
+    +'<input id="mag-pass" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d8d5cb;border-radius:12px;font-size:14px;margin-bottom:12px">'
+    +'<button id="mag-signin" style="width:100%;padding:12px;border:0;border-radius:12px;background:#d97757;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Sign in</button>'
     +'<div id="mag-msg" style="font-size:12.5px;color:#b3261e;margin-top:12px;line-height:1.5;min-height:1px">'+(msg||'')+'</div>'
-    +'<div style="margin-top:14px;font-size:12px;color:#7a8aa0">Trouble signing in? <a href="#" id="mag-link" style="color:#155e9e;text-decoration:none">Email me a login link</a></div>');
+    +'<div style="margin-top:14px;font-size:12px;color:#7a8aa0">Trouble signing in? <a href="#" id="mag-link" style="color:#4a7dab;text-decoration:none">Email me a login link</a></div>');
   document.body.appendChild(d.firstChild);
   const em=document.getElementById('mag-email'), pw=document.getElementById('mag-pass'), mg=document.getElementById('mag-msg');
   async function doSignIn(){
@@ -3248,7 +3245,7 @@ function showNoAccess(){
   const d=document.createElement('div');
   d.innerHTML=loginShell('<div style="font-size:13.5px;color:#5a6b7b;line-height:1.6">You are signed in as <b>'+email
     +'</b>, but this account has no company assigned to it yet.<br><br>Ask the administrator to grant your email access.</div>'
-    +'<button id="mag-out" style="width:100%;margin-top:18px;padding:11px;border:1px solid #0d0f12;border-radius:0;background:#fff;color:#0d0f12;font-size:13px;font-weight:600;cursor:pointer">Sign out</button>');
+    +'<button id="mag-out" style="width:100%;margin-top:18px;padding:11px;border:1px solid #d8d5cb;border-radius:12px;background:#fff;color:#2f4858;font-size:13px;font-weight:600;cursor:pointer">Sign out</button>');
   document.body.appendChild(d.firstChild);
   document.getElementById('mag-out').onclick=signOut;
 }
@@ -3263,10 +3260,10 @@ function showUserBar(){
   const email=SESSION?jwtEmail(SESSION.access_token):'';
   const b=document.createElement('div');
   b.id='mag-userbar';
-  b.style.cssText='position:fixed;top:10px;right:12px;z-index:9998;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border:1px solid #d7e0ea;border-radius:0;padding:5px 6px 5px 13px;font-family:IBM Plex Sans,system-ui,sans-serif;font-size:12px;color:#33475b;box-shadow:0 3px 10px rgba(0,0,0,.08)';
+  b.style.cssText='position:fixed;top:10px;right:12px;z-index:9998;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border:1px solid #d7e0ea;border-radius:12px;padding:5px 6px 5px 13px;font-family:Familjen Grotesk,system-ui,sans-serif;font-size:12px;color:#33475b;box-shadow:0 3px 10px rgba(0,0,0,.08)';
   b.innerHTML='<span>'+email+'</span>'
-    +(IS_ADMIN?'<button id="mag-admin-open" style="border:0;border-radius:0;background:#7dd3fc;color:#082044;font-size:11.5px;padding:5px 12px;cursor:pointer">⚙ Manage access</button>':'')
-    +'<button id="mag-signout" style="border:0;border-radius:0;background:#7dd3fc;color:#082044;font-size:11.5px;padding:5px 11px;cursor:pointer">Sign out</button>';
+    +(IS_ADMIN?'<button id="mag-admin-open" style="border:0;border-radius:12px;background:#d97757;color:#fff;font-size:11.5px;padding:5px 12px;cursor:pointer">⚙ Manage access</button>':'')
+    +'<button id="mag-signout" style="border:0;border-radius:12px;background:#d97757;color:#fff;font-size:11.5px;padding:5px 11px;cursor:pointer">Sign out</button>';
   document.body.appendChild(b);
   document.getElementById('mag-signout').onclick=signOut;
   const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
@@ -3284,9 +3281,9 @@ function closeAdmin(){ const m=document.getElementById('mag-admin'); if(m) m.rem
 async function openAdminPanel(){
   closeAdmin();
   const wrap=document.createElement('div'); wrap.id='mag-admin';
-  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(8,20,36,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:IBM Plex Sans,system-ui,sans-serif';
-  wrap.innerHTML='<div style="background:#fff;color:#1c2530;max-width:720px;width:100%;border-radius:0;box-shadow:0 32px 80px rgba(0,0,0,.45);padding:24px 26px;overflow:hidden">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:18px;color:#0d0f12">Access Management</div><button id="mag-admin-x" style="border:0;background:#eef2f7;border-radius:0;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
+  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(47,72,88,.4);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Familjen Grotesk,system-ui,sans-serif';
+  wrap.innerHTML='<div style="background:#fff;color:#3d5a72;max-width:720px;width:100%;border-radius:12px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:Lora,serif;font-weight:700;font-size:18px;color:#2f4858">Access Management</div><button id="mag-admin-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
     +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:18px;line-height:1.5">Grant a company (PT / group) to a colleague’s email. They sign in with that email and see only what you grant them.</div>'
     +'<div id="mag-admin-body">Loading…</div></div>';
   document.body.appendChild(wrap);
@@ -3300,10 +3297,10 @@ async function adminAddBatch(path, arr){
 }
 function buildAccessEditor(container, groups, entsByGroup, initGroups, initEnts){
   const gset=new Set(initGroups||[]), eset=new Set(initEnts||[]);
-  let html='<div style="border:1px solid #e2e8f0;border-radius:0;padding:8px 12px;max-height:240px;overflow:auto;font-size:13px;background:#fbfcfe">';
+  let html='<div style="border:1px solid #e2e8f0;border-radius:12px;padding:8px 12px;max-height:240px;overflow:auto;font-size:13px;background:#fbfcfe">';
   groups.forEach(g=>{
     const ents=entsByGroup[g.code]||[]; const multi=ents.length>1;
-    html+='<div style="margin:5px 0"><label style="display:flex;align-items:center;gap:8px;font-weight:600;color:#0d0f12;cursor:pointer"><input type="checkbox" class="ae-g" data-g="'+g.code+'"'+(gset.has(g.code)?' checked':'')+'> '+g.name+'</label>';
+    html+='<div style="margin:5px 0"><label style="display:flex;align-items:center;gap:8px;font-weight:600;color:#2f4858;cursor:pointer"><input type="checkbox" class="ae-g" data-g="'+g.code+'"'+(gset.has(g.code)?' checked':'')+'> '+g.name+'</label>';
     if(multi){
       html+='<div class="ae-ents" data-g="'+g.code+'" style="margin:2px 0 6px 26px">';
       ents.forEach(en=>{ html+='<label style="display:flex;align-items:center;gap:8px;color:#33475b;font-weight:400;padding:2px 0;cursor:pointer"><input type="checkbox" class="ae-e" data-g="'+g.code+'" data-e="'+en.code+'"'+(eset.has(en.code)?' checked':'')+'> '+en.name+'</label>'; });
@@ -3340,13 +3337,13 @@ async function applyAccess(email, sel, curGroups, curEnts){
 }
 function openAccessEditor(user, groups, entsByGroup, onSaved){
   const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(8,20,36,.5);display:flex;align-items:center;justify-content:center;padding:24px;font-family:IBM Plex Sans,system-ui,sans-serif';
-  ov.innerHTML='<div style="background:#fff;color:#1c2530;max-width:440px;width:100%;border-radius:0;padding:22px 22px 18px;box-shadow:0 24px 60px rgba(0,0,0,.4)">'
-    +'<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:16px;color:#0d0f12;margin-bottom:4px">Edit access</div>'
+  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(8,20,36,.5);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Familjen Grotesk,system-ui,sans-serif';
+  ov.innerHTML='<div style="background:#fff;color:#3d5a72;max-width:440px;width:100%;border-radius:12px;padding:22px 22px 18px;box-shadow:0 24px 56px -16px rgba(30,45,58,.32)">'
+    +'<div style="font-family:Lora,serif;font-weight:700;font-size:16px;color:#2f4858;margin-bottom:4px">Edit access</div>'
     +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:14px">'+user.email+' — tick whole companies or individual sub-entities.</div>'
     +'<div id="ae-box"></div>'
     +'<div id="ae-msg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>'
-    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button id="ae-cancel" style="border:1px solid #0d0f12;background:#fff;border-radius:0;padding:9px 16px;font-size:13px;cursor:pointer">Cancel</button><button id="ae-save" style="border:0;background:#7dd3fc;color:#082044;border-radius:0;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer">Save access</button></div></div>';
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button id="ae-cancel" style="border:1px solid #d8d5cb;background:#fff;border-radius:12px;padding:9px 16px;font-size:13px;cursor:pointer">Cancel</button><button id="ae-save" style="border:0;background:#d97757;color:#fff;border-radius:12px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer">Save access</button></div></div>';
   document.body.appendChild(ov);
   const getSel=buildAccessEditor(document.getElementById('ae-box'), groups, entsByGroup, user.groups, user.entities);
   const close=()=>ov.remove();
@@ -3370,18 +3367,18 @@ async function renderAdminBody(){
   const entsByGroup={}; ents.forEach(e=>{(entsByGroup[e.group_code]=entsByGroup[e.group_code]||[]).push(e);});
   const th='text-align:left;font-size:11px;color:#7a8aa0;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px';
   const td='padding:8px;font-size:13px;border-top:1px solid #eef2f7;vertical-align:top';
-  const chip=(t,kind)=>'<span style="display:inline-block;border-radius:0;padding:2px 9px;font-size:11px;margin:2px 3px 2px 0;'+(kind==='g'?'background:#e7f0fa;color:#155e9e;font-weight:600':'background:#eef2f7;color:#33475b')+'">'+t+'</span>';
+  const chip=(t,kind)=>'<span style="display:inline-block;border-radius:12px;padding:2px 9px;font-size:11px;margin:2px 3px 2px 0;'+(kind==='g'?'background:#e7f0fa;color:#4a7dab;font-weight:600':'background:#eef2f7;color:#33475b')+'">'+t+'</span>';
   let h='';
-  h+='<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:14px;color:#0d0f12;margin-bottom:8px">Create a login</div>';
+  h+='<div style="font-family:Lora,serif;font-weight:700;font-size:14px;color:#2f4858;margin-bottom:8px">Create a login</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
-    +'<input id="cu-email" type="email" placeholder="name@magnumestate.pro" style="flex:1 1 190px;padding:10px 12px;border:1px solid #0d0f12;border-radius:0;font-size:13px">'
-    +'<input id="cu-pass" type="text" placeholder="Set a password" style="flex:1 1 150px;padding:10px 12px;border:1px solid #0d0f12;border-radius:0;font-size:13px"></div>';
+    +'<input id="cu-email" type="email" placeholder="name@magnumestate.pro" style="flex:1 1 190px;padding:10px 12px;border:1px solid #d8d5cb;border-radius:12px;font-size:13px">'
+    +'<input id="cu-pass" type="text" placeholder="Set a password" style="flex:1 1 150px;padding:10px 12px;border:1px solid #d8d5cb;border-radius:12px;font-size:13px"></div>';
   h+='<div style="font-size:12px;color:#5a6b7b;margin-bottom:5px">Access — tick whole companies or individual sub-entities (you can pick several):</div>';
   h+='<div id="cu-access"></div>';
   h+='<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#33475b;margin:10px 0 8px"><input type="checkbox" id="cu-admin"> Make administrator instead (full access to all PTs)</label>';
-  h+='<button id="cu-add" style="border:0;border-radius:0;background:#7dd3fc;color:#082044;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Create user</button>';
+  h+='<button id="cu-add" style="border:0;border-radius:12px;background:#d97757;color:#fff;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Create user</button>';
   h+='<div id="cu-msg" style="font-size:12px;margin:8px 0 22px;min-height:1px"></div>';
-  h+='<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:14px;color:#0d0f12;margin-bottom:8px">Users</div>';
+  h+='<div style="font-family:Lora,serif;font-weight:700;font-size:14px;color:#2f4858;margin-bottom:8px">Users</div>';
   h+='<div style="overflow-x:auto;margin:0 -4px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Email</th><th style="'+th+'">Access</th><th style="'+th+'">Last sign-in</th><th style="'+th+'"></th></tr></thead><tbody>';
   if(!users.length) h+='<tr><td style="'+td+';color:#7a8aa0" colspan="4">No users yet.</td></tr>';
   users.forEach(u=>{
@@ -3394,10 +3391,10 @@ async function renderAdminBody(){
       +'<td style="'+td+'">'+access+'</td>'
       +'<td style="'+td+';white-space:nowrap;color:#5a6b7b;font-size:12px">'+last+'</td>'
       +'<td style="'+td+';text-align:right;min-width:150px">'
-        +(u.is_admin?'':'<button class="ea" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #0d0f12;background:#fff;border-radius:0;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Edit access</button>')
-        +'<button class="sp" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #0d0f12;background:#fff;border-radius:0;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Set password</button>'
-        +(u.is_admin?(self?'':'<button class="ua" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #0d0f12;background:#fff;border-radius:0;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Remove admin</button>'):'<button class="ma" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #0d0f12;background:#fff;border-radius:0;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Make admin</button>')
-        +(self?'':'<button class="du" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #d92d20;background:#fff;color:#b3261e;border-radius:0;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Delete</button>')
+        +(u.is_admin?'':'<button class="ea" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #d8d5cb;background:#fff;border-radius:12px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Edit access</button>')
+        +'<button class="sp" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #d8d5cb;background:#fff;border-radius:12px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Set password</button>'
+        +(u.is_admin?(self?'':'<button class="ua" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #d8d5cb;background:#fff;border-radius:12px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Remove admin</button>'):'<button class="ma" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #d8d5cb;background:#fff;border-radius:12px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Make admin</button>')
+        +(self?'':'<button class="du" data-e="'+encodeURIComponent(e)+'" style="border:1px solid #e5b8b3;background:#fff;color:#b3261e;border-radius:12px;padding:4px 9px;font-size:12px;cursor:pointer;margin:2px">Delete</button>')
       +'</td></tr>';
   });
   h+='</tbody></table></div><div id="um-msg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>';
