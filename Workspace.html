@@ -3356,11 +3356,14 @@ function showNoAccess(){
   document.body.appendChild(d.firstChild);
   document.getElementById('mag-out').onclick=signOut;
 }
-let MY_EMAIL='', IS_ADMIN=false;
+let MY_EMAIL='', IS_ADMIN=false, MY_ROLE='viewer';
 async function checkAdmin(){
   MY_EMAIL = SESSION ? jwtEmail(SESSION.access_token) : '';
   try{ const r=await sbFetch('app_admins?select=email&email=eq.'+encodeURIComponent(MY_EMAIL)); IS_ADMIN=Array.isArray(r)&&r.length>0; }
   catch(e){ IS_ADMIN=false; }
+  try{ const r2=await sbFetch('user_roles?select=role&email=eq.'+encodeURIComponent(MY_EMAIL)); MY_ROLE=(Array.isArray(r2)&&r2[0]&&r2[0].role)||'viewer'; }
+  catch(e){ MY_ROLE='viewer'; }
+  if(IS_ADMIN) MY_ROLE='editor';
 }
 function showUserBar(){
   if(document.getElementById('mag-userbar')) return;
@@ -3371,7 +3374,7 @@ function showUserBar(){
   const pill='border:1px solid rgba(255,255,255,.22);border-radius:999px;background:rgba(255,255,255,.09);color:#e6e9f5;font-size:12px;font-weight:600;padding:8px 15px;cursor:pointer;font-family:inherit;white-space:nowrap';
   b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;max-width:1280px;margin:0 auto 16px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
   b.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;margin-right:8px;min-width:0"><span style="width:27px;height:27px;flex:none;border-radius:50%;background:linear-gradient(135deg,#5b67f1,#8d7bf0);color:#fff;font-weight:700;font-size:12px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
-    +'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">✎ Update data</button>'
+    +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">✎ Update data</button>':'')
     +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">⚙ Manage access</button>':'')
     +'<button id="mag-signout" style="'+pill+'">Sign out</button>';
   const host=document.querySelector('header.hero');
@@ -3481,8 +3484,9 @@ async function renderAdminBody(){
   const body=document.getElementById('mag-admin-body'); if(!body) return;
   let users=[],groups=[],ents=[];
   try{
-    const [u,g,e]=await Promise.all([ adminFn('list_users',{}), sbFetch('groups?select=code,name&order=sort_order'), sbFetch('entities?select=code,name,group_code&order=sort_order') ]);
+    const [u,g,e,rl]=await Promise.all([ adminFn('list_users',{}), sbFetch('groups?select=code,name&order=sort_order'), sbFetch('entities?select=code,name,group_code&order=sort_order'), sbFetch('user_roles?select=email,role') ]);
     users=u.users||[]; groups=g; ents=e;
+    window.ROLES_MAP={}; (rl||[]).forEach(r=>ROLES_MAP[r.email]=r.role);
   }catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+err.message+'</div>'; return; }
   const gname={}; groups.forEach(g=>gname[g.code]=g.name);
   const ename={}; ents.forEach(e=>ename[e.code]=e.name);
@@ -3497,19 +3501,27 @@ async function renderAdminBody(){
     +'<input id="cu-pass" type="text" placeholder="Set a password" style="flex:1 1 150px;padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px"></div>';
   h+='<div style="font-size:12px;color:#5a6b7b;margin-bottom:5px">Access — tick whole companies or individual sub-entities (you can pick several):</div>';
   h+='<div id="cu-access"></div>';
-  h+='<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#33475b;margin:10px 0 8px"><input type="checkbox" id="cu-admin"> Make administrator instead (full access to all PTs)</label>';
+  h+='<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:10px 0 8px">'
+    +'<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#33475b">Role: <select id="cu-role" style="padding:5px 8px;border:1px solid #e4e7ef;border-radius:10px;font-size:12px;cursor:pointer;background:#fff;color:#2a3247"><option value="viewer">Viewer (read-only)</option><option value="editor">Editor (can update data)</option></select></label>'
+    +'<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#33475b"><input type="checkbox" id="cu-admin"> Make administrator instead (full access to all PTs)</label></div>';
   h+='<button id="cu-add" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Create user</button>';
   h+='<div id="cu-msg" style="font-size:12px;margin:8px 0 22px;min-height:1px"></div>';
   h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:8px">Users</div>';
-  h+='<div style="overflow-x:auto;margin:0 -4px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Email</th><th style="'+th+'">Access</th><th style="'+th+'">Last sign-in</th><th style="'+th+'"></th></tr></thead><tbody>';
-  if(!users.length) h+='<tr><td style="'+td+';color:#7a8aa0" colspan="4">No users yet.</td></tr>';
+  h+='<div style="overflow-x:auto;margin:0 -4px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Email</th><th style="'+th+'">Role</th><th style="'+th+'">Access</th><th style="'+th+'">Last sign-in</th><th style="'+th+'"></th></tr></thead><tbody>';
+  if(!users.length) h+='<tr><td style="'+td+';color:#7a8aa0" colspan="5">No users yet.</td></tr>';
   users.forEach(u=>{
     const e=(u.email||'').toLowerCase(); const self=(e===MY_EMAIL);
     let access;
     if(u.is_admin) access=chip('Admin — all PTs','g');
     else { const parts=(u.groups||[]).map(g=>chip(gname[g]||g,'g')).concat((u.entities||[]).map(en=>chip(ename[en]||en,'e'))); access=parts.length?parts.join(''):'<span style="color:#7a8aa0;font-size:12px">no access</span>'; }
     const last=u.last_sign_in_at?new Date(u.last_sign_in_at).toISOString().slice(0,10):'—';
+    const roleCell=u.is_admin
+      ? '<span style="display:inline-block;border-radius:12px;padding:3px 10px;font-size:11px;font-weight:700;background:#e3e6fd;color:#4550d8">Admin</span>'
+      : '<select class="role-sel" data-e="'+encodeURIComponent(e)+'" style="padding:5px 8px;border:1px solid #e4e7ef;border-radius:10px;font-size:12px;cursor:pointer;background:#fff;color:#2a3247">'
+        +'<option value="viewer"'+((ROLES_MAP[e]||'viewer')==='viewer'?' selected':'')+'>Viewer</option>'
+        +'<option value="editor"'+((ROLES_MAP[e]||'viewer')==='editor'?' selected':'')+'>Editor</option></select>';
     h+='<tr><td style="'+td+';word-break:break-word;min-width:120px">'+e+(self?' <span style="color:#7a8aa0">(you)</span>':'')+'</td>'
+      +'<td style="'+td+';white-space:nowrap">'+roleCell+'</td>'
       +'<td style="'+td+'">'+access+'</td>'
       +'<td style="'+td+';white-space:nowrap;color:#5a6b7b;font-size:12px">'+last+'</td>'
       +'<td style="'+td+';text-align:right;min-width:150px">'
@@ -3533,7 +3545,14 @@ async function renderAdminBody(){
     const b=document.getElementById('cu-add'); b.disabled=true; b.textContent='Creating…';
     try{
       await adminFn('create_user',{email,password,make_admin});
-      if(!make_admin){ await applyAccess(email, getCreateSel(), [], []); }
+      if(!make_admin){
+        await applyAccess(email, getCreateSel(), [], []);
+        const role=document.getElementById('cu-role').value;
+        if(role==='editor'){
+          const rr=await fetch(SB_URL+'/rest/v1/user_roles',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({email:email,role:'editor'})});
+          if(!rr.ok) throw new Error((await rr.text())||('HTTP '+rr.status));
+        }
+      }
       await renderAdminBody(); setMsg('cu-msg','✅ '+email+' created — they can sign in now.',true);
     }catch(e){ setMsg('cu-msg','Failed: '+e.message); b.disabled=false; b.textContent='Create user'; }
   };
@@ -3546,6 +3565,16 @@ async function renderAdminBody(){
   body.querySelectorAll('.du').forEach(btn=>btn.onclick=async()=>{
     const em=decodeURIComponent(btn.dataset.e); if(!confirm('Delete user '+em+'? This removes their login and all access.')) return;
     try{ await adminFn('delete_user',{email:em}); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); }
+  });
+  body.querySelectorAll('.role-sel').forEach(sel=>sel.onchange=async()=>{
+    const em=decodeURIComponent(sel.dataset.e);
+    sel.disabled=true;
+    try{
+      const r=await fetch(SB_URL+'/rest/v1/user_roles',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({email:em,role:sel.value,updated_at:new Date().toISOString()})});
+      if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+      setMsg('um-msg','✅ '+em+' is now '+(sel.value==='editor'?'an Editor (changes apply immediately)':'a Viewer (read-only)'),true);
+    }catch(e){ setMsg('um-msg','Failed: '+e.message); }
+    sel.disabled=false;
   });
   body.querySelectorAll('.ma').forEach(btn=>btn.onclick=async()=>{ try{ await adminAdd('app_admins',{email:decodeURIComponent(btn.dataset.e)}); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); } });
   body.querySelectorAll('.ua').forEach(btn=>btn.onclick=async()=>{ try{ await adminDel('app_admins?email=eq.'+btn.dataset.e); await renderAdminBody(); }catch(e){ setMsg('um-msg','Failed: '+e.message); } });
@@ -3594,7 +3623,7 @@ async function openEntryPanel(){
   wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(20,27,45,.45);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Plus Jakarta Sans,system-ui,sans-serif';
   wrap.innerHTML='<div style="background:#fff;color:#2a3247;max-width:760px;width:100%;border-radius:12px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:18px;color:#141b2d">Update data</div><button id="mag-entry-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
-    +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:18px;line-height:1.5">Submit revenue, expense or financing figures for your PT. '+(IS_ADMIN?'As administrator you approve entries before they count in the consolidation.':'An administrator reviews each entry before it appears in the consolidated numbers.')+'</div>'
+    +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:18px;line-height:1.5">Submit revenue, expense or financing figures for your PT. Changes apply to the consolidated numbers immediately and are logged below with their supporting documents.</div>'
     +'<div id="mag-entry-body">Loading…</div></div>';
   document.body.appendChild(wrap);
   document.getElementById('mag-entry-x').onclick=closeEntry;
@@ -3618,12 +3647,11 @@ async function renderEntryBody(){
   const perName={}; pers.forEach(p=>perName[p.code]=p.label);
   const eName=id=>(ENT[id]?ENT[id].name:id);
   let h='';
-  // ── Admin: pending approvals ──
+  // ── Admin: leftover pending approvals from the old review workflow ──
   const pending=subs.filter(s=>s.status==='pending');
-  if(IS_ADMIN){
-    h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:8px">Pending approvals'+(pending.length?' ('+pending.length+')':'')+'</div>';
-    if(!pending.length) h+='<div style="font-size:12.5px;color:#7a8aa0;margin-bottom:20px">Nothing waiting for review.</div>';
-    else{
+  if(IS_ADMIN && pending.length){
+    h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:8px">Pending approvals ('+pending.length+')</div>';
+    {
       h+='<div style="overflow-x:auto;margin:0 -4px 22px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">From</th><th style="'+th+'">Entity · Month</th><th style="'+th+'">Entry</th><th style="'+th+';text-align:right">Amount (IDR)</th><th style="'+th+'"></th></tr></thead><tbody>';
       pending.forEach(s=>{
         h+='<tr><td style="'+td+';word-break:break-word">'+escH(s.email)+'<div style="color:#7a8aa0;font-size:11px;white-space:nowrap">'+new Date(s.created_at).toISOString().slice(0,10)+'</div></td>'
@@ -3664,7 +3692,7 @@ async function renderEntryBody(){
     +'<div id="en-msg" style="font-size:12px;margin:8px 0 22px;min-height:1px"></div>';
   // ── Submission history ──
   const hist=IS_ADMIN?subs.filter(s=>s.status!=='pending'):subs;
-  h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:8px">'+(IS_ADMIN?'Reviewed submissions':'My submissions')+'</div>';
+  h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:8px">'+(IS_ADMIN?'Submission log':'My submissions')+'</div>';
   if(!hist.length) h+='<div style="font-size:12.5px;color:#7a8aa0">None yet.</div>';
   else{
     h+='<div style="overflow-x:auto;margin:0 -4px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Date</th>'+(IS_ADMIN?'<th style="'+th+'">From</th>':'')+'<th style="'+th+'">Entity · Month</th><th style="'+th+'">Entry</th><th style="'+th+';text-align:right">Amount (IDR)</th><th style="'+th+'">Status</th></tr></thead><tbody>';
@@ -3739,7 +3767,8 @@ async function renderEntryBody(){
       await adminAdd('entry_submissions',{entity_code:entity,period_code:pcode,period_label:plabel,flow:flow,category:category,label:label,amount_idr:amt,note:note,attachments:atts});
       EN_FILES=[];
       await renderEntryBody();
-      const m2=document.getElementById('en-msg'); if(m2){m2.style.color='#2b7a4b'; m2.textContent='✅ Submitted — '+(IS_ADMIN?'approve it above to apply it.':'waiting for admin approval.');}
+      ENTRY_DIRTY=true;
+      const m2=document.getElementById('en-msg'); if(m2){m2.style.color='#2b7a4b'; m2.textContent='✅ Applied to the dashboard — the page refreshes when you close this panel.';}
       if(IS_ADMIN) refreshPendingBadge();
     }catch(e){ setMsg('en-msg','Failed: '+e.message); b.disabled=false; b.textContent='Submit for approval'; }
   };
