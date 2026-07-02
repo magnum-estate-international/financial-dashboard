@@ -4,149 +4,161 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-id="th-modified">Group Consolidated Financial Dashboard · May 2026 · 17 Entities</title>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Arimo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
-  --blue-900:#0d0f12;--blue-700:#1a2b66;--blue-500:#2244dd;--blue-300:#8fa3e8;--blue-100:#dfe5f5;--blue-50:#f2f3f5;
-  --sand:#2244dd;--sand-soft:#dfe5f5;--ink:#0d0f12;--muted:#4a4f57;--green:#0d7a3f;--red:#d92d20;--amber:#946800;--amber-bg:#f6f0da;
-  --card:#ffffff;--shadow:6px 6px 0 rgba(13,15,18,1);--shadow-sm:none;
-  --rule:2px solid #0d0f12;--hairline:1px solid #d7dade;
+  --blue-900:#eaf2ff;--blue-700:#7dd3fc;--blue-500:#7dd3fc;--blue-300:#4f77ad;--blue-100:#28508b;--blue-50:#16345f;
+  --sand:#7dd3fc;--sand-soft:#28508b;--ink:#eaf2ff;--muted:#9fb8d9;--green:#6ee7b7;--red:#fda4af;--amber:#fde68a;--amber-bg:rgba(253,230,138,.14);
+  --card:rgba(6,26,58,.55);--shadow:0 0 0 1.5px rgba(125,211,252,.65);--shadow-sm:none;
+  --line:1.5px solid rgba(234,242,255,.5);--dash:1px dashed rgba(234,242,255,.35);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-::selection{background:#2244dd;color:#fff}
+::selection{background:#7dd3fc;color:#082044}
 html{scroll-behavior:smooth}
-body{font-family:'Arimo','Helvetica Neue',Helvetica,Arial,sans-serif;color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;
-  background:#fff}
+body{font-family:'IBM Plex Sans',sans-serif;color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;
+  background:
+    linear-gradient(rgba(255,255,255,.07) 1.5px,transparent 1.5px) 0 0/140px 140px,
+    linear-gradient(90deg,rgba(255,255,255,.07) 1.5px,transparent 1.5px) 0 0/140px 140px,
+    linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px) 0 0/28px 28px,
+    linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) 0 0/28px 28px,
+    #0d2b5c;
+  background-attachment:fixed}
 .wrap{max-width:1280px;margin:0 auto;padding:0 26px 56px}
-header.hero{position:relative;overflow:hidden;color:#fff;border-radius:0;padding:34px 0 30px;background:#0d0f12;
-  border-bottom:4px solid var(--blue-500)}
-header.hero::after{content:"";position:absolute;right:26px;top:0;bottom:0;width:2px;background:rgba(255,255,255,.14)}
+header.hero{position:relative;overflow:hidden;color:var(--ink);border-radius:0;padding:30px 0 26px;
+  background:rgba(6,26,58,.35);border-bottom:1.5px solid rgba(234,242,255,.55)}
+header.hero::after{content:"DWG · FIN-CONSOL · SCALE 1:1";position:absolute;right:28px;bottom:10px;
+  font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;color:#7dd3fc;opacity:.8}
 header .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;position:relative;z-index:1}
 .brand{display:flex;align-items:center;gap:16px}
-.mark{width:56px;height:56px;border-radius:0;flex:none;background:var(--blue-500);
-  display:grid;place-items:center;box-shadow:none;
-  font-family:'Archivo',sans-serif;font-weight:900;font-size:13px;letter-spacing:1px;color:#fff}
-.brand h1{font-family:'Archivo',sans-serif;font-weight:900;font-size:25px;letter-spacing:-.6px;line-height:1.05;text-transform:uppercase}
-.brand .sub{font-size:10.5px;color:#9aa1ab;letter-spacing:2.8px;text-transform:uppercase;margin-top:7px;font-weight:600}
-.hero-meta{text-align:right;font-size:13px;color:#9aa1ab}
-.hero-meta .period{font-family:'Archivo',sans-serif;font-size:22px;color:#fff;font-weight:800;letter-spacing:-.3px;text-transform:uppercase}
-.toolbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:20px auto 20px;max-width:1280px;padding:14px 18px;
-  background:#fff;border-radius:0;border:var(--rule);box-shadow:none;position:sticky;top:0;z-index:30}
+.mark{width:54px;height:54px;border-radius:0;flex:none;background:transparent;border:1.5px solid rgba(234,242,255,.7);
+  display:grid;place-items:center;box-shadow:inset 0 0 0 4px rgba(125,211,252,.15);
+  font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:12px;letter-spacing:1px;color:#7dd3fc}
+.brand h1{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:21px;letter-spacing:.5px;line-height:1.2;text-transform:uppercase}
+.brand .sub{font-size:10px;color:#9fb8d9;letter-spacing:2.6px;text-transform:uppercase;margin-top:6px;font-family:'IBM Plex Mono',monospace}
+.hero-meta{text-align:right;font-size:12.5px;color:#9fb8d9;font-family:'IBM Plex Mono',monospace}
+.hero-meta .period{font-family:'IBM Plex Mono',monospace;font-size:17px;color:#7dd3fc;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.toolbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:18px auto 20px;max-width:1280px;padding:13px 18px;
+  background:rgba(9,32,68,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-radius:0;border:var(--line);position:sticky;top:0;z-index:30}
 .spacer{flex:1}
-.btn{font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border:2px solid var(--ink);padding:9px 15px;border-radius:0;
-  display:inline-flex;align-items:center;gap:6px;transition:background .15s,color .15s,transform .1s;background:#fff;color:var(--ink)}
-.btn:active{transform:translate(1px,1px)}
-.btn:focus-visible{outline:2px solid var(--blue-500);outline-offset:2px}
-.btn-ghost{background:#fff;color:var(--ink)}
-.btn-ghost:hover{background:var(--ink);color:#fff}
+.btn{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;cursor:pointer;border:1.5px solid rgba(234,242,255,.6);
+  padding:9px 14px;border-radius:0;display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--ink);
+  transition:background .15s,color .15s,border-color .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
+.btn-ghost{background:transparent;color:var(--ink)}
+.btn-ghost:hover{background:#7dd3fc;color:#082044;border-color:#7dd3fc}
 .fl{display:flex;flex-direction:column;gap:4px}
-.fl label{font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.8px}
-select{font-family:inherit;font-size:13.5px;font-weight:700;color:var(--ink);background:#fff;
-  border:2px solid var(--ink);border-radius:0;padding:8px 12px;cursor:pointer;max-width:460px;transition:box-shadow .12s}
-select:hover{box-shadow:3px 3px 0 var(--ink)}
-select:focus-visible{outline:none;box-shadow:0 0 0 3px var(--blue-100),3px 3px 0 var(--blue-500)}
-.ebanner{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:11px 16px;background:#fff;
-  border-radius:0;border:var(--rule);font-size:13px;flex-wrap:wrap;box-shadow:none}
-.dot{width:10px;height:10px;border-radius:0;flex:none}
-.alert{border-radius:0;padding:16px 20px;margin-bottom:16px;display:flex;gap:14px;font-size:13px;line-height:1.6;
-  background:#fff;border:var(--rule)}
-.alert.info{border-left:8px solid var(--blue-500)}
-.alert.deficit{border-left:8px solid var(--red)}
-.alert strong{font-family:'Archivo',sans-serif;font-size:14.5px;display:block;margin-bottom:3px;font-weight:800;text-transform:uppercase;letter-spacing:.2px}
+.fl label{font-size:9px;font-weight:600;color:#7dd3fc;text-transform:uppercase;letter-spacing:2px;font-family:'IBM Plex Mono',monospace}
+select{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:500;color:var(--ink);background:#0a2450;
+  border:1.5px solid rgba(234,242,255,.55);border-radius:0;padding:8px 12px;cursor:pointer;max-width:460px;transition:border-color .15s,box-shadow .15s}
+select:hover{border-color:#7dd3fc}
+select:focus-visible{outline:none;border-color:#7dd3fc;box-shadow:0 0 0 3px rgba(125,211,252,.25)}
+option{background:#0a2450;color:#eaf2ff}
+.ebanner{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 16px;background:var(--card);
+  border-radius:0;border:var(--dash);font-size:13px;flex-wrap:wrap}
+.dot{width:10px;height:10px;border-radius:0;flex:none;outline:1px solid rgba(234,242,255,.5);outline-offset:2px}
+.alert{border-radius:0;padding:15px 20px;margin-bottom:16px;display:flex;gap:14px;font-size:13px;line-height:1.6;
+  background:var(--card);border:var(--line)}
+.alert.info{border-left:5px solid #7dd3fc}
+.alert.deficit{border-left:5px solid var(--red)}
+.alert strong{font-family:'IBM Plex Mono',monospace;font-size:13.5px;display:block;margin-bottom:3px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .alert .ic{font-size:19px;flex-shrink:0;margin-top:1px}
-.divlabel{font-size:10.5px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:2.4px;margin:28px 0 12px;
-  display:flex;align-items:center;gap:12px;font-family:'Archivo',sans-serif}
-.divlabel::after{content:'';flex:1;height:2px;background:var(--ink)}
+.divlabel{font-size:10px;font-weight:600;color:#7dd3fc;text-transform:uppercase;letter-spacing:2.6px;margin:28px 0 12px;
+  display:flex;align-items:center;gap:12px;font-family:'IBM Plex Mono',monospace}
+.divlabel::after{content:'';flex:1;height:0;border-top:var(--dash)}
 .kpi4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
 .kpi5{grid-template-columns:repeat(5,1fr)}
-.pcard{background:#fff;border-radius:0;box-shadow:none;padding:20px 22px;border:var(--rule);position:relative;overflow:hidden;
-  transition:box-shadow .15s,transform .15s}
-.pcard.dark{background:#0d0f12;color:#fff;border-color:#0d0f12}
-.pcard.dark .lab{color:#9aa1ab}
-.pcard.green-hl{border-top:8px solid var(--green)}
-.pcard.red-hl{border-top:8px solid var(--red)}
-.pcard.amber-hl{border-top:8px solid var(--sand)}
-.pcard.blue-hl{border-top:8px solid var(--blue-500)}
-.pcard.cap-hl{border-top:8px solid var(--amber);background:#fdfaf0}
-.pcard .lab{font-size:10px;text-transform:uppercase;letter-spacing:1.8px;font-weight:700;color:var(--muted)}
-.pcard .big{font-family:'Archivo',sans-serif;font-weight:800;font-size:24px;letter-spacing:-.8px;line-height:1.08;
+.pcard{background:var(--card);border-radius:0;padding:18px 20px;border:var(--line);position:relative;overflow:hidden;
+  transition:border-color .15s,box-shadow .15s}
+.pcard.dark{background:#071c3d;color:var(--ink);border:1.5px solid #7dd3fc}
+.pcard.dark .lab{color:#7dd3fc}
+.pcard.green-hl{border-top:5px solid var(--green)}
+.pcard.red-hl{border-top:5px solid var(--red)}
+.pcard.amber-hl{border-top:5px solid #7dd3fc}
+.pcard.blue-hl{border-top:5px solid #7dd3fc}
+.pcard.cap-hl{border-top:5px solid var(--amber);background:rgba(253,230,138,.06)}
+.pcard .lab{font-size:9.5px;text-transform:uppercase;letter-spacing:2px;font-weight:600;color:#9fb8d9;font-family:'IBM Plex Mono',monospace}
+.pcard .big{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:21px;letter-spacing:-.5px;line-height:1.12;
   margin-top:9px;font-variant-numeric:lining-nums tabular-nums}
-.pcard .big.sz30{font-size:29px}
+.pcard .big.sz30{font-size:25px}
 .pcard .meta{font-size:12px;margin-top:7px;color:var(--muted);line-height:1.55}
 .pcard .flowrow{display:flex;flex-direction:column;gap:6px;margin-top:13px}
 .pcard .flowrow div{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px;
-  border-bottom:1px solid #e3e5e8;padding-bottom:5px}
+  border-bottom:var(--dash);padding-bottom:5px}
 .pcard .flowrow div:last-child{border-bottom:none;padding-bottom:0}
-.pcard .flowrow b{font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
-.pcard.dark .flowrow div{border-bottom-color:rgba(255,255,255,.18);color:rgba(255,255,255,.7)}
-.pcard.dark .flowrow b{color:#fff}
+.pcard .flowrow b{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--ink);font-family:'IBM Plex Mono',monospace;font-weight:500}
+.pcard.dark .flowrow div{border-bottom-color:rgba(125,211,252,.3);color:#9fb8d9}
+.pcard.dark .flowrow b{color:#eaf2ff}
 .pos{color:var(--green)}.neg{color:var(--red)}.amb{color:var(--amber)}
 .grid{display:grid;gap:16px}
 .cols-eq{grid-template-columns:1fr 1fr}
-.panel{background:#fff;border-radius:0;box-shadow:none;padding:22px;border:var(--rule)}
-.panel h2{font-family:'Archivo',sans-serif;font-size:16px;font-weight:800;color:var(--ink);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
+.panel{background:var(--card);border-radius:0;padding:22px;border:var(--line)}
+.panel h2{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--ink);margin-bottom:2px;text-transform:uppercase;letter-spacing:.6px}
 .panel .pn-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
 .chart-box{position:relative;height:250px}
 .bd{display:flex;flex-direction:column;gap:10px}
-.bd-total{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:10px;margin-bottom:8px;border-bottom:2px solid var(--ink)}
-.bd-total .lab{font-size:10px;text-transform:uppercase;letter-spacing:1.6px;color:var(--muted);font-weight:700}
-.bd-total .v{font-family:'Archivo',sans-serif;font-weight:800;font-size:19px;font-variant-numeric:lining-nums tabular-nums;letter-spacing:-.4px}
+.bd-total{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:10px;margin-bottom:8px;border-bottom:1.5px solid rgba(234,242,255,.5)}
+.bd-total .lab{font-size:9.5px;text-transform:uppercase;letter-spacing:2px;color:#9fb8d9;font-weight:600;font-family:'IBM Plex Mono',monospace}
+.bd-total .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px;font-variant-numeric:lining-nums tabular-nums}
 .bd-row{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:baseline}
-.bd-row .bl{font-size:12.5px;font-weight:500}
-.bd-row .bv{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
-.bd-row .bp{font-size:10.5px;color:var(--muted);font-weight:500;margin-left:5px}
-.bd-bar{grid-column:1/-1;height:6px;border-radius:0;background:var(--blue-50);overflow:hidden}
+.bd-row .bl{font-size:12.5px;font-weight:400}
+.bd-row .bv{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
+.bd-row .bp{font-size:10.5px;color:var(--muted);font-weight:400;margin-left:5px}
+.bd-bar{grid-column:1/-1;height:5px;border-radius:0;background:rgba(234,242,255,.12);overflow:hidden}
 .bd-bar span{display:block;height:100%;border-radius:0}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:1.4px;color:var(--ink);font-weight:700;
-  padding:9px 10px;border-bottom:2px solid var(--ink);background:#fff}
-td{padding:10px;border-bottom:1px solid #e3e5e8;vertical-align:middle}
-tr:hover td{background:var(--blue-50)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#7dd3fc;font-weight:600;
+  padding:9px 10px;border-bottom:1.5px solid rgba(234,242,255,.55);background:#0a2450;font-family:'IBM Plex Mono',monospace}
+td{padding:10px;border-bottom:var(--dash);vertical-align:middle}
+tr:hover td{background:rgba(125,211,252,.08)}
 .table-scroll th{position:sticky;top:0;z-index:2}
-.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
-.pill{display:inline-block;padding:3px 10px;border-radius:0;font-size:10.5px;font-weight:700;white-space:nowrap}
-.tag{display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;border-radius:0;letter-spacing:.4px;text-transform:uppercase}
-.tag.in{background:#ddefe4;color:#0a5c30}.tag.out{background:#fbe3e1;color:#a91f15}
-.tag.loan{background:var(--blue-100);color:var(--blue-700)}.tag.rep{background:#e4ecdf;color:#37582c}
-.tag.cap{background:#f0e6c8;color:#6e4e00;font-weight:700}
-.table-scroll{max-height:430px;overflow:auto;border-radius:0;scrollbar-width:thin;scrollbar-color:var(--ink) transparent}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:500;white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-size:12px}
+.pill{display:inline-block;padding:3px 10px;border-radius:0;font-size:10px;font-weight:600;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
+.tag{display:inline-block;font-size:9.5px;font-weight:600;padding:3px 8px;border-radius:0;letter-spacing:.6px;text-transform:uppercase;font-family:'IBM Plex Mono',monospace}
+.tag.in{background:rgba(110,231,183,.15);color:#6ee7b7;border:1px solid rgba(110,231,183,.4)}
+.tag.out{background:rgba(253,164,175,.14);color:#fda4af;border:1px solid rgba(253,164,175,.4)}
+.tag.loan{background:rgba(125,211,252,.14);color:#7dd3fc;border:1px solid rgba(125,211,252,.4)}
+.tag.rep{background:rgba(190,242,100,.12);color:#d3f28a;border:1px solid rgba(211,242,138,.35)}
+.tag.cap{background:rgba(253,230,138,.14);color:#fde68a;border:1px solid rgba(253,230,138,.4)}
+.table-scroll{max-height:430px;overflow:auto;border-radius:0;scrollbar-width:thin;scrollbar-color:#7dd3fc transparent}
 .table-scroll::-webkit-scrollbar{width:8px;height:8px}
-.table-scroll::-webkit-scrollbar-thumb{background:#c6cad0;border-radius:0}
-.table-scroll::-webkit-scrollbar-thumb:hover{background:var(--ink)}
+.table-scroll::-webkit-scrollbar-thumb{background:#28508b;border-radius:0}
+.table-scroll::-webkit-scrollbar-thumb:hover{background:#7dd3fc}
 .section-title{display:flex;align-items:center;justify-content:space-between;margin:30px 0 14px;flex-wrap:wrap;gap:10px}
-.section-title h2{font-family:'Archivo',sans-serif;font-size:19px;color:var(--ink);font-weight:900;text-transform:uppercase;letter-spacing:-.2px}
+.section-title h2{font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--ink);font-weight:700;text-transform:uppercase;letter-spacing:.8px}
 .section-title .hint{font-size:12px;color:var(--muted)}
-details.fold{background:#fff;border-radius:0;box-shadow:none;border:var(--rule);overflow:hidden;margin-bottom:14px}
-details.fold>summary{list-style:none;cursor:pointer;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;
-  font-family:'Archivo',sans-serif;font-size:15px;font-weight:800;color:var(--ink);transition:background .15s;text-transform:uppercase;letter-spacing:.2px}
-details.fold>summary:hover{background:var(--blue-50)}
-details.fold>summary:focus-visible{outline:2px solid var(--blue-500);outline-offset:-2px}
+details.fold{background:var(--card);border-radius:0;border:var(--line);overflow:hidden;margin-bottom:14px}
+details.fold>summary{list-style:none;cursor:pointer;padding:15px 22px;display:flex;align-items:center;justify-content:space-between;
+  font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:var(--ink);transition:background .15s;text-transform:uppercase;letter-spacing:.6px}
+details.fold>summary:hover{background:rgba(125,211,252,.08)}
+details.fold>summary:focus-visible{outline:2px solid #7dd3fc;outline-offset:-2px}
 details.fold>summary::-webkit-details-marker{display:none}
-details.fold>summary .chev{transition:transform .2s;color:var(--blue-500);font-size:13px}
+details.fold>summary .chev{transition:transform .2s;color:#7dd3fc;font-size:13px}
 details.fold[open]>summary .chev{transform:rotate(90deg)}
-details.fold>summary .hint{font-family:'Arimo';font-size:12px;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0}
+details.fold>summary .hint{font-family:'IBM Plex Sans';font-size:12px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
 .fold-body{padding:0 22px 20px}
-.overlay{position:fixed;inset:0;background:rgba(13,15,18,.55);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.overlay{position:fixed;inset:0;background:rgba(4,16,36,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .overlay.show{display:flex}
-.modal{background:#fff;border-radius:0;border:var(--rule);box-shadow:10px 10px 0 rgba(13,15,18,1);width:100%;max-width:640px;max-height:88vh;overflow:auto}
-.modal-head{padding:20px 24px 12px;border-bottom:2px solid var(--ink);display:flex;justify-content:space-between;
-  align-items:center;position:sticky;top:0;background:#fff;z-index:2}
-.modal-head h3{font-family:'Archivo',sans-serif;font-size:18px;color:var(--ink);font-weight:900;text-transform:uppercase;letter-spacing:-.2px}
+.modal{background:#0a2450;border-radius:0;border:1.5px solid rgba(234,242,255,.6);box-shadow:0 0 0 6px rgba(125,211,252,.12);width:100%;max-width:640px;max-height:88vh;overflow:auto;color:var(--ink)}
+.modal-head{padding:18px 24px 12px;border-bottom:1.5px solid rgba(234,242,255,.4);display:flex;justify-content:space-between;
+  align-items:center;position:sticky;top:0;background:#0a2450;z-index:2}
+.modal-head h3{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--ink);font-weight:700;text-transform:uppercase;letter-spacing:.6px}
 .modal-body{padding:18px 24px 24px}
-.x{cursor:pointer;border:2px solid var(--ink);background:#fff;width:34px;height:34px;border-radius:0;color:var(--ink);
+.x{cursor:pointer;border:1.5px solid rgba(234,242,255,.6);background:transparent;width:34px;height:34px;border-radius:0;color:var(--ink);
   font-size:18px;display:grid;place-items:center;transition:background .15s,color .15s}
-.x:hover{background:var(--ink);color:#fff}
-footer{text-align:center;color:var(--muted);font-size:12px;margin-top:36px;line-height:1.9}
-footer::before{content:"";display:block;width:64px;height:4px;margin:0 auto 18px;background:var(--blue-500)}
-.clickable{cursor:pointer;transition:transform .15s,box-shadow .15s}
-.clickable:hover{transform:translate(-3px,-3px);box-shadow:var(--shadow)}
-a{color:var(--blue-500)}
-:focus-visible{outline:2px solid var(--blue-500);outline-offset:2px}
+.x:hover{background:#7dd3fc;color:#082044;border-color:#7dd3fc}
+footer{text-align:center;color:var(--muted);font-size:11.5px;margin-top:36px;line-height:1.9;font-family:'IBM Plex Mono',monospace}
+footer::before{content:"— END OF SHEET —";display:block;margin:0 auto 14px;color:#7dd3fc;font-size:9px;letter-spacing:3px}
+.clickable{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.clickable:hover{border-color:#7dd3fc;box-shadow:var(--shadow)}
+a{color:#7dd3fc}
+:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
 @media(max-width:980px){.kpi4,.kpi5,.cols-eq{grid-template-columns:1fr}.wrap{padding:0 14px 40px}.toolbar{position:static}}
 @media(min-width:981px) and (max-width:1300px){.kpi5{grid-template-columns:repeat(3,1fr)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
-@media print{.toolbar,.ebanner button{display:none}}
+@media print{.toolbar,.ebanner button{display:none}body{background:#fff;color:#111}.pcard,.panel,details.fold{background:#fff;color:#111;border-color:#333}}
 </style>
 <meta property="og:title" content="Group Consolidated Financial Dashboard · May 2026 · 17 Entities" data-id="th-modified" ><meta name="description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:url" content="https://salmon-emmie-62.tiiny.site/" data-id="th-modified" ><meta property="og:type" content="website" data-id="th-modified" ></head>
 <body>
@@ -2593,7 +2605,7 @@ function agg(){
   return a;
 }
 const pill = id => `<span class="pill" style="background:${ENT[id].color}22;color:${ENT[id].color}">${ENT[id].name}</span>`;
-const CATCOLORS=['#2244dd','#0d0f12','#0d7a3f','#d92d20','#6f5a9e','#5c8a4a','#1a2b66','#946800','#a0522d','#4f6fb0','#4a4f57','#d47a35','#2d8f6f','#9aa1ab','#8a5a33','#3a7c6b','#b8945a','#7a4f2c','#9c7c3e','#5e3d23','#8e3b5c','#2f7fb8','#996515','#705a9e'];
+const CATCOLORS=['#7dd3fc','#34d399','#fde68a','#fb7185','#c4b5fd','#a3e635','#f0abfc','#fdba74','#93c5fd','#6ee7b7','#fcd34d','#f9a8d4','#5eead4','#6b83a8','#e2b98f','#86efac','#eab308','#fda4af','#a5b4fc','#d8b4fe','#fbbf24','#67e8f9','#bef264','#f472b6'];
 
 function setScope(v){
   if(v==='all'){GF='all';EF='all';}
@@ -2877,16 +2889,16 @@ function renderEntChart(){
   const revD=ids.map(id=>{const v=eff(id).rev;return v>0?v:null;});
   const oxD=ids.map(id=>{const v=eff(id).opex;return v>0?v:null;});
   if(entChart) entChart.destroy();
-  Chart.defaults.font.family='Arimo, sans-serif'; Chart.defaults.color='#4a4f57';
+  Chart.defaults.font.family='IBM Plex Sans, sans-serif'; Chart.defaults.color='#c9dcf5';
   entChart=new Chart(document.getElementById('entChart'),{type:'bar',
     data:{labels,datasets:[
-      {label:'Operating Revenue',data:revD,backgroundColor:'#0d7a3f',borderRadius:0},
-      {label:'Operating Expense',data:oxD,backgroundColor:'#d92d20',borderRadius:0}]},
+      {label:'Operating Revenue',data:revD,backgroundColor:'#34d399',borderRadius:0},
+      {label:'Operating Expense',data:oxD,backgroundColor:'#fb7185',borderRadius:0}]},
     options:{responsive:true,maintainAspectRatio:false,
       onClick:(ev,els)=>{if(els.length)pickEntity(ids[els[0].index]);},
       plugins:{legend:{position:'top',labels:{boxWidth:11,padding:12}},
         tooltip:{callbacks:{title:items=>ENT[ids[items[0].dataIndex]].name,label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
-      scales:{y:{type:'logarithmic',ticks:{callback:v=>{const l=Math.log10(v);return Number.isInteger(l)?('IDR '+fmtB(v)):'';}},grid:{color:'#e5e7ea'}},
+      scales:{y:{type:'logarithmic',ticks:{callback:v=>{const l=Math.log10(v);return Number.isInteger(l)?('IDR '+fmtB(v)):'';}},grid:{color:'rgba(234,242,255,.14)'}},
         x:{grid:{display:false},ticks:{font:{size:10}}}}}});
 }
 function renderOpexChart(a){
@@ -2896,10 +2908,10 @@ function renderOpexChart(a){
   const rest=items.slice(10).reduce((s,e)=>s+e[1],0);
   const labels=top.map(e=>e[0]).concat(rest>0?['Other categories']:[]);
   const vals=top.map(e=>e[1]).concat(rest>0?[rest]:[]);
-  const cols=labels.map((_,i)=>i<10?CATCOLORS[i%CATCOLORS.length]:'#9aa1ab');
+  const cols=labels.map((_,i)=>i<10?CATCOLORS[i%CATCOLORS.length]:'#6b83a8');
   if(opexChart) opexChart.destroy();
   opexChart=new Chart(document.getElementById('opexChart'),{type:'doughnut',
-    data:{labels,datasets:[{data:vals,backgroundColor:cols,borderWidth:2,borderColor:'#ffffff'}]},
+    data:{labels,datasets:[{data:vals,backgroundColor:cols,borderWidth:2,borderColor:'#0d2b5c'}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
       plugins:{legend:{position:'right',labels:{boxWidth:10,padding:8,font:{size:10.5}}},
         tooltip:{callbacks:{label:c=>` ${c.label}: IDR ${fmt(c.parsed)} (${(c.parsed/a.opex*100).toFixed(1)}%)`}}}}});
@@ -3011,7 +3023,7 @@ function openBDItem(type,encKey){
     const lbl=byEntLbl[id]?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${byEntLbl[id]}</div>`:'';
     t+=`<tr><td>${pill(id)}${lbl}</td><td class="num ${cls}">${fmt(v)}</td></tr>`;});
   t+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-  h+=`<h4 style="font-family:'Archivo',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">By Entity${MONTH==='MAY'?' <span style="font-weight:400;color:var(--muted);font-size:11px">(original report labels shown below each entity)</span>':''}</h4>`;
+  h+=`<h4 style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--blue-900);margin:4px 0 8px">By Entity${MONTH==='MAY'?' <span style="font-weight:400;color:var(--muted);font-size:11px">(original report labels shown below each entity)</span>':''}</h4>`;
   h+= any?t:`<p style="color:var(--muted);font-size:13px">No entities with this item in scope.</p>`;
   const tx=TX.filter(x=>(MONTH==='Q2'?true:(x.mo||'MAY')===MONTH)&&ids.includes(x.e)&&x.type===type&&canon(x.k)===key);
   // Per-entity residual: By-Entity total minus the itemized TX rows shown. The gap (e.g. an entity whose
@@ -3021,7 +3033,7 @@ function openBDItem(type,encKey){
   const residual={};
   Object.keys(byEnt).forEach(id=>{ const r=(byEnt[id]||0)-(txByEnt[id]||0); if(Math.abs(r)>0.5) residual[id]=r; });
   const hasResidual=Object.keys(residual).length>0;
-  h+=`<h4 style="font-family:'Archivo',sans-serif;font-size:14px;color:var(--blue-900);margin:16px 0 8px">Transaction Detail${tx.length?` (${tx.length})`:''}</h4>`;
+  h+=`<h4 style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--blue-900);margin:16px 0 8px">Transaction Detail${tx.length?` (${tx.length})`:''}</h4>`;
   if(tx.length||hasResidual){
     let s=0;
     h+=`<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Date</th><th>Entity</th><th>Description</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
@@ -3185,9 +3197,9 @@ async function runDashboard(){
 
 /* ── Login / gate UI ──────────────────────────────────────────────────── */
 function loginShell(inner){
-  return '<div id="mag-auth" style="position:fixed;inset:0;z-index:99999;background:#0d0f12;display:flex;align-items:center;justify-content:center;font-family:Arimo,system-ui,sans-serif">'
-    +'<div style="background:#fff;max-width:400px;width:90%;padding:34px 30px;border-radius:0;box-shadow:0 32px 80px rgba(0,0,0,.45)">'
-    +'<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:19px;color:#0d0f12;margin-bottom:4px">Magnum Estate — Financials</div>'
+  return '<div id="mag-auth" style="position:fixed;inset:0;z-index:99999;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px) 0 0/28px 28px,linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px) 0 0/28px 28px,#0d2b5c;display:flex;align-items:center;justify-content:center;font-family:IBM Plex Sans,system-ui,sans-serif">'
+    +'<div style="background:#fff;color:#1c2530;max-width:400px;width:90%;padding:34px 30px;border-radius:0;box-shadow:0 32px 80px rgba(0,0,0,.45)">'
+    +'<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:19px;color:#0d0f12;margin-bottom:4px">Magnum Estate — Financials</div>'
     +'<div style="font-size:13px;color:#5a6b7b;margin-bottom:22px">Sign in with your company email</div>'+inner+'</div></div>';
 }
 async function adminFn(action,payload){
@@ -3207,9 +3219,9 @@ function showLogin(msg){
   d.innerHTML=loginShell(
     '<input id="mag-email" type="email" placeholder="you@magnumestate.pro" autocomplete="username" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #0d0f12;border-radius:0;font-size:14px;margin-bottom:10px">'
     +'<input id="mag-pass" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #0d0f12;border-radius:0;font-size:14px;margin-bottom:12px">'
-    +'<button id="mag-signin" style="width:100%;padding:12px;border:0;border-radius:0;background:#2244dd;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Sign in</button>'
+    +'<button id="mag-signin" style="width:100%;padding:12px;border:0;border-radius:0;background:#7dd3fc;color:#082044;font-size:14px;font-weight:600;cursor:pointer">Sign in</button>'
     +'<div id="mag-msg" style="font-size:12.5px;color:#b3261e;margin-top:12px;line-height:1.5;min-height:1px">'+(msg||'')+'</div>'
-    +'<div style="margin-top:14px;font-size:12px;color:#7a8aa0">Trouble signing in? <a href="#" id="mag-link" style="color:#2244dd;text-decoration:none">Email me a login link</a></div>');
+    +'<div style="margin-top:14px;font-size:12px;color:#7a8aa0">Trouble signing in? <a href="#" id="mag-link" style="color:#155e9e;text-decoration:none">Email me a login link</a></div>');
   document.body.appendChild(d.firstChild);
   const em=document.getElementById('mag-email'), pw=document.getElementById('mag-pass'), mg=document.getElementById('mag-msg');
   async function doSignIn(){
@@ -3251,10 +3263,10 @@ function showUserBar(){
   const email=SESSION?jwtEmail(SESSION.access_token):'';
   const b=document.createElement('div');
   b.id='mag-userbar';
-  b.style.cssText='position:fixed;top:10px;right:12px;z-index:9998;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border:1px solid #d7e0ea;border-radius:0;padding:5px 6px 5px 13px;font-family:Arimo,system-ui,sans-serif;font-size:12px;color:#33475b;box-shadow:0 3px 10px rgba(0,0,0,.08)';
+  b.style.cssText='position:fixed;top:10px;right:12px;z-index:9998;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border:1px solid #d7e0ea;border-radius:0;padding:5px 6px 5px 13px;font-family:IBM Plex Sans,system-ui,sans-serif;font-size:12px;color:#33475b;box-shadow:0 3px 10px rgba(0,0,0,.08)';
   b.innerHTML='<span>'+email+'</span>'
-    +(IS_ADMIN?'<button id="mag-admin-open" style="border:0;border-radius:0;background:#2244dd;color:#fff;font-size:11.5px;padding:5px 12px;cursor:pointer">⚙ Manage access</button>':'')
-    +'<button id="mag-signout" style="border:0;border-radius:0;background:#2244dd;color:#fff;font-size:11.5px;padding:5px 11px;cursor:pointer">Sign out</button>';
+    +(IS_ADMIN?'<button id="mag-admin-open" style="border:0;border-radius:0;background:#7dd3fc;color:#082044;font-size:11.5px;padding:5px 12px;cursor:pointer">⚙ Manage access</button>':'')
+    +'<button id="mag-signout" style="border:0;border-radius:0;background:#7dd3fc;color:#082044;font-size:11.5px;padding:5px 11px;cursor:pointer">Sign out</button>';
   document.body.appendChild(b);
   document.getElementById('mag-signout').onclick=signOut;
   const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
@@ -3272,9 +3284,9 @@ function closeAdmin(){ const m=document.getElementById('mag-admin'); if(m) m.rem
 async function openAdminPanel(){
   closeAdmin();
   const wrap=document.createElement('div'); wrap.id='mag-admin';
-  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(8,20,36,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Arimo,system-ui,sans-serif';
-  wrap.innerHTML='<div style="background:#fff;max-width:720px;width:100%;border-radius:0;box-shadow:0 32px 80px rgba(0,0,0,.45);padding:24px 26px;overflow:hidden">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:Archivo,sans-serif;font-weight:700;font-size:18px;color:#0d0f12">Access Management</div><button id="mag-admin-x" style="border:0;background:#eef2f7;border-radius:0;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
+  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(8,20,36,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:IBM Plex Sans,system-ui,sans-serif';
+  wrap.innerHTML='<div style="background:#fff;color:#1c2530;max-width:720px;width:100%;border-radius:0;box-shadow:0 32px 80px rgba(0,0,0,.45);padding:24px 26px;overflow:hidden">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:18px;color:#0d0f12">Access Management</div><button id="mag-admin-x" style="border:0;background:#eef2f7;border-radius:0;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
     +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:18px;line-height:1.5">Grant a company (PT / group) to a colleague’s email. They sign in with that email and see only what you grant them.</div>'
     +'<div id="mag-admin-body">Loading…</div></div>';
   document.body.appendChild(wrap);
@@ -3328,13 +3340,13 @@ async function applyAccess(email, sel, curGroups, curEnts){
 }
 function openAccessEditor(user, groups, entsByGroup, onSaved){
   const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(8,20,36,.5);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Arimo,system-ui,sans-serif';
-  ov.innerHTML='<div style="background:#fff;max-width:440px;width:100%;border-radius:0;padding:22px 22px 18px;box-shadow:0 24px 60px rgba(0,0,0,.4)">'
-    +'<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:16px;color:#0d0f12;margin-bottom:4px">Edit access</div>'
+  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(8,20,36,.5);display:flex;align-items:center;justify-content:center;padding:24px;font-family:IBM Plex Sans,system-ui,sans-serif';
+  ov.innerHTML='<div style="background:#fff;color:#1c2530;max-width:440px;width:100%;border-radius:0;padding:22px 22px 18px;box-shadow:0 24px 60px rgba(0,0,0,.4)">'
+    +'<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:16px;color:#0d0f12;margin-bottom:4px">Edit access</div>'
     +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:14px">'+user.email+' — tick whole companies or individual sub-entities.</div>'
     +'<div id="ae-box"></div>'
     +'<div id="ae-msg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>'
-    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button id="ae-cancel" style="border:1px solid #0d0f12;background:#fff;border-radius:0;padding:9px 16px;font-size:13px;cursor:pointer">Cancel</button><button id="ae-save" style="border:0;background:#2244dd;color:#fff;border-radius:0;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer">Save access</button></div></div>';
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button id="ae-cancel" style="border:1px solid #0d0f12;background:#fff;border-radius:0;padding:9px 16px;font-size:13px;cursor:pointer">Cancel</button><button id="ae-save" style="border:0;background:#7dd3fc;color:#082044;border-radius:0;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer">Save access</button></div></div>';
   document.body.appendChild(ov);
   const getSel=buildAccessEditor(document.getElementById('ae-box'), groups, entsByGroup, user.groups, user.entities);
   const close=()=>ov.remove();
@@ -3358,18 +3370,18 @@ async function renderAdminBody(){
   const entsByGroup={}; ents.forEach(e=>{(entsByGroup[e.group_code]=entsByGroup[e.group_code]||[]).push(e);});
   const th='text-align:left;font-size:11px;color:#7a8aa0;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px';
   const td='padding:8px;font-size:13px;border-top:1px solid #eef2f7;vertical-align:top';
-  const chip=(t,kind)=>'<span style="display:inline-block;border-radius:0;padding:2px 9px;font-size:11px;margin:2px 3px 2px 0;'+(kind==='g'?'background:#e7f0fa;color:#2244dd;font-weight:600':'background:#eef2f7;color:#33475b')+'">'+t+'</span>';
+  const chip=(t,kind)=>'<span style="display:inline-block;border-radius:0;padding:2px 9px;font-size:11px;margin:2px 3px 2px 0;'+(kind==='g'?'background:#e7f0fa;color:#155e9e;font-weight:600':'background:#eef2f7;color:#33475b')+'">'+t+'</span>';
   let h='';
-  h+='<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:14px;color:#0d0f12;margin-bottom:8px">Create a login</div>';
+  h+='<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:14px;color:#0d0f12;margin-bottom:8px">Create a login</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
     +'<input id="cu-email" type="email" placeholder="name@magnumestate.pro" style="flex:1 1 190px;padding:10px 12px;border:1px solid #0d0f12;border-radius:0;font-size:13px">'
     +'<input id="cu-pass" type="text" placeholder="Set a password" style="flex:1 1 150px;padding:10px 12px;border:1px solid #0d0f12;border-radius:0;font-size:13px"></div>';
   h+='<div style="font-size:12px;color:#5a6b7b;margin-bottom:5px">Access — tick whole companies or individual sub-entities (you can pick several):</div>';
   h+='<div id="cu-access"></div>';
   h+='<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#33475b;margin:10px 0 8px"><input type="checkbox" id="cu-admin"> Make administrator instead (full access to all PTs)</label>';
-  h+='<button id="cu-add" style="border:0;border-radius:0;background:#2244dd;color:#fff;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Create user</button>';
+  h+='<button id="cu-add" style="border:0;border-radius:0;background:#7dd3fc;color:#082044;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Create user</button>';
   h+='<div id="cu-msg" style="font-size:12px;margin:8px 0 22px;min-height:1px"></div>';
-  h+='<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:14px;color:#0d0f12;margin-bottom:8px">Users</div>';
+  h+='<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:14px;color:#0d0f12;margin-bottom:8px">Users</div>';
   h+='<div style="overflow-x:auto;margin:0 -4px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Email</th><th style="'+th+'">Access</th><th style="'+th+'">Last sign-in</th><th style="'+th+'"></th></tr></thead><tbody>';
   if(!users.length) h+='<tr><td style="'+td+';color:#7a8aa0" colspan="4">No users yet.</td></tr>';
   users.forEach(u=>{
