@@ -156,6 +156,21 @@ footer::before{content:"";display:block;width:56px;height:4px;margin:0 auto 16px
   background:linear-gradient(90deg,#5b67f1,#8d7bf0,#f27a9d)}
 .clickable{cursor:pointer;transition:transform .18s,box-shadow .2s,border-color .2s}
 .clickable:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:#d4d9fb}
+.reco-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:20px}
+.reco{background:var(--card);border:var(--border);border-left:4px solid #c5cbdb;border-radius:16px;box-shadow:var(--shadow-sm);
+  padding:16px 18px 15px;display:flex;gap:13px;align-items:flex-start}
+.reco .ric{width:36px;height:36px;flex:none;border-radius:11px;display:grid;place-items:center}
+.reco .ric svg{width:18px;height:18px}
+.reco h4{font-size:13.5px;font-weight:800;color:var(--blue-900);letter-spacing:-.2px;margin-bottom:4px;line-height:1.35}
+.reco .rtag{display:inline-block;vertical-align:1px;margin-left:8px;font-size:9.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+  padding:2.5px 8px;border-radius:20px}
+.reco p{font-size:12px;color:#5c6577;line-height:1.62}
+.reco p b{color:var(--blue-900);font-variant-numeric:tabular-nums}
+.reco.crit{border-left-color:#e05b6d}.reco.crit .ric{background:#fde3e9;color:#c73e57}.reco.crit .rtag{background:#fde3e9;color:#c73e57}
+.reco.warn{border-left-color:#e09a3a}.reco.warn .ric{background:#fdeed6;color:#a86a1a}.reco.warn .rtag{background:#fdeed6;color:#a86a1a}
+.reco.info{border-left-color:#5b67f1}.reco.info .ric{background:var(--blue-50);color:#4550d8}.reco.info .rtag{background:var(--blue-50);color:#4550d8}
+.reco.good{border-left-color:#34a87c}.reco.good .ric{background:#ddf3e9;color:#1f8a61}.reco.good .rtag{background:#ddf3e9;color:#1f8a61}
+@media(max-width:980px){.reco-grid{grid-template-columns:1fr}}
 a{color:#4550d8}
 :focus-visible{outline:2px solid #5b67f1;outline-offset:2px}
 @media(max-width:980px){.kpi4,.kpi5,.cols-eq{grid-template-columns:1fr}.wrap{padding:0 14px 40px}.toolbar{position:static}}
@@ -247,6 +262,9 @@ a{color:#4550d8}
 
 <div class="divlabel" id="secFinLabel">🔄 Loan, Financing &amp; Non-Operational Activity — May 2026</div>
 <div class="kpi4" id="kpiFin"></div>
+
+<div class="divlabel" id="secRecoLabel">📌 Points of Attention — Recommendations for Management</div>
+<div id="recoGrid" class="reco-grid"></div>
 
 <div class="panel" style="margin-bottom:16px">
   <h2>Revenue vs Operating Expense by Entity</h2>
@@ -3069,9 +3087,81 @@ function exportCSV(){
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
+// ─── POINTS OF ATTENTION (auto-derived management recommendations) ───────────
+const RECO_ICONS={
+  crit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10h-10Z"/></svg>',
+  good:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>'};
+const RECO_TAGS={crit:'Critical',warn:'Attention',info:'Review',good:'On track'};
+function renderRecos(a){
+  const el=document.getElementById('recoGrid'); if(!el) return;
+  const lbl=document.getElementById('secRecoLabel');
+  if(lbl) lbl.textContent='📌 Points of Attention — Recommendations for Management ('+(MONTHS[MONTH]||MONTH)+')';
+  const ids=scopeIds();
+  const R=[];
+  const cov=a.opex>0 ? (a.rev/a.opex*100) : null;
+  const netCash=a.opNet + a.finIn - a.finOut;
+  const nets=ids.map(id=>{const e=eff(id);return {id,name:ENT[id].name,n:e.rev-e.opex,rev:e.rev,opex:e.opex};})
+                .filter(x=>x.rev>0||x.opex>0);
+  const losers=nets.filter(x=>x.n<-0.5).sort((x,y)=>x.n-y.n);
+  const winners=nets.filter(x=>x.n>0.5).sort((x,y)=>y.n-x.n);
+  // 1. operating result
+  if(a.opNet<0){
+    R.push({sev:'crit',title:'Operating deficit of IDR '+fmtB(Math.abs(a.opNet)),
+      body:'Expenses exceed revenue'+(cov?' — revenue covers only <b>'+cov.toFixed(1)+'%</b> of operating costs':'')+'. Set a cost-reduction target for the largest expense categories and tighten spend approvals until the operation is self-funding.'});
+  } else if(a.opNet>0){
+    R.push({sev:'good',title:'Operations are self-funding (+IDR '+fmtB(a.opNet)+')',
+      body:'Revenue covers <b>'+(cov?cov.toFixed(1):'—')+'%</b> of operating costs. Protect the margin: keep fixed-cost growth below revenue growth when approving new commitments.'});
+  }
+  // 2. financing reliance
+  if(a.opNet<0 && a.finIn>0){
+    R.push({sev:'warn',title:'The gap is funded by financing, not operations',
+      body:'Financing inflows of <b>IDR '+fmtB(a.finIn)+'</b> are covering the operating shortfall. Agree a timeline with each PT to close the deficit from operations so loans and capital deposits fund growth, not payroll.'});
+  }
+  // 3. loss-making entities
+  if(losers.length){
+    const top=losers.slice(0,3).map(x=>'<b>'+x.name+'</b> (−'+fmtB(Math.abs(x.n))+')').join(', ');
+    R.push({sev:losers.length>=3?'crit':'warn',title:losers.length+' of '+nets.length+' entities in scope run at a loss',
+      body:'Largest shortfalls: '+top+'. Review cost structure, pricing and occupancy for these PTs first — they drive most of the consolidated gap.'});
+  }
+  // 4. expense concentration
+  const cats=Object.entries(a.opexBD).filter(([k])=>!/not itemised/.test(k)).sort((x,y)=>y[1]-x[1]);
+  if(a.opex>0 && cats.length){
+    const share=cats[0][1]/a.opex*100;
+    if(share>=20) R.push({sev:'info',title:'Spend is concentrated: '+cats[0][0]+' = '+share.toFixed(1)+'% of opex',
+      body:'A single category of <b>IDR '+fmtB(cats[0][1])+'</b> dominates spending. Re-tender or renegotiate this line and require director sign-off above an agreed threshold.'});
+  }
+  // 5. revenue concentration
+  const rcats=Object.entries(a.revBD).filter(([k])=>!/not itemised/.test(k)).sort((x,y)=>y[1]-x[1]);
+  if(a.rev>0 && rcats.length){
+    const rshare=rcats[0][1]/a.rev*100;
+    if(rshare>=50) R.push({sev:'info',title:'Revenue depends heavily on '+rcats[0][0]+' ('+rshare.toFixed(1)+'%)',
+      body:'Over half of income comes from one source. Grow recurring streams (rental, service charge, F&amp;B) to reduce exposure to one-off sales timing.'});
+  }
+  // 6. net cash
+  if(netCash<0){
+    R.push({sev:'crit',title:'Net cash movement is negative (−IDR '+fmtB(Math.abs(netCash))+')',
+      body:'Even after financing, more cash left than came in this period. Review the payment calendar and delay non-essential outflows to protect the cash buffer.'});
+  }
+  // 7. best performer
+  if(winners.length && nets.length>1){
+    R.push({sev:'good',title:'Strongest performer: '+winners[0].name+' (+IDR '+fmtB(winners[0].n)+')',
+      body:'Use it as the internal benchmark — compare its cost ratios and revenue mix against the loss-making PTs in the same group.'});
+  }
+  const order={crit:0,warn:1,info:2,good:3};
+  R.sort((x,y)=>order[x.sev]-order[y.sev]);
+  const out=R.slice(0,6);
+  el.innerHTML = out.length ? out.map(r=>
+    '<div class="reco '+r.sev+'"><div class="ric">'+RECO_ICONS[r.sev]+'</div><div>'
+    +'<h4>'+r.title+'<span class="rtag">'+RECO_TAGS[r.sev]+'</span></h4>'
+    +'<p>'+r.body+'</p></div></div>').join('')
+    : '<div class="reco info"><div class="ric">'+RECO_ICONS.info+'</div><div><h4>No pressing issues for this view<span class="rtag">Review</span></h4><p>Figures for this scope and period look balanced. Switch scope or month to check other entities.</p></div></div>';
+}
+
 function renderAll(){
   const a=agg();
-  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);
+  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
