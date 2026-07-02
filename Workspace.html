@@ -3303,8 +3303,8 @@ function buildAccessEditor(container, groups, entsByGroup, initGroups, initEnts)
 async function applyAccess(email, sel, curGroups, curEnts){
   const ng=new Set(sel.groups), ne=new Set(sel.entities);
   const add=[];
-  sel.groups.forEach(g=>{ if(!(curGroups||[]).includes(g)) add.push({email, group_code:g}); });
-  sel.entities.forEach(e=>{ if(!(curEnts||[]).includes(e)) add.push({email, entity_code:e}); });
+  sel.groups.forEach(g=>{ if(!(curGroups||[]).includes(g)) add.push({email, group_code:g, entity_code:null}); });
+  sel.entities.forEach(e=>{ if(!(curEnts||[]).includes(e)) add.push({email, group_code:null, entity_code:e}); });
   const dels=[];
   (curGroups||[]).forEach(g=>{ if(!ng.has(g)) dels.push('entity_grants?email=eq.'+encodeURIComponent(email)+'&group_code=eq.'+encodeURIComponent(g)); });
   (curEnts||[]).forEach(e=>{ if(!ne.has(e)) dels.push('entity_grants?email=eq.'+encodeURIComponent(email)+'&entity_code=eq.'+encodeURIComponent(e)); });
