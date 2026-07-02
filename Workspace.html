@@ -3164,6 +3164,7 @@ async function runDashboard(){
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
+  try{ await checkAdmin(); }catch(e){}
   showUserBar();
 }
 
@@ -3202,15 +3203,98 @@ function showNoAccess(){
   document.body.appendChild(d.firstChild);
   document.getElementById('mag-out').onclick=signOut;
 }
+let MY_EMAIL='', IS_ADMIN=false;
+async function checkAdmin(){
+  MY_EMAIL = SESSION ? jwtEmail(SESSION.access_token) : '';
+  try{ const r=await sbFetch('app_admins?select=email&email=eq.'+encodeURIComponent(MY_EMAIL)); IS_ADMIN=Array.isArray(r)&&r.length>0; }
+  catch(e){ IS_ADMIN=false; }
+}
 function showUserBar(){
   if(document.getElementById('mag-userbar')) return;
   const email=SESSION?jwtEmail(SESSION.access_token):'';
   const b=document.createElement('div');
   b.id='mag-userbar';
   b.style.cssText='position:fixed;top:10px;right:12px;z-index:9998;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border:1px solid #d7e0ea;border-radius:999px;padding:5px 6px 5px 13px;font-family:Inter,system-ui,sans-serif;font-size:12px;color:#33475b;box-shadow:0 3px 10px rgba(0,0,0,.08)';
-  b.innerHTML='<span>'+email+'</span><button id="mag-signout" style="border:0;border-radius:999px;background:#0d2947;color:#fff;font-size:11.5px;padding:5px 11px;cursor:pointer">Sign out</button>';
+  b.innerHTML='<span>'+email+'</span>'
+    +(IS_ADMIN?'<button id="mag-admin-open" style="border:0;border-radius:999px;background:#1d6fb8;color:#fff;font-size:11.5px;padding:5px 12px;cursor:pointer">⚙ Manage access</button>':'')
+    +'<button id="mag-signout" style="border:0;border-radius:999px;background:#0d2947;color:#fff;font-size:11.5px;padding:5px 11px;cursor:pointer">Sign out</button>';
   document.body.appendChild(b);
   document.getElementById('mag-signout').onclick=signOut;
+  const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
+}
+/* ── Admin panel (visible to admins only) ─────────────────────────────── */
+async function adminAdd(path,body){
+  const r=await fetch(SB_URL+'/rest/v1/'+path,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'return=minimal,resolution=merge-duplicates'},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+}
+async function adminDel(path){
+  const r=await fetch(SB_URL+'/rest/v1/'+path,{method:'DELETE',headers:{...authHeaders(),'Prefer':'return=minimal'}});
+  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+}
+function closeAdmin(){ const m=document.getElementById('mag-admin'); if(m) m.remove(); }
+async function openAdminPanel(){
+  closeAdmin();
+  const wrap=document.createElement('div'); wrap.id='mag-admin';
+  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(8,20,36,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Inter,system-ui,sans-serif';
+  wrap.innerHTML='<div style="background:#fff;max-width:660px;width:100%;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);padding:24px 26px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:Sora,sans-serif;font-weight:700;font-size:18px;color:#0d2947">Access Management</div><button id="mag-admin-x" style="border:0;background:#eef2f7;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
+    +'<div style="font-size:12.5px;color:#5a6b7b;margin-bottom:18px;line-height:1.5">Grant a company (PT / group) to a colleague’s email. They sign in with that email and see only what you grant them.</div>'
+    +'<div id="mag-admin-body">Loading…</div></div>';
+  document.body.appendChild(wrap);
+  document.getElementById('mag-admin-x').onclick=closeAdmin;
+  wrap.addEventListener('click',e=>{if(e.target===wrap)closeAdmin();});
+  await renderAdminBody();
+}
+async function renderAdminBody(){
+  const body=document.getElementById('mag-admin-body'); if(!body) return;
+  let grants=[],admins=[],groups=[];
+  try{ [grants,admins,groups]=await Promise.all([
+    sbFetch('entity_grants?select=email,group_code&order=email'),
+    sbFetch('app_admins?select=email&order=email'),
+    sbFetch('groups?select=code,name&order=sort_order')]);
+  }catch(e){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load access data: '+e.message+'</div>'; return; }
+  const gname={}; groups.forEach(g=>gname[g.code]=g.name);
+  const opts=groups.map(g=>'<option value="'+g.code+'">'+g.name+'</option>').join('');
+  const th='text-align:left;font-size:11px;color:#7a8aa0;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px';
+  const td='padding:7px 8px;font-size:13px;border-top:1px solid #eef2f7;vertical-align:middle';
+  let h='';
+  h+='<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+    +'<input id="mag-g-email" type="email" placeholder="colleague@magnumestate.pro" style="flex:1;min-width:210px;padding:10px 12px;border:1px solid #cdd7e1;border-radius:9px;font-size:13px">'
+    +'<select id="mag-g-group" style="padding:10px 12px;border:1px solid #cdd7e1;border-radius:9px;font-size:13px;max-width:230px">'+opts+'</select>'
+    +'<button id="mag-g-add" style="border:0;border-radius:9px;background:#0d2947;color:#fff;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Grant</button></div>';
+  h+='<div id="mag-g-msg" style="font-size:12px;color:#b3261e;margin-bottom:12px;min-height:1px"></div>';
+  h+='<table style="width:100%;border-collapse:collapse;margin-bottom:24px"><thead><tr><th style="'+th+'">Email</th><th style="'+th+'">Company (PT / group)</th><th style="'+th+'"></th></tr></thead><tbody>';
+  if(!grants.length) h+='<tr><td style="'+td+';color:#7a8aa0" colspan="3">No access granted yet.</td></tr>';
+  grants.forEach(g=>{ h+='<tr><td style="'+td+'">'+g.email+'</td><td style="'+td+'">'+(gname[g.group_code]||g.group_code)+'</td><td style="'+td+';text-align:right"><button class="mag-revoke" data-email="'+encodeURIComponent(g.email)+'" data-group="'+g.group_code+'" style="border:1px solid #e4c3c0;background:#fff;color:#b3261e;border-radius:7px;padding:4px 10px;font-size:12px;cursor:pointer">Revoke</button></td></tr>'; });
+  h+='</tbody></table>';
+  h+='<div style="font-family:Sora,sans-serif;font-weight:700;font-size:14px;color:#0d2947;margin-bottom:8px">Administrators <span style="font-weight:400;color:#7a8aa0;font-size:12px">— full access to all PTs + this panel</span></div>';
+  h+='<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap"><input id="mag-a-email" type="email" placeholder="admin@magnumestate.pro" style="flex:1;min-width:210px;padding:10px 12px;border:1px solid #cdd7e1;border-radius:9px;font-size:13px"><button id="mag-a-add" style="border:0;border-radius:9px;background:#0d2947;color:#fff;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer">Add admin</button></div>';
+  h+='<div id="mag-a-msg" style="font-size:12px;color:#b3261e;margin-bottom:10px;min-height:1px"></div>';
+  h+='<table style="width:100%;border-collapse:collapse"><tbody>';
+  admins.forEach(a=>{ const self=(a.email===MY_EMAIL); h+='<tr><td style="'+td+'">'+a.email+(self?' <span style="color:#7a8aa0">(you)</span>':'')+'</td><td style="'+td+';text-align:right">'+(self?'':'<button class="mag-adel" data-email="'+encodeURIComponent(a.email)+'" style="border:1px solid #e4c3c0;background:#fff;color:#b3261e;border-radius:7px;padding:4px 10px;font-size:12px;cursor:pointer">Remove</button>')+'</td></tr>'; });
+  h+='</tbody></table>';
+  body.innerHTML=h;
+  document.getElementById('mag-g-add').onclick=async()=>{
+    const em=(document.getElementById('mag-g-email').value||'').trim().toLowerCase();
+    const gp=document.getElementById('mag-g-group').value; const msg=document.getElementById('mag-g-msg');
+    if(!/.+@.+\..+/.test(em)){ msg.textContent='Enter a valid email.'; return; }
+    msg.textContent=''; try{ await adminAdd('entity_grants',{email:em,group_code:gp}); await renderAdminBody(); }
+    catch(e){ msg.textContent='Failed: '+e.message; }
+  };
+  [...document.querySelectorAll('.mag-revoke')].forEach(btn=>btn.onclick=async()=>{
+    try{ await adminDel('entity_grants?email=eq.'+btn.dataset.email+'&group_code=eq.'+encodeURIComponent(btn.dataset.group)); await renderAdminBody(); }
+    catch(e){ const m=document.getElementById('mag-g-msg'); if(m) m.textContent='Failed: '+e.message; }
+  });
+  document.getElementById('mag-a-add').onclick=async()=>{
+    const em=(document.getElementById('mag-a-email').value||'').trim().toLowerCase(); const msg=document.getElementById('mag-a-msg');
+    if(!/.+@.+\..+/.test(em)){ msg.textContent='Enter a valid email.'; return; }
+    msg.textContent=''; try{ await adminAdd('app_admins',{email:em}); await renderAdminBody(); }
+    catch(e){ msg.textContent='Failed: '+e.message; }
+  };
+  [...document.querySelectorAll('.mag-adel')].forEach(btn=>btn.onclick=async()=>{
+    try{ await adminDel('app_admins?email=eq.'+btn.dataset.email); await renderAdminBody(); }
+    catch(e){ const m=document.getElementById('mag-a-msg'); if(m) m.textContent='Failed: '+e.message; }
+  });
 }
 
 /* ── Boot / gate ──────────────────────────────────────────────────────── */
