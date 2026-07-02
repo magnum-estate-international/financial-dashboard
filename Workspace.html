@@ -267,6 +267,7 @@ a{color:#4550d8}
 <div id="recoGrid" class="reco-grid"></div>
 
 <div class="divlabel" id="secBalLabel">🏦 Balance Reconciliation — Saldo Awal / Saldo Akhir</div>
+<div class="kpi4" id="balKpis"></div>
 <div class="panel" style="margin-bottom:16px">
   <h2>Balance check</h2>
   <div class="pn-sub" id="balSub">Saldo awal + net movement (per the report) should equal the reported saldo akhir. A difference means the report is incomplete or the balance needs review.</div>
@@ -3183,6 +3184,33 @@ function renderBalances(){
   const lbl=document.getElementById('secBalLabel');
   if(lbl) lbl.textContent='🏦 Balance Reconciliation — Saldo Awal / Saldo Akhir ('+(MONTHS[MONTH]||MONTH)+')';
   const ids=scopeIds();
+  // headline balance cards for the selected scope + period
+  const kp=document.getElementById('balKpis');
+  if(kp){
+    let sOpen=0,nOpen=0,sClose=0,nClose=0,sMoveOpen=0;
+    ids.forEach(id=>{
+      const b=balFor(id); const e=eff(id);
+      if(b.open!=null){ sOpen+=b.open; nOpen++; sMoveOpen+=(e.rev-e.opex+e.finIn-e.finOut); }
+      if(b.close!=null){ sClose+=b.close; nClose++; }
+    });
+    const expected=nOpen?sOpen+sMoveOpen:null;
+    const diff=(nOpen&&nClose)?sClose-expected:null;
+    const ok=diff!=null&&Math.abs(diff)<=1;
+    const cov=(n)=>n===ids.length?'semua '+ids.length+' PT dalam scope':n+' dari '+ids.length+' PT (sisanya belum diisi)';
+    kp.innerHTML=
+      '<div class="pcard blue-hl"><div class="lab">Saldo Awal — '+escH(MONTHS[MONTH]||MONTH)+'</div>'
+        +'<div class="big">'+(nOpen?fmt(sOpen):'—')+'</div>'
+        +'<div class="meta">'+(nOpen?'Total pembukaan · '+cov(nOpen):'Belum ada saldo awal — isi lewat ✎ Update data')+'</div></div>'
+      +'<div class="pcard blue-hl"><div class="lab">Net Movement (per laporan)</div>'
+        +'<div class="big '+(sMoveOpen>=0?'pos':'neg')+'">'+(nOpen?((sMoveOpen>=0?'+':'−')+fmt(Math.abs(sMoveOpen))):'—')+'</div>'
+        +'<div class="meta">Pendapatan − biaya + financing masuk − keluar'+(nOpen?' · PT yang punya saldo awal':'')+'</div></div>'
+      +'<div class="pcard '+(nClose?'amber-hl':'blue-hl')+'"><div class="lab">Saldo Akhir (reported)</div>'
+        +'<div class="big">'+(nClose?fmt(sClose):'—')+'</div>'
+        +'<div class="meta">'+(nClose?'Total penutupan · '+cov(nClose):'Belum ada saldo akhir — isi lewat ✎ Update data')+'</div></div>'
+      +'<div class="pcard '+(diff==null?'blue-hl':(ok?'green-hl':'red-hl'))+'"><div class="lab">Selisih vs Expected</div>'
+        +'<div class="big '+(diff==null?'':(ok?'pos':'neg'))+'">'+(diff==null?'—':(ok?'0 ✓':((diff>=0?'+':'−')+fmt(Math.abs(diff)))))+'</div>'
+        +'<div class="meta">'+(diff==null?'Perlu saldo awal & akhir untuk mengecek':(ok?'Laporan sesuai dengan saldo bank':'Expected closing '+fmt(expected)+' — periksa transaksi yang belum tercatat'))+'</div></div>';
+  }
   const chipOK='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#ddf3e9;color:#1f8a61;white-space:nowrap">✓ Sesuai</span>';
   const chipDiff='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#fde3e9;color:#c73e57;white-space:nowrap">⚠ Selisih</span>';
   const chipNone='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#eef0fe;color:#4550d8;white-space:nowrap">no balance yet</span>';
