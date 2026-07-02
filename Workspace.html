@@ -266,13 +266,13 @@ a{color:#4550d8}
 <div class="divlabel" id="secRecoLabel">📌 Points of Attention — Recommendations for Management</div>
 <div id="recoGrid" class="reco-grid"></div>
 
-<div class="divlabel" id="secBalLabel">🏦 Balance Reconciliation — Saldo Awal / Saldo Akhir</div>
+<div class="divlabel" id="secBalLabel">🏦 Balance Reconciliation — Opening / Closing Balance</div>
 <div class="kpi4" id="balKpis"></div>
 <div class="panel" style="margin-bottom:16px">
   <h2>Balance check</h2>
-  <div class="pn-sub" id="balSub">Saldo awal + net movement (per the report) should equal the reported saldo akhir. A difference means the report is incomplete or the balance needs review.</div>
+  <div class="pn-sub" id="balSub">Opening balance + net movement (per the report) should equal the reported closing balance. A difference means the report is incomplete or the balance needs review.</div>
   <div class="table-scroll" style="max-height:360px"><table>
-    <thead><tr><th>Entity</th><th class="num" style="text-align:right">Saldo awal</th><th class="num" style="text-align:right">Net movement</th><th class="num" style="text-align:right">Expected closing</th><th class="num" style="text-align:right">Saldo akhir (reported)</th><th class="num" style="text-align:right">Selisih</th><th>Status</th></tr></thead>
+    <thead><tr><th>Entity</th><th class="num" style="text-align:right">Opening balance</th><th class="num" style="text-align:right">Net movement</th><th class="num" style="text-align:right">Expected closing</th><th class="num" style="text-align:right">Closing (reported)</th><th class="num" style="text-align:right">Difference</th><th>Status</th></tr></thead>
     <tbody id="balBody"></tbody>
   </table></div>
 </div>
@@ -343,7 +343,7 @@ a{color:#4550d8}
   <summary><span><span class="chev">▸</span>&nbsp; Notes &amp; Reconciliation Items</span><span class="hint">for Finance follow-up</span></summary>
   <div class="fold-body">
     <div style="font-size:13px;line-height:1.8;color:var(--ink);padding-top:8px">
-      <p style="margin-bottom:10px">• <b>🆕 Shareholder Capital Deposit (Juni 2026):</b> seluruh uang masuk dari pemegang saham ke PT Magnum Estate International pada Juni 2026 berjumlah <b>IDR 1.223.194.132</b> — <b>Stanislav Sadovnikov IDR 661.597.066</b> (Capital Contribution 561.597.066 pada 12 Jun + Refund Other Receivable 2 × 50.000.000 pada 8 Jun) dan <b>Igor Maksimov IDR 561.597.066</b> (Capital Contribution, 12 Jun). Setoran ini diberi kategori khusus tersendiri (<span class="tag cap">Capital deposit</span> / <b>Shareholder Capital Deposit</b>) dan diklasifikasikan sebagai <em>financing inflow</em> — terpisah dari pinjaman antar-entitas, pengembalian pinjaman, maupun piutang. <b>Untuk menghindari double-count, setoran modal ini TIDAK dimasukkan ke dalam angka "Financing Inflows"</b>; ia ditampilkan sebagai kartu/kotak tersendiri di depan dan tetap diperhitungkan dalam Net Financing &amp; Net Cash Movement. Ini berbeda dari <em>pembayaran ke</em> Stanislav/Igor (piutang & shareholder payments) yang tetap diklasifikasikan sebagai financing out.</p>
+      <p style="margin-bottom:10px">• <b>🆕 Shareholder Capital Deposit (June 2026):</b> all shareholder money received by PT Magnum Estate International in June 2026 totals <b>IDR 1.223.194.132</b> — <b>Stanislav Sadovnikov IDR 661.597.066</b> (Capital Contribution 561.597.066 on 12 Jun + Refund Other Receivable 2 × 50.000.000 on 8 Jun) and <b>Igor Maksimov IDR 561.597.066</b> (Capital Contribution, 12 Jun). These deposits carry their own dedicated category (<span class="tag cap">Capital deposit</span> / <b>Shareholder Capital Deposit</b>) and are classified as a <em>financing inflow</em> — separate from inter-company loans, loan repayments and receivables. <b>To avoid double-counting, these capital deposits are NOT included in the "Financing Inflows" figure</b>; they are shown as their own card up front and still count towards Net Financing &amp; Net Cash Movement. This differs from payments <em>to</em> Stanislav/Igor (receivables & shareholder payments), which remain classified as financing out.</p>
       <p style="margin-bottom:10px">• <b>Basis &amp; group structure:</b> This dashboard presents <b>four business groups and three standalone entities</b>: ICG Group (6 entities), <b>PT Sky Stars Villas</b> (3 entities: Hospitality, Building Management, Developer), <b>KSO TUS — The Umalas Signature</b> (2 entities: KSO SUP and KSO Magnum), <b>PT Samahita Umalas Prasada</b> (3 entities: PT SUP Developer, PT SUP Hospitality — The Umalas Signature operations, and PT SUP BM), plus three independent legal entities that stand on their own: <b>PT Magnum Estate International</b>, <b>PT Berawa Bali Utama</b>, and <b>PT Umalas Lounge Rooftop</b>. Figures are derived from the May 2026 bank reports of all groups plus the entity dashboards consolidated earlier (PT Indonesia Capital Sanur, PT Berawa Bali Utama, PT Umalas Lounge Rooftop) and the KSO The Umalas Signature cash flow report (Bank Danamon). Inter-bank "PB In to Out" / overbooking transfers within the same entity are excluded (contra entries). Loan disbursements, loan repayments, loan collections, receivable disbursements, shareholder payments, shareholder capital deposits, and the PBG licensing fee are classified as financing / non-operational — not revenue or expense.</p>
       <p style="margin-bottom:10px">• <b>📅 Multi-month coverage:</b> <b>May 2026</b> is the full 17-entity consolidation. <b>April &amp; June 2026</b> now cover <b>ICG Group (6 entities, including PT Indonesia Capital Sanur) + PT Berawa Bali Utama</b>; the remaining groups' multi-month data will be added as their source reports are loaded. When a non-May month is selected, the view auto-scopes to the entities that have data for that month.</p>
       <p style="margin-bottom:10px">• <b>✅ Newly added — PT Indonesia Capital Sanur (April &amp; June):</b> figures are taken from the PT ICS Cash-In/Cash-Out dashboard (Mandiri, Permata, Danamon). <b>April:</b> no operating revenue; operating cost IDR 233.1 M (mostly payroll, marketing top-ups via Stanislav, electricity &amp; tax consultant), funded by IDR 279 M of return loans from MEI &amp; Sky Stars; IDR 50 M receivable disbursed to Stanislav Sadovnikov (financing out). <b>June (01–22 Jun):</b> operating cost IDR 539.1 M (incl. the IDR 350 M drawing-consultant licensing installment to CV Bangun Dharma Persada and IDR 108.35 M construction to PT Tangguh Duta Merlin) against IDR 2.5 M of other receipts; financing in IDR 480 M (MEI returns); financing out IDR 440 M (IDR 300 M loan to MEI + IDR 100 M loan to Sky Stars + IDR 40 M to Stanislav). The PBG licensing fee and the large client Progress-1 receipt both fall in <b>May</b>, which is unchanged.</p>
@@ -2677,7 +2677,7 @@ function renderBanner(){
   let warn='';
   if(MONTH!=='MAY'){
     const n=monthIds().length;
-    warn=`<span style="margin-left:auto;background:var(--amber-bg);color:var(--amber);padding:4px 10px;border-radius:12px;font-size:11.5px;font-weight:600">⚠ ${MONTHS[MONTH]}: data tersedia untuk ICG Group + PT BBU (${n} entitas)</span>`;
+    warn=`<span style="margin-left:auto;background:var(--amber-bg);color:var(--amber);padding:4px 10px;border-radius:12px;font-size:11.5px;font-weight:600">⚠ ${MONTHS[MONTH]}: data available for ICG Group + PT BBU (${n} entities)</span>`;
   }
   bn.innerHTML=`${monthTag}<span class="dot" style="background:${color}"></span><span><strong>Showing:</strong> ${label}</span>`+warn+
     ((EF!=='all'||GF!=='all')&&!warn?`<button class="btn btn-ghost" style="margin-left:auto" onclick="document.getElementById('scopeSel').value='all';setScope('all')">✕ Clear filter</button>`:'');
@@ -2763,7 +2763,7 @@ function renderKpiFin(a){
       ${hint('var(--sand)')}
       <div class="lab">Shareholder Capital Deposit</div>
       <div class="big" style="color:#8a5a1e">${fmt(a.capDep)}</div>
-      <div class="meta">Setoran modal pemegang saham (Stanislav Sadovnikov &amp; Igor Maksimov) — kategori financing tersendiri</div>
+      <div class="meta">Shareholder capital deposits (Stanislav Sadovnikov &amp; Igor Maksimov) — tracked as a separate financing category</div>
     </div>`:''}
     <div class="pcard blue-hl clickable" onclick="openDetail('finin')">
       ${hint('var(--blue-300)')}
@@ -2870,7 +2870,7 @@ function renderLoans(){
     return inScope(l.f)||inScope(l.t);
   });
   if(!list.length){
-    tb.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">Tidak ada arus pinjaman antar-entitas untuk scope &amp; bulan ini.${MONTH!=='MAY'?' (Data lintas-entitas Apr/Jun saat ini mencakup ICG + PT BBU.)':''}</td></tr>`;
+    tb.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">No inter-company loan flows for this scope &amp; month.${MONTH!=='MAY'?' (Apr/Jun cross-entity data currently covers ICG + PT BBU.)':''}</td></tr>`;
     return;
   }
   let h='',tot=0;
@@ -2977,7 +2977,7 @@ function finTableHtml(key){
       }});
     if(!any) return `<p style="color:var(--muted);font-size:13px">No flows in this scope for ${MONTHS[MONTH]}.</p>`;
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-    h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Rincian per-counterparty untuk ${MONTHS[MONTH]} ditampilkan di tabel "Inter-Company Loan Flows" (ICG + PT BBU); ringkasan per entitas ditampilkan di sini.</p>`;
+    h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Per-counterparty detail for ${MONTHS[MONTH]} is shown in the "Inter-Company Loan Flows" table (ICG + PT BBU); the per-entity summary is shown here.</p>`;
     return h;
   }
   let h='',tot=0,any=false;
@@ -3002,7 +3002,7 @@ function openDetail(kind){
     Object.entries(byP).forEach(([p,v])=>{tot+=v;
       h+=`<tr><td style="font-size:12.5px">${p}</td><td style="font-size:12.5px">PT Magnum Estate International</td><td class="num">${fmt(v)}</td></tr>`;});
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="2"><strong>TOTAL SHAREHOLDER CAPITAL DEPOSIT</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-    h+=`<p style="color:var(--muted);font-size:12px;margin-top:10px;line-height:1.7">Seluruh uang masuk dari pemegang saham (Stanislav Sadovnikov &amp; Igor Maksimov) ke PT Magnum Estate International pada Juni 2026 — mencakup Capital Contribution (12 Jun) <b>dan</b> Refund Other Receivable (8 Jun). Dilacak sebagai kategori <em>financing</em> tersendiri dan <b>tidak dihitung di dalam Financing Inflows</b> (menghindari double-count); terpisah dari pinjaman antar-entitas, pengembalian pinjaman, dan piutang. Tetap diperhitungkan dalam Net Financing &amp; Net Cash Movement sebagai arus masuk. Berbeda dari pembayaran <em>kepada</em> mereka (piutang &amp; shareholder payments) yang masuk financing out.</p>`;
+    h+=`<p style="color:var(--muted);font-size:12px;margin-top:10px;line-height:1.7">All shareholder money received by PT Magnum Estate International (from Stanislav Sadovnikov &amp; Igor Maksimov) in June 2026 — covering the Capital Contribution (12 Jun) <b>and</b> Refund Other Receivable (8 Jun). Tracked as its own <em>financing</em> category and <b>not counted inside Financing Inflows</b> (avoids double-counting); separate from inter-company loans, loan repayments and receivables. Still included in Net Financing &amp; Net Cash Movement as an inflow. This differs from payments <em>to</em> them (receivables &amp; shareholder payments), which stay in financing out.</p>`;
     showModal('Shareholder Capital Deposit — Detail',h);
   }
   else if(kind==='finout') showModal('Financing & Non-Op Outflows — Detail',finTableHtml('finOut'));
@@ -3078,9 +3078,9 @@ function openBDItem(type,encKey){
     Object.entries(residual).forEach(([id,r])=>{s+=r;
       h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[MONTH]||MONTH}</td><td>${pill(id)}</td><td style="font-size:12.5px;color:var(--muted)">Konsolidasi dari total kategori laporan bank (rincian per-transaksi belum dimuat) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">ringkasan</span></td><td class="num ${cls}">${isRev?'+':'–'} ${fmt(Math.abs(r))}</td></tr>`;});
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong>${fmt(s)}</strong></td></tr></tbody></table></div>`;
-    if(hasResidual) h+=`<p style="color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:8px">Baris <b>ringkasan</b> mewakili entitas yang angkanya dikonsolidasi dari total kategori laporan bank, sehingga TOTAL di sini sama dengan TOTAL <b>By Entity</b> di atas.</p>`;
+    if(hasResidual) h+=`<p style="color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:8px"><b>Summary</b> rows represent entities whose figures are consolidated from bank-report category totals, so the TOTAL here matches the <b>By Entity</b> TOTAL above.</p>`;
   } else {
-    h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Rincian per transaksi untuk item ini belum dimuat di dashboard konsolidasi. Saat ini detail transaksi penuh tersedia untuk <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–Juni), <b>KSO SUP &amp; KSO Magnum</b> (Mei), serta <b>ICG Group &amp; PT BBU</b> (April &amp; Juni). Entitas lain dikonsolidasi dari total kategori laporan bank masing-masing — transaksi terbesarnya dapat dilihat pada bagian <b>"Key Transactions of the Month"</b>.</p>`;
+    h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals — their largest transactions appear under <b>"Key Transactions of the Month"</b>.</p>`;
   }
   showModal((isRev?'Revenue — ':'OpEx Category — ')+key,h);
 }
@@ -3182,7 +3182,7 @@ function balFor(id){
 function renderBalances(){
   const tb=document.getElementById('balBody'); if(!tb) return;
   const lbl=document.getElementById('secBalLabel');
-  if(lbl) lbl.textContent='🏦 Balance Reconciliation — Saldo Awal / Saldo Akhir ('+(MONTHS[MONTH]||MONTH)+')';
+  if(lbl) lbl.textContent='🏦 Balance Reconciliation — Opening / Closing Balance ('+(MONTHS[MONTH]||MONTH)+')';
   const ids=scopeIds();
   // headline balance cards for the selected scope + period
   const kp=document.getElementById('balKpis');
@@ -3196,23 +3196,23 @@ function renderBalances(){
     const expected=nOpen?sOpen+sMoveOpen:null;
     const diff=(nOpen&&nClose)?sClose-expected:null;
     const ok=diff!=null&&Math.abs(diff)<=1;
-    const cov=(n)=>n===ids.length?'semua '+ids.length+' PT dalam scope':n+' dari '+ids.length+' PT (sisanya belum diisi)';
+    const cov=(n)=>n===ids.length?'all '+ids.length+' PTs in scope':n+' of '+ids.length+' PTs (the rest not filled in yet)';
     kp.innerHTML=
-      '<div class="pcard blue-hl"><div class="lab">Saldo Awal — '+escH(MONTHS[MONTH]||MONTH)+'</div>'
+      '<div class="pcard blue-hl"><div class="lab">Opening Balance — '+escH(MONTHS[MONTH]||MONTH)+'</div>'
         +'<div class="big">'+(nOpen?fmt(sOpen):'—')+'</div>'
-        +'<div class="meta">'+(nOpen?'Total pembukaan · '+cov(nOpen):'Belum ada saldo awal — isi lewat ✎ Update data')+'</div></div>'
-      +'<div class="pcard blue-hl"><div class="lab">Net Movement (per laporan)</div>'
+        +'<div class="meta">'+(nOpen?'Total opening balance · '+cov(nOpen):'No opening balance yet — add it via ✎ Update data')+'</div></div>'
+      +'<div class="pcard blue-hl"><div class="lab">Net Movement (per report)</div>'
         +'<div class="big '+(sMoveOpen>=0?'pos':'neg')+'">'+(nOpen?((sMoveOpen>=0?'+':'−')+fmt(Math.abs(sMoveOpen))):'—')+'</div>'
-        +'<div class="meta">Pendapatan − biaya + financing masuk − keluar'+(nOpen?' · PT yang punya saldo awal':'')+'</div></div>'
-      +'<div class="pcard '+(nClose?'amber-hl':'blue-hl')+'"><div class="lab">Saldo Akhir (reported)</div>'
+        +'<div class="meta">Revenue − expenses + financing in − out'+(nOpen?' · PTs with an opening balance':'')+'</div></div>'
+      +'<div class="pcard '+(nClose?'amber-hl':'blue-hl')+'"><div class="lab">Closing Balance (reported)</div>'
         +'<div class="big">'+(nClose?fmt(sClose):'—')+'</div>'
-        +'<div class="meta">'+(nClose?'Total penutupan · '+cov(nClose):'Belum ada saldo akhir — isi lewat ✎ Update data')+'</div></div>'
-      +'<div class="pcard '+(diff==null?'blue-hl':(ok?'green-hl':'red-hl'))+'"><div class="lab">Selisih vs Expected</div>'
+        +'<div class="meta">'+(nClose?'Total closing balance · '+cov(nClose):'No closing balance yet — add it via ✎ Update data')+'</div></div>'
+      +'<div class="pcard '+(diff==null?'blue-hl':(ok?'green-hl':'red-hl'))+'"><div class="lab">Difference vs Expected</div>'
         +'<div class="big '+(diff==null?'':(ok?'pos':'neg'))+'">'+(diff==null?'—':(ok?'0 ✓':((diff>=0?'+':'−')+fmt(Math.abs(diff)))))+'</div>'
-        +'<div class="meta">'+(diff==null?'Perlu saldo awal & akhir untuk mengecek':(ok?'Laporan sesuai dengan saldo bank':'Expected closing '+fmt(expected)+' — periksa transaksi yang belum tercatat'))+'</div></div>';
+        +'<div class="meta">'+(diff==null?'Needs both opening & closing balances to check':(ok?'The report matches the bank balance':'Expected closing '+fmt(expected)+' — check for unrecorded transactions'))+'</div></div>';
   }
-  const chipOK='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#ddf3e9;color:#1f8a61;white-space:nowrap">✓ Sesuai</span>';
-  const chipDiff='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#fde3e9;color:#c73e57;white-space:nowrap">⚠ Selisih</span>';
+  const chipOK='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#ddf3e9;color:#1f8a61;white-space:nowrap">✓ Matches</span>';
+  const chipDiff='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#fde3e9;color:#c73e57;white-space:nowrap">⚠ Mismatch</span>';
   const chipNone='<span style="display:inline-block;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;background:#eef0fe;color:#4550d8;white-space:nowrap">no balance yet</span>';
   const td='padding:9px 10px;vertical-align:middle';
   let rows='', tOpen=0,tClose=0,tMove=0,tHave=0;
@@ -3233,7 +3233,7 @@ function renderBalances(){
       +'<td style="'+td+'">'+(diff==null?chipNone:(ok?chipOK:chipDiff))+'</td></tr>';
   });
   if(!rows){
-    tb.innerHTML='<tr><td colspan="7" style="padding:14px 10px;color:#333b4d;font-size:12.5px">Belum ada saldo untuk periode ini — isi <b>Saldo awal</b> dan <b>Saldo akhir</b> lewat tombol <b>✎ Update data</b> (pilih PT &amp; bulan), lalu dashboard akan otomatis mengecek apakah laporan sudah sesuai.</td></tr>';
+    tb.innerHTML='<tr><td colspan="7" style="padding:14px 10px;color:#333b4d;font-size:12.5px">No balances for this period yet — enter the <b>opening</b> and <b>closing balance</b> via <b>✎ Update data</b> (pick the PT &amp; month) and the dashboard will automatically check whether the report reconciles.</td></tr>';
     return;
   }
   if(tHave>1){
@@ -3694,7 +3694,7 @@ async function rpcReview(id,decision,note){
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
 }
 /* ── Supporting documents (rekap bank, rekening koran, voucher payments) ── */
-const DT_LBL={rekap_bank:'Rekap bank',rekening_koran:'Rekening koran',voucher:'Voucher payment',other:'Document'};
+const DT_LBL={rekap_bank:'Bank recap',rekening_koran:'Bank statement',voucher:'Payment voucher',other:'Document'};
 let EN_FILES=[];
 const subDocUrl=path=>SB_URL+'/storage/v1/object/submission-docs/'+path.split('/').map(encodeURIComponent).join('/');
 async function uploadSubDoc(f,dt){
@@ -3723,7 +3723,7 @@ async function openEntryPanel(){
   wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(20,27,45,.45);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Plus Jakarta Sans,system-ui,sans-serif';
   wrap.innerHTML='<div style="background:#fff;color:#141b2d;max-width:760px;width:100%;border-radius:12px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:18px;color:#141b2d">Update data</div><button id="mag-entry-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
-    +'<div style="font-size:12.5px;color:#2e3547;margin-bottom:18px;line-height:1.5">Pick your PT and month, attach the documents (rekap bank, rekening koran, voucher payments) and save — that\'s it. Amounts are optional; if you add them, they apply to the consolidated numbers immediately. Everything is logged below.</div>'
+    +'<div style="font-size:12.5px;color:#2e3547;margin-bottom:18px;line-height:1.5">Pick your PT and month, attach the documents (bank recap, bank statement, payment vouchers) and save — that\'s it. Amounts are optional; if you add them, they apply to the consolidated numbers immediately. Everything is logged below.</div>'
     +'<div id="mag-entry-body">Loading…</div></div>';
   document.body.appendChild(wrap);
   document.getElementById('mag-entry-x').onclick=closeEntry;
@@ -3775,12 +3775,12 @@ async function renderEntryBody(){
     +'<input id="en-pcode" placeholder="Code, e.g. JUL" maxlength="12" style="'+inp+';text-transform:uppercase">'
     +'<input id="en-plabel" placeholder="Label, e.g. July 2026" style="'+inp+'"></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
-    +'<input id="en-open" inputmode="numeric" placeholder="Saldo awal — opening balance (IDR, optional)" style="'+inp+'">'
-    +'<input id="en-close" inputmode="numeric" placeholder="Saldo akhir — closing balance (IDR, optional)" style="'+inp+'"></div>'
+    +'<input id="en-open" inputmode="numeric" placeholder="Opening balance (IDR, optional)" style="'+inp+'">'
+    +'<input id="en-close" inputmode="numeric" placeholder="Closing balance (IDR, optional)" style="'+inp+'"></div>'
     +'<div style="border:1px dashed #c8cdf9;background:#f7f8fd;border-radius:14px;padding:12px 14px;margin-bottom:10px">'
-      +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px">📎 Documents <span style="font-weight:500;color:#3a4254">— rekap bank, rekening koran, voucher payment (PDF/photo/Excel, max 10 MB each)</span></div>'
+      +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px">📎 Documents <span style="font-weight:500;color:#3a4254">— bank recap, bank statement, payment vouchers (PDF/photo/Excel, max 10 MB each)</span></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-      +'<select id="en-dtype" style="'+inp+';flex:0 1 auto"><option value="rekap_bank">Rekap bank</option><option value="rekening_koran">Rekening koran</option><option value="voucher">Voucher payment</option><option value="other">Other document</option></select>'
+      +'<select id="en-dtype" style="'+inp+';flex:0 1 auto"><option value="rekap_bank">Bank recap</option><option value="rekening_koran">Bank statement (rekening koran)</option><option value="voucher">Payment voucher</option><option value="other">Other document</option></select>'
       +'<label for="en-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Add files</label>'
       +'<input id="en-file" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.xls,.xlsx,.csv" style="display:none">'
       +'</div><div id="en-files" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px"></div></div>'
@@ -3871,7 +3871,7 @@ async function renderEntryBody(){
       if(!label) return setMsg('en-msg','Add a short description for the amount.');
       if(!amt) return setMsg('en-msg','Enter the amount in IDR (digits only), or remove the amount section to save documents only.');
     }else{
-      if(!EN_FILES.length) return setMsg('en-msg','Attach at least one document (rekap bank, rekening koran or voucher).');
+      if(!EN_FILES.length) return setMsg('en-msg','Attach at least one document (bank recap, bank statement or payment voucher).');
       flow='docs'; category='Documents'; amt=0;
       const counts={}; EN_FILES.forEach(x=>{counts[x.dt]=(counts[x.dt]||0)+1;});
       label=Object.entries(counts).map(([k,n])=>DT_LBL[k]+(n>1?' ×'+n:'')).join(', ').slice(0,200)||'Documents';
