@@ -156,21 +156,62 @@ footer::before{content:"";display:block;width:56px;height:4px;margin:0 auto 16px
   background:linear-gradient(90deg,#5b67f1,#8d7bf0,#f27a9d)}
 .clickable{cursor:pointer;transition:transform .18s,box-shadow .2s,border-color .2s}
 .clickable:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:#d4d9fb}
-.reco-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:20px}
-.reco{background:var(--card);border:var(--border);border-left:4px solid #c5cbdb;border-radius:16px;box-shadow:var(--shadow-sm);
-  padding:16px 18px 15px;display:flex;gap:13px;align-items:flex-start}
-.reco .ric{width:36px;height:36px;flex:none;border-radius:11px;display:grid;place-items:center}
-.reco .ric svg{width:18px;height:18px}
-.reco h4{font-size:13.5px;font-weight:800;color:var(--blue-900);letter-spacing:-.2px;margin-bottom:4px;line-height:1.35}
-.reco .rtag{display:inline-block;vertical-align:1px;margin-left:8px;font-size:9.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
-  padding:2.5px 8px;border-radius:20px}
-.reco p{font-size:12px;color:#262e3f;line-height:1.62}
-.reco p b{color:var(--blue-900);font-variant-numeric:tabular-nums}
-.reco.crit{border-left-color:#e05b6d}.reco.crit .ric{background:#fde3e9;color:#c73e57}.reco.crit .rtag{background:#fde3e9;color:#c73e57}
-.reco.warn{border-left-color:#e09a3a}.reco.warn .ric{background:#fdeed6;color:#a86a1a}.reco.warn .rtag{background:#fdeed6;color:#a86a1a}
-.reco.info{border-left-color:#5b67f1}.reco.info .ric{background:var(--blue-50);color:#4550d8}.reco.info .rtag{background:var(--blue-50);color:#4550d8}
-.reco.good{border-left-color:#34a87c}.reco.good .ric{background:#ddf3e9;color:#1f8a61}.reco.good .rtag{background:#ddf3e9;color:#1f8a61}
+.reco-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:20px}
+.reco{position:relative;overflow:hidden;background:var(--card);border:var(--border);border-radius:18px;box-shadow:var(--shadow-sm);
+  padding:18px 20px 17px 25px;transition:transform .18s ease,box-shadow .18s ease}
+.reco::before{content:'';position:absolute;top:0;left:0;bottom:0;width:6px}
+.reco::after{content:'';position:absolute;right:-46px;top:-46px;width:160px;height:160px;border-radius:50%;pointer-events:none}
+.reco:hover{transform:translateY(-3px);box-shadow:0 18px 38px -16px rgba(20,27,45,.22),0 3px 10px -4px rgba(20,27,45,.08)}
+.reco-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;position:relative;z-index:1}
+.reco .ric{width:42px;height:42px;flex:none;border-radius:13px;display:grid;place-items:center;color:#fff}
+.reco .ric svg{width:21px;height:21px}
+.reco h4{font-size:15px;font-weight:800;color:var(--blue-900);letter-spacing:-.25px;margin-bottom:6px;line-height:1.4;position:relative;z-index:1}
+.reco .rtag{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;
+  padding:4px 11px;border-radius:20px;color:#fff}
+.reco .rtag::before{content:'';width:6px;height:6px;border-radius:50%;background:#fff;opacity:.85}
+.reco p{font-size:12.5px;color:#333b4d;line-height:1.68;position:relative;z-index:1}
+.reco p b{font-variant-numeric:tabular-nums;font-size:13px}
+.reco.crit{background:linear-gradient(150deg,#fff2f5 0%,#fff 55%)}
+.reco.crit::before{background:linear-gradient(180deg,#f27a9d,#c73e57)}
+.reco.crit::after{background:radial-gradient(circle,rgba(242,122,157,.16) 0%,transparent 70%)}
+.reco.crit .ric{background:linear-gradient(135deg,#f27a9d,#d14a66);box-shadow:0 8px 16px -7px rgba(199,62,87,.6)}
+.reco.crit .rtag{background:#c73e57}.reco.crit p b{color:#c73e57}
+.reco.warn{background:linear-gradient(150deg,#fdf6ea 0%,#fff 55%)}
+.reco.warn::before{background:linear-gradient(180deg,#f0b45e,#d98a24)}
+.reco.warn::after{background:radial-gradient(circle,rgba(224,154,58,.15) 0%,transparent 70%)}
+.reco.warn .ric{background:linear-gradient(135deg,#f0b45e,#d98a24);box-shadow:0 8px 16px -7px rgba(168,106,26,.55)}
+.reco.warn .rtag{background:#c07a1c}.reco.warn p b{color:#a86a1a}
+.reco.info{background:linear-gradient(150deg,#f1f2fe 0%,#fff 55%)}
+.reco.info::before{background:linear-gradient(180deg,#8d96f5,#4550d8)}
+.reco.info::after{background:radial-gradient(circle,rgba(91,103,241,.13) 0%,transparent 70%)}
+.reco.info .ric{background:linear-gradient(135deg,#8d96f5,#5058dd);box-shadow:0 8px 16px -7px rgba(69,80,216,.55)}
+.reco.info .rtag{background:#4f59da}.reco.info p b{color:#4550d8}
+.reco.good{background:linear-gradient(150deg,#edf9f3 0%,#fff 55%)}
+.reco.good::before{background:linear-gradient(180deg,#5cc79d,#1f8a61)}
+.reco.good::after{background:radial-gradient(circle,rgba(52,168,124,.14) 0%,transparent 70%)}
+.reco.good .ric{background:linear-gradient(135deg,#5cc79d,#27946c);box-shadow:0 8px 16px -7px rgba(31,138,97,.55)}
+.reco.good .rtag{background:#1f8a61}.reco.good p b{color:#1f8a61}
 @media(max-width:980px){.reco-grid{grid-template-columns:1fr}}
+/* balance-reconciliation KPI cards */
+.pcard.bal{position:relative;overflow:hidden;border-top:none;padding-top:23px}
+.pcard.bal::before{content:'';position:absolute;top:0;left:0;right:0;height:5px}
+.pcard.bal .bic{position:absolute;top:18px;right:16px;width:40px;height:40px;border-radius:13px;display:grid;place-items:center;font-size:19px}
+.pcard.bal .lab{padding-right:50px}
+.pcard.bal .big{margin-top:8px}
+.pcard.bal.b-open::before{background:linear-gradient(90deg,#8d96f5,#4550d8)}
+.pcard.bal.b-open .bic{background:var(--blue-50)}
+.pcard.bal.b-move::before{background:linear-gradient(90deg,#f0b45e,#d98a24)}
+.pcard.bal.b-move .bic{background:#fdeed6}
+.pcard.bal.b-close::before{background:linear-gradient(90deg,#141b2d,#3a4358)}
+.pcard.bal.b-close .bic{background:#e9ebf2}
+.pcard.bal.b-ok{background:linear-gradient(160deg,#edf9f3 0%,#fff 60%)}
+.pcard.bal.b-ok::before{background:linear-gradient(90deg,#5cc79d,#1f8a61)}
+.pcard.bal.b-ok .bic{background:#ddf3e9}
+.pcard.bal.b-bad{background:linear-gradient(160deg,#fff2f5 0%,#fff 60%)}
+.pcard.bal.b-bad::before{background:linear-gradient(90deg,#f27a9d,#c73e57)}
+.pcard.bal.b-bad .bic{background:#fde3e9}
+.pcard.bal.b-none::before{background:linear-gradient(90deg,#c5cbdb,#9aa2b8)}
+.pcard.bal.b-none .bic{background:#eef0f5;filter:grayscale(.4);opacity:.75}
 a{color:#4550d8}
 :focus-visible{outline:2px solid #5b67f1;outline-offset:2px}
 @media(max-width:980px){.kpi4,.kpi5,.cols-eq{grid-template-columns:1fr}.wrap{padding:0 14px 40px}.toolbar{position:static}}
@@ -3164,10 +3205,10 @@ function renderRecos(a){
   R.sort((x,y)=>order[x.sev]-order[y.sev]);
   const out=R.slice(0,6);
   el.innerHTML = out.length ? out.map(r=>
-    '<div class="reco '+r.sev+'"><div class="ric">'+RECO_ICONS[r.sev]+'</div><div>'
-    +'<h4>'+r.title+'<span class="rtag">'+RECO_TAGS[r.sev]+'</span></h4>'
-    +'<p>'+r.body+'</p></div></div>').join('')
-    : '<div class="reco info"><div class="ric">'+RECO_ICONS.info+'</div><div><h4>No pressing issues for this view<span class="rtag">Review</span></h4><p>Figures for this scope and period look balanced. Switch scope or month to check other entities.</p></div></div>';
+    '<div class="reco '+r.sev+'"><div class="reco-top"><div class="ric">'+RECO_ICONS[r.sev]+'</div><span class="rtag">'+RECO_TAGS[r.sev]+'</span></div>'
+    +'<h4>'+r.title+'</h4>'
+    +'<p>'+r.body+'</p></div>').join('')
+    : '<div class="reco good"><div class="reco-top"><div class="ric">'+RECO_ICONS.good+'</div><span class="rtag">On track</span></div><h4>No pressing issues for this view</h4><p>Figures for this scope and period look balanced. Switch scope or month to check other entities.</p></div>';
 }
 
 // ─── BALANCE RECONCILIATION (saldo awal / saldo akhir vs reported movement) ──
@@ -3198,16 +3239,16 @@ function renderBalances(){
     const ok=diff!=null&&Math.abs(diff)<=1;
     const cov=(n)=>n===ids.length?'all '+ids.length+' PTs in scope':n+' of '+ids.length+' PTs (the rest not filled in yet)';
     kp.innerHTML=
-      '<div class="pcard blue-hl"><div class="lab">Opening Balance — '+escH(MONTHS[MONTH]||MONTH)+'</div>'
+      '<div class="pcard bal '+(nOpen?'b-open':'b-none')+'"><div class="bic">🏦</div><div class="lab">Opening Balance — '+escH(MONTHS[MONTH]||MONTH)+'</div>'
         +'<div class="big">'+(nOpen?fmt(sOpen):'—')+'</div>'
         +'<div class="meta">'+(nOpen?'Total opening balance · '+cov(nOpen):'No opening balance yet — add it via ✎ Update data')+'</div></div>'
-      +'<div class="pcard blue-hl"><div class="lab">Net Movement (per report)</div>'
+      +'<div class="pcard bal '+(nOpen?'b-move':'b-none')+'"><div class="bic">'+(sMoveOpen>=0?'📈':'📉')+'</div><div class="lab">Net Movement (per report)</div>'
         +'<div class="big '+(sMoveOpen>=0?'pos':'neg')+'">'+(nOpen?((sMoveOpen>=0?'+':'−')+fmt(Math.abs(sMoveOpen))):'—')+'</div>'
         +'<div class="meta">Revenue − expenses + financing in − out'+(nOpen?' · PTs with an opening balance':'')+'</div></div>'
-      +'<div class="pcard '+(nClose?'amber-hl':'blue-hl')+'"><div class="lab">Closing Balance (reported)</div>'
+      +'<div class="pcard bal '+(nClose?'b-close':'b-none')+'"><div class="bic">🧾</div><div class="lab">Closing Balance (reported)</div>'
         +'<div class="big">'+(nClose?fmt(sClose):'—')+'</div>'
         +'<div class="meta">'+(nClose?'Total closing balance · '+cov(nClose):'No closing balance yet — add it via ✎ Update data')+'</div></div>'
-      +'<div class="pcard '+(diff==null?'blue-hl':(ok?'green-hl':'red-hl'))+'"><div class="lab">Difference vs Expected</div>'
+      +'<div class="pcard bal '+(diff==null?'b-none':(ok?'b-ok':'b-bad'))+'"><div class="bic">'+(diff==null?'⏳':(ok?'✅':'⚠️'))+'</div><div class="lab">Difference vs Expected</div>'
         +'<div class="big '+(diff==null?'':(ok?'pos':'neg'))+'">'+(diff==null?'—':(ok?'0 ✓':((diff>=0?'+':'−')+fmt(Math.abs(diff)))))+'</div>'
         +'<div class="meta">'+(diff==null?'Needs both opening & closing balances to check':(ok?'The report matches the bank balance':'Expected closing '+fmt(expected)+' — check for unrecorded transactions'))+'</div></div>';
   }
