@@ -245,6 +245,7 @@ a{color:#4550d8}
       <option value="MAY">May 2026</option>
       <option value="JUN">June 2026</option>
       <option value="Q2" selected>April – 22 June 2026 (YTD)</option>
+      <option value="__custom">🗓 Custom range…</option>
     </select>
   </div>
   <div class="fl">
@@ -600,6 +601,8 @@ const canon = k => CANON[k] || k;
 let MONTH='Q2';
 const MONTHS={APR:'April 2026',MAY:'May 2026',JUN:'June 2026',Q2:'April – 22 June 2026 (YTD)'};
 const Q2_MONTHS=['APR','MAY','JUN'];
+let CUSTOM_MONTHS=[];   // months covered by the user-picked "Custom range"
+function activeMonths(){ return MONTH==='Q2'?Q2_MONTHS:(MONTH==='CUSTOM'?CUSTOM_MONTHS:[MONTH]); }
 const ICG_IDS=['icgg','icalam','ics','icdev','icbm','ichp'];
 // Per-month figures for entities with multi-month data.
 // ics (Magnum Sanur) now carries Apr/Jun from the ICS Cash-In/Cash-Out dashboard (May = raw ENT.ics).
@@ -648,9 +651,9 @@ function effMonth(id,mo){
 }
 // effective figures for the ACTIVE period (single month, or YTD = sum of Apr+May+Jun)
 function eff(id){
-  if(MONTH==='Q2'){
+  if(MONTH==='Q2'||MONTH==='CUSTOM'){
     let any=false;const a={rev:0,opex:0,finIn:0,finOut:0};
-    Q2_MONTHS.forEach(mo=>{const m=effMonth(id,mo);if(m){any=true;a.rev+=m.rev;a.opex+=m.opex;a.finIn+=m.finIn;a.finOut+=m.finOut;}});
+    activeMonths().forEach(mo=>{const m=effMonth(id,mo);if(m){any=true;a.rev+=m.rev;a.opex+=m.opex;a.finIn+=m.finIn;a.finOut+=m.finOut;}});
     return any?a:null;
   }
   return effMonth(id,MONTH);
@@ -2635,10 +2638,11 @@ function agg(){
   });};
   if(MONTH==='MAY'){
     ids.forEach(addRaw);
-  } else if(MONTH==='Q2'){
+  } else if(MONTH==='Q2'||MONTH==='CUSTOM'){
+    const span=activeMonths();
     // May portion: raw ENT labels for every in-scope entity that has May data
-    ids.forEach(id=>{ if(effMonth(id,'MAY')!==null) addRaw(id); });
-    addTX('APR'); addTX('JUN');
+    if(span.includes('MAY')) ids.forEach(id=>{ if(effMonth(id,'MAY')!==null) addRaw(id); });
+    span.filter(mo=>mo!=='MAY').forEach(addTX);
   } else {
     addTX(MONTH);
   }
@@ -2647,7 +2651,7 @@ function agg(){
   // breakdown. Add the un-itemised remainder as a labelled summary line per direction so the
   // breakdown TOTAL always equals the headline a.rev / a.opex.
   (function reconcileBD(){
-    const months = MONTH==='Q2' ? Q2_MONTHS : [MONTH];
+    const months = activeMonths();
     let txRev=0, txOpex=0, rawRev=0, rawOpex=0;
     // recompute what the breakdown already captured
     Object.values(a.revBD).forEach(v=>{}); // no-op; we recompute from sources below
@@ -2685,10 +2689,11 @@ function setScope(v){
   renderAll();
 }
 function setMonth(m){
+  if(m==='__custom'){ openCustomRange(); return; }
   MONTH=m;
   // In YTD (Q2) every entity has at least its May data, so all scopes remain valid.
   // For single-month Apr/Jun only ICG + BBU + Magnum/Sky carry data — auto-scope if needed.
-  if(MONTH!=='MAY' && MONTH!=='Q2' && EF==='all'){
+  if(MONTH!=='MAY' && MONTH!=='Q2' && MONTH!=='CUSTOM' && EF==='all'){
     if(GF!=='all' && !EIDS.some(id=>inG(id,GF)&&hasMonth(id))){
       GF='all'; document.getElementById('scopeSel').value='all';
     }
@@ -2703,6 +2708,49 @@ function pickEntity(id){
   if(EF===id){EF='all';GF='all';document.getElementById('scopeSel').value='all';}
   else {EF=id;GF=ENT[id].grp;document.getElementById('scopeSel').value='e:'+id;}
   renderAll();
+}
+/* ── Custom month-range picker for the Period dropdown ── */
+function monthShort(code){ return (MONTHS[code]||code).replace(/\s*\(.*$/,''); }
+function openCustomRange(){
+  const sel=document.getElementById('monthSel');
+  const prev = MONTH==='CUSTOM' ? 'CUSTOM' : MONTH;
+  const codes=Q2_MONTHS.slice();
+  const old=document.getElementById('mag-range'); if(old) old.remove();
+  const wrap=document.createElement('div'); wrap.id='mag-range';
+  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(20,27,45,.45);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Plus Jakarta Sans,system-ui,sans-serif';
+  const inp='padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px;background:#fff;width:100%;box-sizing:border-box';
+  const opts=cur=>codes.map(c=>'<option value="'+c+'"'+(c===cur?' selected':'')+'>'+monthShort(c)+'</option>').join('');
+  wrap.innerHTML='<div style="background:#fff;color:#141b2d;max-width:380px;width:100%;border-radius:14px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:22px 24px">'
+    +'<div style="font-weight:700;font-size:16px;margin-bottom:4px">Custom period</div>'
+    +'<div style="font-size:12.5px;color:#3a4254;margin-bottom:14px">Pick the months to include — the dashboard sums everything from the first to the last month.</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">'
+    +'<div><div style="font-size:10.5px;font-weight:700;color:#3a4254;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">From</div><select id="cr-from" style="'+inp+'">'+opts(codes[0])+'</select></div>'
+    +'<div><div style="font-size:10.5px;font-weight:700;color:#3a4254;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">To</div><select id="cr-to" style="'+inp+'">'+opts(codes[codes.length-1])+'</select></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end"><button id="cr-cancel" style="border:1px solid #e4e7ef;background:#fff;border-radius:12px;padding:9px 16px;font-size:13px;cursor:pointer">Cancel</button>'
+    +'<button id="cr-apply" style="border:0;background:#5b67f1;color:#fff;border-radius:12px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer">Show this period</button></div></div>';
+  document.body.appendChild(wrap);
+  const close=()=>{ wrap.remove(); if(sel) sel.value = prev; };
+  document.getElementById('cr-cancel').onclick=close;
+  wrap.addEventListener('click',e=>{if(e.target===wrap)close();});
+  document.getElementById('cr-apply').onclick=()=>{
+    let i1=codes.indexOf(document.getElementById('cr-from').value);
+    let i2=codes.indexOf(document.getElementById('cr-to').value);
+    if(i1>i2){ const t=i1; i1=i2; i2=t; }
+    const span=codes.slice(i1,i2+1);
+    wrap.remove();
+    if(span.length===1){ if(sel) sel.value=span[0]; setMonth(span[0]); return; }
+    CUSTOM_MONTHS=span;
+    MONTHS['CUSTOM']=monthShort(span[0]).replace(/\s*2026$/,'')+' – '+monthShort(span[span.length-1]);
+    LOANS_BY_MONTH['CUSTOM']=span.reduce((a,mo)=>a.concat(LOANS_BY_MONTH[mo]||[]),[]);
+    if(sel){
+      let o=sel.querySelector('option[value="CUSTOM"]');
+      if(!o){ o=document.createElement('option'); o.value='CUSTOM'; sel.insertBefore(o, sel.querySelector('option[value="__custom"]')); }
+      o.textContent='🗓 '+MONTHS['CUSTOM'];
+      sel.value='CUSTOM';
+    }
+    setMonth('CUSTOM');
+  };
 }
 
 // ─── RENDERERS ───────────────────────────────────────────────────────────────
@@ -3064,15 +3112,16 @@ function openBDItem(type,encKey){
     ids.forEach(id=>{
       const ents=Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key);
       if(ents.length){const v=ents.reduce((s,e2)=>s+e2[1],0);byEnt[id]=v;byEntLbl[id]=ents.map(e2=>e2[0]).join(' · ');}});
-  } else if(MONTH==='Q2'){
-    // Q2 — mirror the breakdown aggregation exactly:
+  } else if(MONTH==='Q2'||MONTH==='CUSTOM'){
+    // Multi-month — mirror the breakdown aggregation exactly:
     //   May portion = raw ENT category labels for every in-scope entity that has May data
-    //   Apr + Jun   = transaction detail (TX)
-    ids.forEach(id=>{
+    //   other months = transaction detail (TX)
+    const span=activeMonths();
+    if(span.includes('MAY')) ids.forEach(id=>{
       if(effMonth(id,'MAY')===null) return; // entity has no May data
       Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key).forEach(([k0,v])=>{byEnt[id]=(byEnt[id]||0)+v;});
     });
-    TX.filter(x=>(x.mo==='APR'||x.mo==='JUN')&&x.type===type&&canon(x.k)===key&&ids.includes(x.e)).forEach(x=>{byEnt[x.e]=(byEnt[x.e]||0)+x.amt;});
+    TX.filter(x=>{const mo=x.mo||'MAY';return mo!=='MAY'&&span.includes(mo)&&x.type===type&&canon(x.k)===key&&ids.includes(x.e);}).forEach(x=>{byEnt[x.e]=(byEnt[x.e]||0)+x.amt;});
   } else {
     // Apr/Jun: aggregate from transaction detail
     TX.filter(x=>(x.mo||'MAY')===MONTH&&x.type===type&&canon(x.k)===key&&ids.includes(x.e)).forEach(x=>{byEnt[x.e]=(byEnt[x.e]||0)+x.amt;});
@@ -3083,7 +3132,7 @@ function openBDItem(type,encKey){
   t+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">By Entity${MONTH==='MAY'?' <span style="font-weight:400;color:var(--muted);font-size:11px">(original report labels shown below each entity)</span>':''}</h4>`;
   h+= any?t:`<p style="color:var(--muted);font-size:13px">No entities with this item in scope.</p>`;
-  const tx=TX.filter(x=>(MONTH==='Q2'?true:(x.mo||'MAY')===MONTH)&&ids.includes(x.e)&&x.type===type&&canon(x.k)===key);
+  const tx=TX.filter(x=>activeMonths().includes(x.mo||'MAY')&&ids.includes(x.e)&&x.type===type&&canon(x.k)===key);
   // Per-entity residual: By-Entity total minus the itemized TX rows shown. The gap (e.g. an entity whose
   // May figure comes from category totals rather than per-transaction detail) is shown as a summary row so
   // the Transaction Detail TOTAL always reconciles to the By-Entity TOTAL.
@@ -3199,10 +3248,11 @@ function renderRecos(a){
 // ─── BALANCE RECONCILIATION (saldo awal / saldo akhir vs reported movement) ──
 function balFor(id){
   const per=(typeof BAL!=='undefined'&&BAL[id])||{};
-  if(MONTH!=='Q2'){ const b=per[MONTH]||{}; return {open:b.open??null, close:b.close??null}; }
+  const span=activeMonths();
+  if(span.length===1){ const b=per[span[0]]||{}; return {open:b.open??null, close:b.close??null}; }
   let open=null, close=null;
-  for(const m of Q2_MONTHS){ const b=per[m]; if(b&&b.open!=null){ open=b.open; break; } }
-  for(let i=Q2_MONTHS.length-1;i>=0;i--){ const b=per[Q2_MONTHS[i]]; if(b&&b.close!=null){ close=b.close; break; } }
+  for(const m of span){ const b=per[m]; if(b&&b.open!=null){ open=b.open; break; } }
+  for(let i=span.length-1;i>=0;i--){ const b=per[span[i]]; if(b&&b.close!=null){ close=b.close; break; } }
   return {open,close};
 }
 function renderBalances(){
