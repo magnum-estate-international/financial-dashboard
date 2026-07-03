@@ -3323,15 +3323,35 @@ function signOut(){ clearSess(); location.reload(); }
 /* ── Data fetch (authenticated) ───────────────────────────────────────── */
 let SESSION=null;
 function authHeaders(){ return {apikey:SB_KEY, Authorization:'Bearer '+(SESSION?SESSION.access_token:SB_KEY)}; }
+/* Keep the session token fresh: refresh proactively near expiry, and retry once on 401.
+   Without this, a dashboard left open >1h gets "Not authenticated" in the admin/update panels. */
+let REFRESHING=null;
+async function ensureFreshSession(){
+  if(!SESSION||!SESSION.refresh_token) return;
+  if(SESSION.expires_at && SESSION.expires_at > Date.now()+60000) return;
+  REFRESHING = REFRESHING || refreshSess(SESSION).then(s=>{SESSION=s;setSess(s);}).finally(()=>{REFRESHING=null;});
+  try{ await REFRESHING; }catch(e){}
+}
+async function authedFetch(url,opts){
+  opts=opts||{};
+  await ensureFreshSession();
+  const send=()=>fetch(url,{...opts,headers:{...(opts.headers||{}),...authHeaders()}});
+  let r=await send();
+  if(r.status===401 && SESSION && SESSION.refresh_token){
+    try{ SESSION=await refreshSess(SESSION); setSess(SESSION); }catch(e){ return r; }
+    r=await send();
+  }
+  return r;
+}
 async function sbFetch(p){
-  const r=await fetch(SB_URL+'/rest/v1/'+p,{headers:authHeaders()});
+  const r=await authedFetch(SB_URL+'/rest/v1/'+p);
   if(!r.ok) throw new Error('Supabase '+p+' -> '+r.status);
   return r.json();
 }
 async function sbFetchAll(base){
   let out=[],from=0,page=1000;
   for(;;){
-    const r=await fetch(SB_URL+'/rest/v1/'+base,{headers:{...authHeaders(),'Range':from+'-'+(from+page-1),'Range-Unit':'items'}});
+    const r=await authedFetch(SB_URL+'/rest/v1/'+base,{headers:{'Range':from+'-'+(from+page-1),'Range-Unit':'items'}});
     if(!r.ok) throw new Error('Supabase '+base+' -> '+r.status);
     const c=await r.json(); out=out.concat(c); if(c.length<page) break; from+=page;
   }
@@ -3432,7 +3452,7 @@ function loginShell(inner){
     +'<div style="font-size:13px;color:#2e3547;margin-bottom:22px">Sign in with your company email</div>'+inner+'</div></div>';
 }
 async function adminFn(action,payload){
-  const r=await fetch(SB_URL+'/functions/v1/admin-users',{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+(SESSION?SESSION.access_token:''),'Content-Type':'application/json'},body:JSON.stringify({action,...(payload||{})})});
+  const r=await authedFetch(SB_URL+'/functions/v1/admin-users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...(payload||{})})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
   return d;
@@ -3512,7 +3532,7 @@ function showUserBar(){
 }
 async function refreshPendingBadge(){
   try{
-    const r=await fetch(SB_URL+'/rest/v1/entry_submissions?select=id&status=eq.pending',{headers:{...authHeaders(),'Prefer':'count=exact','Range':'0-0','Range-Unit':'items'}});
+    const r=await authedFetch(SB_URL+'/rest/v1/entry_submissions?select=id&status=eq.pending',{headers:{'Prefer':'count=exact','Range':'0-0','Range-Unit':'items'}});
     const n=parseInt((r.headers.get('content-range')||'/0').split('/')[1],10)||0;
     const eb=document.getElementById('mag-entry-open');
     if(eb) eb.textContent = n>0 ? ('✎ Update data ('+n+' pending)') : '✎ Update data';
@@ -3520,11 +3540,11 @@ async function refreshPendingBadge(){
 }
 /* ── Admin panel (visible to admins only) ─────────────────────────────── */
 async function adminAdd(path,body){
-  const r=await fetch(SB_URL+'/rest/v1/'+path,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'return=minimal,resolution=merge-duplicates'},body:JSON.stringify(body)});
+  const r=await authedFetch(SB_URL+'/rest/v1/'+path,{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=minimal,resolution=merge-duplicates'},body:JSON.stringify(body)});
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
 }
 async function adminDel(path){
-  const r=await fetch(SB_URL+'/rest/v1/'+path,{method:'DELETE',headers:{...authHeaders(),'Prefer':'return=minimal'}});
+  const r=await authedFetch(SB_URL+'/rest/v1/'+path,{method:'DELETE',headers:{'Prefer':'return=minimal'}});
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
 }
 function closeAdmin(){ const m=document.getElementById('mag-admin'); if(m) m.remove(); }
@@ -3542,7 +3562,7 @@ async function openAdminPanel(){
   await renderAdminBody();
 }
 async function adminAddBatch(path, arr){
-  const r=await fetch(SB_URL+'/rest/v1/'+path,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(arr)});
+  const r=await authedFetch(SB_URL+'/rest/v1/'+path,{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(arr)});
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
 }
 function buildAccessEditor(container, groups, entsByGroup, initGroups, initEnts){
@@ -3674,7 +3694,7 @@ async function renderAdminBody(){
         await applyAccess(email, getCreateSel(), [], []);
         const role=document.getElementById('cu-role').value;
         if(role==='editor'){
-          const rr=await fetch(SB_URL+'/rest/v1/user_roles',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({email:email,role:'editor'})});
+          const rr=await authedFetch(SB_URL+'/rest/v1/user_roles',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({email:email,role:'editor'})});
           if(!rr.ok) throw new Error((await rr.text())||('HTTP '+rr.status));
         }
       }
@@ -3695,7 +3715,7 @@ async function renderAdminBody(){
     const em=decodeURIComponent(sel.dataset.e);
     sel.disabled=true;
     try{
-      const r=await fetch(SB_URL+'/rest/v1/user_roles',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({email:em,role:sel.value,updated_at:new Date().toISOString()})});
+      const r=await authedFetch(SB_URL+'/rest/v1/user_roles',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({email:em,role:sel.value,updated_at:new Date().toISOString()})});
       if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
       setMsg('um-msg','✅ '+em+' is now '+(sel.value==='editor'?'an Editor (changes apply immediately)':'a Viewer (read-only)'),true);
     }catch(e){ setMsg('um-msg','Failed: '+e.message); }
@@ -3715,7 +3735,7 @@ function closeEntry(){
   if(ENTRY_DIRTY){ ENTRY_DIRTY=false; location.reload(); }
 }
 async function rpcReview(id,decision,note){
-  const r=await fetch(SB_URL+'/rest/v1/rpc/review_submission',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({sub_id:id,decision:decision,rnote:note||null})});
+  const r=await authedFetch(SB_URL+'/rest/v1/rpc/review_submission',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sub_id:id,decision:decision,rnote:note||null})});
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
 }
 /* ── Supporting documents (rekap bank, rekening koran, voucher payments) ── */
@@ -3725,13 +3745,13 @@ const subDocUrl=path=>SB_URL+'/storage/v1/object/submission-docs/'+path.split('/
 async function uploadSubDoc(f,dt){
   const safe=f.name.replace(/[^A-Za-z0-9._-]+/g,'_').slice(-80);
   const path=MY_EMAIL+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+safe;
-  const r=await fetch(subDocUrl(path),{method:'POST',headers:{...authHeaders(),'Content-Type':f.type||'application/octet-stream','x-upsert':'false'},body:f});
+  const r=await authedFetch(subDocUrl(path),{method:'POST',headers:{'Content-Type':f.type||'application/octet-stream','x-upsert':'false'},body:f});
   if(!r.ok){ const t=await r.text().catch(()=>''); throw new Error('Upload failed for '+f.name+(t?': '+t:'')); }
   return {path:path,name:f.name,doc_type:dt,mime:f.type||'',size:f.size};
 }
 async function openSubDoc(path){
-  const r=await fetch(SB_URL+'/storage/v1/object/sign/submission-docs/'+path.split('/').map(encodeURIComponent).join('/'),
-    {method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({expiresIn:3600})});
+  const r=await authedFetch(SB_URL+'/storage/v1/object/sign/submission-docs/'+path.split('/').map(encodeURIComponent).join('/'),
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expiresIn:3600})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok||!d.signedURL) throw new Error(d.error||d.message||'Could not open document');
   window.open(SB_URL+'/storage/v1'+d.signedURL,'_blank');
@@ -3926,7 +3946,7 @@ async function renderEntryBody(){
         const bp={entity_code:entity,period_code:pcode,updated_by:MY_EMAIL,updated_at:new Date().toISOString(),
           opening_idr: openRaw!==''?Number(openRaw):(prev.open!=null?prev.open:null),
           closing_idr: closeRaw!==''?Number(closeRaw):(prev.close!=null?prev.close:null)};
-        const rb=await fetch(SB_URL+'/rest/v1/entity_period_balances',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(bp)});
+        const rb=await authedFetch(SB_URL+'/rest/v1/entity_period_balances',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(bp)});
         if(!rb.ok) throw new Error((await rb.text())||('HTTP '+rb.status));
         (BAL[entity]=BAL[entity]||{})[pcode]={open:bp.opening_idr,close:bp.closing_idr};
         ENTRY_DIRTY=true;
