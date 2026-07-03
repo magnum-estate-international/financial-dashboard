@@ -3820,7 +3820,7 @@ async function renderEntryBody(){
       h+='<div style="overflow-x:auto;margin:0 -4px 22px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">From</th><th style="'+th+'">Entity · Month</th><th style="'+th+'">Entry</th><th style="'+th+';text-align:right">Amount (IDR)</th><th style="'+th+'"></th></tr></thead><tbody>';
       pending.forEach(s=>{
         h+='<tr><td style="'+td+';word-break:break-word">'+escH(s.email)+'<div style="color:#3a4254;font-size:11px;white-space:nowrap">'+new Date(s.created_at).toISOString().slice(0,10)+'</div></td>'
-          +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+(s.entry_date?' · '+escH(s.entry_date):'')+'</div></td>'
+          +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+(s.entry_date?' · '+escH(s.entry_date)+(s.entry_date_end?' → '+escH(s.entry_date_end):''):'')+'</div></td>'
           +'<td style="'+td+'"><b>'+(s.flow==='docs'?'📎 Documents':escH(FLOW_LBL[s.flow]||s.flow))+'</b> — '+escH(s.label)+'<div style="color:#3a4254;font-size:11px">'+escH(s.category)+(s.note?' · '+escH(s.note):'')+'</div>'+attChips(s)+'</td>'
           +'<td style="'+td+';text-align:right;white-space:nowrap;font-weight:600">'+fmtIDR(s.amount_idr)+'</td>'
           +'<td style="'+td+';text-align:right;min-width:120px"><button class="ap" data-id="'+s.id+'" style="border:0;background:#2b7a4b;color:#fff;border-radius:12px;padding:5px 11px;font-size:12px;cursor:pointer;margin:2px">Approve</button>'
@@ -3834,7 +3834,11 @@ async function renderEntryBody(){
   const inp='padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px;box-sizing:border-box';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
     +'<select id="en-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<div><input id="en-date" type="date" style="'+inp+';width:100%;color:#141b2d">'
+    +'<div><div style="display:flex;gap:6px;align-items:center">'
+    +'<input id="en-date" type="date" aria-label="From date" style="'+inp+';flex:1;min-width:0;color:#141b2d">'
+    +'<span style="color:#3a4254;font-size:12px;flex:none">to</span>'
+    +'<input id="en-date2" type="date" aria-label="To date" style="'+inp+';flex:1;min-width:0;color:#141b2d">'
+    +'</div>'
     +'<div id="en-permsg" style="font-size:11px;color:#4550d8;font-weight:600;margin-top:4px;min-height:14px"></div></div>'
     +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
@@ -3868,7 +3872,7 @@ async function renderEntryBody(){
     hist.slice(0,60).forEach(s=>{
       h+='<tr><td style="'+td+';white-space:nowrap;color:#2e3547;font-size:12px">'+new Date(s.created_at).toISOString().slice(0,10)+'</td>'
         +(IS_ADMIN?'<td style="'+td+';word-break:break-word">'+escH(s.email)+'</td>':'')
-        +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+(s.entry_date?' · '+escH(s.entry_date):'')+'</div></td>'
+        +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+(s.entry_date?' · '+escH(s.entry_date)+(s.entry_date_end?' → '+escH(s.entry_date_end):''):'')+'</div></td>'
         +'<td style="'+td+'">'+(s.flow==='docs'?'📎 Documents':escH(FLOW_LBL[s.flow]||s.flow))+' — '+escH(s.label)
         +(s.status==='rejected'&&s.review_note?'<div style="color:#b3261e;font-size:11px">Reason: '+escH(s.review_note)+'</div>':'')+attChips(s)+'</td>'
         +'<td style="'+td+';text-align:right;white-space:nowrap">'+(s.flow==='docs'?'—':fmtIDR(s.amount_idr))+'</td>'
@@ -3893,14 +3897,23 @@ async function renderEntryBody(){
     const p=v.split('-'); const y=parseInt(p[0],10), m=parseInt(p[1],10);
     return {code:MCODES[m-1]+(y===2026?'':String(y).slice(2)), label:MNAMES[m-1]+' '+y};
   }
-  const dateInp=document.getElementById('en-date'), perMsg=document.getElementById('en-permsg');
-  const tz=new Date(); dateInp.value=tz.getFullYear()+'-'+String(tz.getMonth()+1).padStart(2,'0')+'-'+String(tz.getDate()).padStart(2,'0');
+  const dateInp=document.getElementById('en-date'), dateInp2=document.getElementById('en-date2'), perMsg=document.getElementById('en-permsg');
+  const tz=new Date(); const today=tz.getFullYear()+'-'+String(tz.getMonth()+1).padStart(2,'0')+'-'+String(tz.getDate()).padStart(2,'0');
+  dateInp.value=today; dateInp2.value=today;
   function updPerMsg(){
     if(!dateInp.value){ perMsg.textContent=''; return; }
+    if(dateInp2.value && dateInp2.value<dateInp.value) dateInp2.value=dateInp.value;
     const P=periodFromDate(dateInp.value);
-    perMsg.textContent='→ counted in '+(perName[P.code]||P.label);
+    let t='→ counted in '+(perName[P.code]||P.label);
+    if(dateInp2.value){
+      const P2=periodFromDate(dateInp2.value);
+      if(P2.code!==P.code) t+=' (range crosses months — counted by the start date)';
+    }
+    perMsg.textContent=t;
   }
-  dateInp.addEventListener('change',updPerMsg); updPerMsg();
+  dateInp.addEventListener('change',updPerMsg);
+  dateInp2.addEventListener('change',updPerMsg);
+  updPerMsg();
   // optional figures section
   const figT=document.getElementById('en-figtoggle'), figs=document.getElementById('en-figs');
   figT.onclick=()=>{ const open=figs.style.display!=='none';
@@ -3929,8 +3942,9 @@ async function renderEntryBody(){
   });
   document.getElementById('en-send').onclick=async()=>{
     const entity=document.getElementById('en-ent').value;
-    const dval=dateInp.value;
-    if(!dval) return setMsg('en-msg','Pick the transaction date on the calendar.');
+    const dval=dateInp.value, dval2=dateInp2.value||dval;
+    if(!dval) return setMsg('en-msg','Pick the period dates on the calendar.');
+    if(dval2<dval) return setMsg('en-msg','The end date cannot be before the start date.');
     const P=periodFromDate(dval);
     const pcode=P.code, plabel=perName[pcode]?null:P.label;
     const note=(document.getElementById('en-note').value||'').trim()||null;
@@ -3957,7 +3971,7 @@ async function renderEntryBody(){
         atts.push(await uploadSubDoc(EN_FILES[i].file,EN_FILES[i].dt));
       }
       b.textContent='Submitting…';
-      await adminAdd('entry_submissions',{entity_code:entity,period_code:pcode,period_label:plabel,entry_date:dval,flow:flow,category:category,label:label,amount_idr:amt,note:note,attachments:atts});
+      await adminAdd('entry_submissions',{entity_code:entity,period_code:pcode,period_label:plabel,entry_date:dval,entry_date_end:(dval2!==dval?dval2:null),flow:flow,category:category,label:label,amount_idr:amt,note:note,attachments:atts});
       // optional saldo awal / saldo akhir -> upsert balance row (keep the other side if only one entered)
       const openRaw=(document.getElementById('en-open').value||'').replace(/[^0-9-]/g,'');
       const closeRaw=(document.getElementById('en-close').value||'').replace(/[^0-9-]/g,'');
