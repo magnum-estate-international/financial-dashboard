@@ -3780,7 +3780,7 @@ async function renderEntryBody(){
       h+='<div style="overflow-x:auto;margin:0 -4px 22px;padding:0 4px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">From</th><th style="'+th+'">Entity · Month</th><th style="'+th+'">Entry</th><th style="'+th+';text-align:right">Amount (IDR)</th><th style="'+th+'"></th></tr></thead><tbody>';
       pending.forEach(s=>{
         h+='<tr><td style="'+td+';word-break:break-word">'+escH(s.email)+'<div style="color:#3a4254;font-size:11px;white-space:nowrap">'+new Date(s.created_at).toISOString().slice(0,10)+'</div></td>'
-          +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+'</div></td>'
+          +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+(s.entry_date?' · '+escH(s.entry_date):'')+'</div></td>'
           +'<td style="'+td+'"><b>'+(s.flow==='docs'?'📎 Documents':escH(FLOW_LBL[s.flow]||s.flow))+'</b> — '+escH(s.label)+'<div style="color:#3a4254;font-size:11px">'+escH(s.category)+(s.note?' · '+escH(s.note):'')+'</div>'+attChips(s)+'</td>'
           +'<td style="'+td+';text-align:right;white-space:nowrap;font-weight:600">'+fmtIDR(s.amount_idr)+'</td>'
           +'<td style="'+td+';text-align:right;min-width:120px"><button class="ap" data-id="'+s.id+'" style="border:0;background:#2b7a4b;color:#fff;border-radius:12px;padding:5px 11px;font-size:12px;cursor:pointer;margin:2px">Approve</button>'
@@ -3794,11 +3794,9 @@ async function renderEntryBody(){
   const inp='padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px;box-sizing:border-box';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
     +'<select id="en-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<select id="en-per" style="'+inp+'">'+pers.map(p=>'<option value="'+escH(p.code)+'">'+escH(p.label)+'</option>').join('')+'<option value="__new">＋ New month…</option></select>'
+    +'<div><input id="en-date" type="date" style="'+inp+';width:100%;color:#141b2d">'
+    +'<div id="en-permsg" style="font-size:11px;color:#4550d8;font-weight:600;margin-top:4px;min-height:14px"></div></div>'
     +'</div>'
-    +'<div id="en-newper" style="display:none;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
-    +'<input id="en-pcode" placeholder="Code, e.g. JUL" maxlength="12" style="'+inp+';text-transform:uppercase">'
-    +'<input id="en-plabel" placeholder="Label, e.g. July 2026" style="'+inp+'"></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
     +'<input id="en-open" inputmode="numeric" placeholder="Opening balance (IDR, optional)" style="'+inp+'">'
     +'<input id="en-close" inputmode="numeric" placeholder="Closing balance (IDR, optional)" style="'+inp+'"></div>'
@@ -3830,7 +3828,7 @@ async function renderEntryBody(){
     hist.slice(0,60).forEach(s=>{
       h+='<tr><td style="'+td+';white-space:nowrap;color:#2e3547;font-size:12px">'+new Date(s.created_at).toISOString().slice(0,10)+'</td>'
         +(IS_ADMIN?'<td style="'+td+';word-break:break-word">'+escH(s.email)+'</td>':'')
-        +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+'</div></td>'
+        +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+(s.entry_date?' · '+escH(s.entry_date):'')+'</div></td>'
         +'<td style="'+td+'">'+(s.flow==='docs'?'📎 Documents':escH(FLOW_LBL[s.flow]||s.flow))+' — '+escH(s.label)
         +(s.status==='rejected'&&s.review_note?'<div style="color:#b3261e;font-size:11px">Reason: '+escH(s.review_note)+'</div>':'')+attChips(s)+'</td>'
         +'<td style="'+td+';text-align:right;white-space:nowrap">'+(s.flow==='docs'?'—':fmtIDR(s.amount_idr))+'</td>'
@@ -3848,8 +3846,21 @@ async function renderEntryBody(){
   function fillCats(){ const k=FLOW_KIND[flowSel.value];
     catDl.innerHTML=cats.filter(c=>c.kind===k).map(c=>'<option value="'+escH(c.name)+'">').join(''); }
   flowSel.addEventListener('change',fillCats); fillCats();
-  const perSel=document.getElementById('en-per'), npRow=document.getElementById('en-newper');
-  perSel.addEventListener('change',()=>{ npRow.style.display=perSel.value==='__new'?'grid':'none'; });
+  // date picker -> consolidation month
+  const MCODES=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const MNAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function periodFromDate(v){
+    const p=v.split('-'); const y=parseInt(p[0],10), m=parseInt(p[1],10);
+    return {code:MCODES[m-1]+(y===2026?'':String(y).slice(2)), label:MNAMES[m-1]+' '+y};
+  }
+  const dateInp=document.getElementById('en-date'), perMsg=document.getElementById('en-permsg');
+  const tz=new Date(); dateInp.value=tz.getFullYear()+'-'+String(tz.getMonth()+1).padStart(2,'0')+'-'+String(tz.getDate()).padStart(2,'0');
+  function updPerMsg(){
+    if(!dateInp.value){ perMsg.textContent=''; return; }
+    const P=periodFromDate(dateInp.value);
+    perMsg.textContent='→ counted in '+(perName[P.code]||P.label);
+  }
+  dateInp.addEventListener('change',updPerMsg); updPerMsg();
   // optional figures section
   const figT=document.getElementById('en-figtoggle'), figs=document.getElementById('en-figs');
   figT.onclick=()=>{ const open=figs.style.display!=='none';
@@ -3878,13 +3889,10 @@ async function renderEntryBody(){
   });
   document.getElementById('en-send').onclick=async()=>{
     const entity=document.getElementById('en-ent').value;
-    let pcode=perSel.value, plabel=null;
-    if(pcode==='__new'){
-      pcode=(document.getElementById('en-pcode').value||'').trim().toUpperCase();
-      plabel=(document.getElementById('en-plabel').value||'').trim();
-      if(!/^[A-Z0-9]{2,12}$/.test(pcode)) return setMsg('en-msg','Month code must be 2–12 letters/digits, e.g. JUL.');
-      if(!plabel) return setMsg('en-msg','Give the new month a label, e.g. July 2026.');
-    }
+    const dval=dateInp.value;
+    if(!dval) return setMsg('en-msg','Pick the transaction date on the calendar.');
+    const P=periodFromDate(dval);
+    const pcode=P.code, plabel=perName[pcode]?null:P.label;
     const note=(document.getElementById('en-note').value||'').trim()||null;
     const figsOpen=figs.style.display!=='none';
     let flow,category,label,amt;
@@ -3909,7 +3917,7 @@ async function renderEntryBody(){
         atts.push(await uploadSubDoc(EN_FILES[i].file,EN_FILES[i].dt));
       }
       b.textContent='Submitting…';
-      await adminAdd('entry_submissions',{entity_code:entity,period_code:pcode,period_label:plabel,flow:flow,category:category,label:label,amount_idr:amt,note:note,attachments:atts});
+      await adminAdd('entry_submissions',{entity_code:entity,period_code:pcode,period_label:plabel,entry_date:dval,flow:flow,category:category,label:label,amount_idr:amt,note:note,attachments:atts});
       // optional saldo awal / saldo akhir -> upsert balance row (keep the other side if only one entered)
       const openRaw=(document.getElementById('en-open').value||'').replace(/[^0-9-]/g,'');
       const closeRaw=(document.getElementById('en-close').value||'').replace(/[^0-9-]/g,'');
