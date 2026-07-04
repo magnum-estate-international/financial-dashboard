@@ -3919,6 +3919,14 @@ const AI_FILE_RX=/\.(pdf|jpe?g|png|webp|heic)$/i;
    Sheet format (same as the recap pipeline): a header row containing DATE + DEBIT
    (+ REMARK/DESCRIPTION, CATEGORIES, CREDIT); DEBIT = money in, CREDIT = money out. ── */
 const FIN_RX=/loan|pinjam|repay|capital|modal|deposit|shareholder|invest|pindah\s*buku|inter\s*-?\s*compan|antar\s*(bank|rekening)|top\s*up|setor|tarik\s*tunai/i;
+/* Money moved between the company's OWN accounts (self-transfer) — excluded entirely, not revenue/opex/financing.
+   Deliberately narrow: bare "PB" also appears in legitimate payments (e.g. "PB KE KREDITUR ... SALARY"),
+   Indonesian banking shorthand for any bank-transfer instruction, not just self-transfers. Only exclude when
+   the description itself signals a same-account/self move ("in to out", "intertransfer"). */
+const EXCLUDE_RX=/\bin\s*to\s*out\b|\bout\s*to\s*in\b|\bintertransfer\b|inter[\s-]*account\s*transfer/i;
+/* Money received back for an expense already booked (e.g. "Refund Payment for ...") — reduces the expense
+   category it came from, instead of counting as new revenue. */
+const REFUND_RX=/\brefund\b|\bpengembalian\b/i;
 function xlsDate(v){
   if(v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
   if(typeof v==='number' && v>20000 && v<60000) return xlsDate(new Date(Math.round((v-25569)*86400000)));
@@ -3945,7 +3953,7 @@ const MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','D
 function dayLbl(iso){ return iso.slice(8,10)+' '+MON3[parseInt(iso.slice(5,7),10)-1]; }
 async function parseBankFiles(from,to){
   if(typeof XLSX==='undefined') return null;
-  const out={count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null,rows:[]};
+  const out={count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null,rows:[],excluded:0,excludedAmt:0};
   for(const x of EN_FILES){
     if(!/\.(xlsx|xls|csv)$/i.test(x.file.name)) continue;
     let wb; try{ wb=XLSX.read(await x.file.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){ continue; }
@@ -3985,8 +3993,10 @@ async function parseBankFiles(from,to){
         if(to && dt>to) continue;
         const catRaw=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'').trim();
         const tag=catRaw+' '+desc;
+        if(EXCLUDE_RX.test(tag)){ out.excluded++; out.excludedAmt+=(inn||outv); continue; }
         const fin=FIN_RX.test(tag);
-        if(inn){ if(fin) out.finIn+=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,cat:catRaw}); }
+        const refund=!fin && inn>0 && REFUND_RX.test(tag);
+        if(inn){ if(fin) out.finIn+=inn; else if(refund) out.opex-=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw}); }
         if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw}); }
         out.count++; used=true;
       }
@@ -4008,12 +4018,15 @@ async function loadCatMap(){
   aliases.forEach(a2=>{ const k=String(a2.raw_label||'').toLowerCase().trim(); if(k) m.alias[k]=a2.category; });
   CAT_MAP=m; return m;
 }
+/* A refund of a prior expense picks its category from the OPEX list (it reduces an expense
+   bucket), even though the money is flowing in — same as the amount-sign handling in parseBankFiles. */
+const catSideOf=(m,r)=>(r.dir==='in'&&!r.refund)?m.rev:m.opex;
 async function categorizeRows(rows){
   const m=await loadCatMap();
   const pending=[];
   rows.forEach((r,i)=>{
     if(r.fin||r.canon) return;
-    const want=r.dir==='in'?m.rev:m.opex;
+    const want=catSideOf(m,r);
     const c1=m.alias[String(r.cat||'').toLowerCase().trim()];
     if(c1&&want.has(c1)){ r.canon=c1; return; }
     const c2=m.alias[String(r.desc||'').toLowerCase().trim()];
@@ -4022,13 +4035,13 @@ async function categorizeRows(rows){
   });
   if(pending.length){
     try{
-      const items=pending.map(i=>({i:i,description:String(rows[i].desc||'').slice(0,140),direction:rows[i].dir}));
+      const items=pending.map(i=>({i:i,description:String(rows[i].desc||'').slice(0,140),direction:(rows[i].dir==='in'&&!rows[i].refund)?'in':'out'}));
       const r=await authedFetch(SB_URL+'/functions/v1/ai-extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'classify',items:items})});
       const d=await r.json().catch(()=>({}));
-      if(r.ok)(d.categories||[]).forEach(c=>{ const row=rows[c.i]; if(row&&!row.fin){ const want=row.dir==='in'?m.rev:m.opex; if(want.has(c.category)) row.canon=c.category; } });
+      if(r.ok)(d.categories||[]).forEach(c=>{ const row=rows[c.i]; if(row&&!row.fin){ const want=catSideOf(m,row); if(want.has(c.category)) row.canon=c.category; } });
     }catch(e){}
   }
-  rows.forEach(r=>{ if(!r.fin&&!r.canon) r.canon=(r.dir==='in'?'Other Guest Services & Income':'Other Operating Expense'); });
+  rows.forEach(r=>{ if(!r.fin&&!r.canon) r.canon=(r.dir==='in'&&!r.refund)?'Other Guest Services & Income':'Other Operating Expense'; });
 }
 const subDocUrl=path=>SB_URL+'/storage/v1/object/submission-docs/'+path.split('/').map(encodeURIComponent).join('/');
 async function uploadSubDoc(f,dt){
@@ -4218,11 +4231,14 @@ async function renderEntryBody(){
         if(!p.maxDate||dt>p.maxDate) p.maxDate=dt;
         if(from&&dt<from) return;
         if(to&&dt>to) return;
-        const fin=t.kind==='financing'||FIN_RX.test(t.desc||'');
-        if(t.dir==='in'){ if(fin) p.finIn+=t.amt; else p.rev+=t.amt; }
+        const tag=(t.cat||'')+' '+(t.desc||'');
+        if(EXCLUDE_RX.test(tag)){ p.excluded=(p.excluded||0)+1; p.excludedAmt=(p.excludedAmt||0)+t.amt; return; }
+        const fin=t.kind==='financing'||FIN_RX.test(tag);
+        const refund=!fin && t.dir==='in' && REFUND_RX.test(tag);
+        if(t.dir==='in'){ if(fin) p.finIn+=t.amt; else if(refund) p.opex-=t.amt; else p.rev+=t.amt; }
         else { if(fin) p.finOut+=t.amt; else p.opex+=t.amt; }
         p.count++; aiFiles.add((t.src||'document')+' (AI)');
-        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin,cat:t.cat||''});
+        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin,refund:refund,cat:t.cat||''});
       });
       aiFiles.forEach(f=>p.files.push(f));
     }
@@ -4233,7 +4249,7 @@ async function renderEntryBody(){
       try{
         const entity=document.getElementById('en-ent').value;
         const months=[...new Set(EN_PARSED_ROWS.map(r=>periodFromDate(r.date).code))];
-        const flowKey=r=>r.fin?(r.dir==='in'?'fin_in':'fin_out'):(r.dir==='in'?'rev':'opex');
+        const flowKey=r=>r.fin?(r.dir==='in'?'fin_in':'fin_out'):((r.dir==='in'&&!r.refund)?'rev':'opex');
         const [exTx,epts]=await Promise.all([
           sbFetch('transactions?entity_code=eq.'+entity+'&period_code=in.('+months.join(',')+')&select=period_code,flow,day_label,amount_idr&limit=10000'),
           sbFetch('entity_period_totals?entity_code=eq.'+entity+'&period_code=in.('+months.join(',')+')&select=period_code,revenue,opex,financing_in,financing_out')
@@ -4256,20 +4272,24 @@ async function renderEntryBody(){
         const detail={}, tot={};
         exTx.forEach(t=>{const f=FLN[t.flow]; if(f){const k2=t.period_code+'|'+f; detail[k2]=(detail[k2]||0)+Math.round(t.amount_idr);}});
         epts.forEach(e2=>{['revenue','opex','financing_in','financing_out'].forEach(f=>{tot[e2.period_code+'|'+f]=Math.round(e2[f]);});});
+        // pos = new amounts subject to gap-fill capping (avoids re-adding what a month's total already includes
+        // without stored detail); neg = refund reductions, which always apply in full regardless of that gap.
         const byMonth={}; let gapFilled=0;
         newRows.forEach(r=>{
           const P2=periodFromDate(r.date);
-          const b=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,sum:{revenue:0,opex:0,financing_in:0,financing_out:0}};
+          const b=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,
+            pos:{revenue:0,opex:0,financing_in:0,financing_out:0},neg:{revenue:0,opex:0,financing_in:0,financing_out:0}};
           if(r.date<b.min)b.min=r.date; if(r.date>b.max)b.max=r.date;
-          b.sum[FLN[flowKey(r)]]+=r.amt;
+          const f=FLN[flowKey(r)];
+          if(r.refund) b.neg[f]-=r.amt; else b.pos[f]+=r.amt;
         });
         const addTotals={revenue:0,opex:0,financing_in:0,financing_out:0};
         Object.entries(byMonth).forEach(([code,b])=>{
           b.add={};
           ['revenue','opex','financing_in','financing_out'].forEach(f=>{
             const gap=Math.max(0,(tot[code+'|'+f]||0)-(detail[code+'|'+f]||0));
-            gapFilled+=Math.min(b.sum[f],gap);
-            b.add[f]=Math.max(0,b.sum[f]-gap);
+            gapFilled+=Math.min(b.pos[f],gap);
+            b.add[f]=Math.max(0,b.pos[f]-gap)+b.neg[f];
             addTotals[f]+=b.add[f];
           });
         });
@@ -4287,7 +4307,9 @@ async function renderEntryBody(){
     }
     box.style.border='1px solid #c9e3d4'; box.style.background='#f2faf5';
     if(!p || !p.count){
-      box.innerHTML='<div style="font-size:12.5px;color:#3a4254"><b>📊 Auto-read:</b> no transactions could be read from the attached spreadsheet (unrecognised sheet format). The documents will still be saved — add figures manually below if needed.</div>';
+      box.innerHTML=(p&&p.excluded)
+        ? '<div style="font-size:12.5px;color:#3a4254"><b>📊 Auto-read:</b> found '+p.excluded+' transaction'+(p.excluded>1?'s':'')+' in range, but all of them were internal transfers ('+fmtIDR(p.excludedAmt||0)+') — correctly excluded, so no revenue/expense figures to apply. The documents will still be saved.</div>'
+        : '<div style="font-size:12.5px;color:#3a4254"><b>📊 Auto-read:</b> no transactions could be read from the attached spreadsheet (unrecognised sheet format). The documents will still be saved — add figures manually below if needed.</div>';
       return;
     }
     const fld=(id,lb,v)=>'<div style="flex:1 1 150px;min-width:140px"><div style="font-size:10.5px;font-weight:700;color:#1f8a61;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">'+lb+'</div>'
@@ -4302,8 +4324,10 @@ async function renderEntryBody(){
       dedupLine='<div style="font-size:11.5px;color:#141b2d;margin:-4px 0 9px">🔍 Compared with the dashboard: '+bits.join(' · ')+'</div>';
     }
     const nothingNew=EN_DEDUP && !EN_DEDUP.newRows.length;
+    const excludedLine=p.excluded?'<div style="font-size:11.5px;color:#3a4254;margin:-4px 0 9px">🚫 '+p.excluded+' internal transfer'+(p.excluded>1?'s':'')+' ('+fmtIDR(p.excludedAmt||0)+') detected and excluded — money moved between your own accounts, not revenue or expense.</div>':'';
     box.innerHTML=
       '<div style="font-size:12.5px;color:#141b2d;margin-bottom:9px"><b>📊 Figures read from '+escH(p.files.join(', '))+'</b> — '+p.count+' transactions, '+escH(dateInp.value)+(dateInp2.value&&dateInp2.value!==dateInp.value?' → '+escH(dateInp2.value):'')+'.</div>'
+      +excludedLine
       +dedupLine
       +(nothingNew
         ? '<div style="font-size:12.5px;color:#1f8a61;font-weight:700">✓ Everything in this document is already in the dashboard — saving will only file the documents, no numbers change.</div>'
@@ -4311,7 +4335,7 @@ async function renderEntryBody(){
           +fld('p-rev','Revenue (in)',V.rev)+fld('p-opex','Expenses (out)',V.opex)+fld('p-fin','Financing in',V.finIn)+fld('p-fout','Financing out',V.finOut)
           +'</div>'
           +'<div style="font-size:12px;color:#1f8a61;font-weight:700">✓ Only these NEW amounts will be added to the dashboard report when you press Save.</div>'
-          +'<div style="font-size:11px;color:#3a4254;margin-top:4px">Rows mentioning loans / capital / pindah buku are classified as financing; everything else counts as revenue (in) or expenses (out). Edit any number above if it looks wrong.</div>');
+          +'<div style="font-size:11px;color:#3a4254;margin-top:4px">Rows mentioning loans / capital are classified as financing; refunds of a prior expense reduce that expense instead of counting as revenue; everything else counts as revenue (in) or expenses (out). Edit any number above if it looks wrong.</div>');
   }
   ENTRY_REFRESH_PARSE=refreshParsePreview;
   // optional figures section
@@ -4434,10 +4458,11 @@ async function renderEntryBody(){
           const P2=periodFromDate(r.date);
           const b2=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,sum:{revenue:0,opex:0,financing_in:0,financing_out:0},cats:{revenue:{},opex:{},financing_in:{},financing_out:{}}};
           if(r.date<b2.min)b2.min=r.date; if(r.date>b2.max)b2.max=r.date;
-          const fl=r.dir==='in'?(r.fin?'financing_in':'revenue'):(r.fin?'financing_out':'opex');
-          b2.sum[fl]+=r.amt;
+          const fl=r.fin?(r.dir==='in'?'financing_in':'financing_out'):((r.dir==='in'&&!r.refund)?'revenue':'opex');
+          const signed=r.refund?-r.amt:r.amt;
+          b2.sum[fl]+=signed;
           const cat=r.fin?'Financing':(r.canon||'Other');
-          b2.cats[fl][cat]=(b2.cats[fl][cat]||0)+r.amt;
+          b2.cats[fl][cat]=(b2.cats[fl][cat]||0)+signed;
         });
         // amounts to add to the monthly totals: dedup result caps out what the totals already include
         Object.entries(byMonth).forEach(([code,b2])=>{
@@ -4450,17 +4475,17 @@ async function renderEntryBody(){
         Object.entries(byMonth).forEach(([code,b2])=>{
           ['revenue','opex','financing_in','financing_out'].forEach(fl=>{
             const applyAmt=b2.apply[fl];
-            if(applyAmt<=0) return;
+            if(!applyAmt) return;   // skip only exact zero — negative (net refund reduction) still applies
             // distribute the applied amount across the categories proportionally (gap-capping shrinks all equally)
-            const cats=Object.entries(b2.cats[fl]); const catSum=cats.reduce((s,c)=>s+c[1],0)||1;
+            const cats=Object.entries(b2.cats[fl]).filter(([,v])=>v); const catSum=cats.reduce((s,c)=>s+c[1],0)||1;
             let allotted=0; let largest=null;
             const parts=cats.map(([cat,v])=>{
               const a2=Math.round(applyAmt*v/catSum); allotted+=a2;
-              if(!largest||v>largest.v) largest={cat:cat,v:v};
+              if(!largest||Math.abs(v)>Math.abs(largest.v)) largest={cat:cat,v:v};
               return {cat:cat,amt:a2};
             });
             if(largest){ const drift=applyAmt-allotted; const lp=parts.find(x=>x.cat===largest.cat); if(lp) lp.amt+=drift; }
-            parts.filter(x=>x.amt>0).forEach(x=>{
+            parts.filter(x=>x.amt!==0).forEach(x=>{
               subsRows.push({entity_code:entity,period_code:code,period_label:perName[code]?null:b2.label,
                 entry_date:b2.min,entry_date_end:(b2.max!==b2.min?b2.max:null),flow:fl,category:x.cat,
                 label:(x.cat==='Financing'?bkLabel:x.cat),amount_idr:x.amt,note:null,attachments:[]});
@@ -4479,10 +4504,10 @@ async function renderEntryBody(){
         const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
         const txRows=rowsToStore.map((r,i)=>({
           source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDate(r.date).code,
-          flow:r.fin?(r.dir==='in'?'fin_in':'fin_out'):(r.dir==='in'?'rev':'opex'),
+          flow:r.fin?(r.dir==='in'?'fin_in':'fin_out'):((r.dir==='in'&&!r.refund)?'rev':'opex'),
           entity_code:entity,day_label:dayLbl(r.date),
           description:String(r.desc||'').slice(0,200),raw_label:(r.fin?bkLabel:(r.canon||bkLabel)),
-          source_label:bkLabel,upload_batch:batchId,amount_idr:r.amt,contra:false}));
+          source_label:bkLabel,upload_batch:batchId,amount_idr:(r.refund?-r.amt:r.amt),contra:false}));
         if(txRows.length) await adminAddBatch('transactions',txRows);
         if(subsRows.length||txRows.length){ appliedParsed=true; ENTRY_DIRTY=true; }
       }
