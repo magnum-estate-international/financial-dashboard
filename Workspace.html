@@ -3812,7 +3812,10 @@ async function rpcReview(id,decision,note){
 /* ── Supporting documents (rekap bank, rekening koran, voucher payments) ── */
 const DT_LBL={rekap_bank:'Bank recap',rekening_koran:'Bank statement',voucher:'Payment voucher',other:'Document'};
 let EN_FILES=[];
+let EN_AI=[];            // transactions extracted from PDFs/photos by the ai-extract edge function
 let ENTRY_REFRESH_PARSE=null;
+function fileB64(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(f); }); }
+const AI_FILE_RX=/\.(pdf|jpe?g|png|webp|heic)$/i;
 /* ── Bank-book auto-read: parse uploaded xlsx/csv statements into dashboard figures.
    Sheet format (same as the recap pipeline): a header row containing DATE + DEBIT
    (+ REMARK/DESCRIPTION, CATEGORIES, CREDIT); DEBIT = money in, CREDIT = money out. ── */
@@ -3979,6 +3982,7 @@ async function renderEntryBody(){
       +'<select id="en-dtype" style="'+inp+';flex:0 1 auto"><option value="rekap_bank">Bank recap</option><option value="rekening_koran">Bank statement (rekening koran)</option><option value="voucher">Payment voucher</option><option value="other">Other document</option></select>'
       +'<label for="en-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Add files</label>'
       +'<input id="en-file" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.xls,.xlsx,.csv" style="display:none">'
+      +'<button id="en-aibtn" type="button" style="display:none;border:0;border-radius:12px;background:#141b2d;color:#fff;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">🤖 Read PDF/photo with AI</button>'
       +'</div><div id="en-files" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px"></div></div>'
     +'<div id="en-parse" style="display:none;border:1px solid #c9e3d4;background:#f2faf5;border-radius:14px;padding:12px 14px;margin-bottom:10px"></div>'
     +'<input id="en-note" placeholder="Note (optional)" style="'+inp+';width:100%;margin-bottom:8px">'
@@ -4054,12 +4058,32 @@ async function renderEntryBody(){
   async function refreshParsePreview(){
     const box=document.getElementById('en-parse'); if(!box) return;
     const hasSheet=EN_FILES.some(x=>/\.(xlsx|xls|csv)$/i.test(x.file.name));
-    if(!hasSheet){ box.style.display='none'; box.innerHTML=''; return; }
+    if(!hasSheet && !EN_AI.length){ box.style.display='none'; box.innerHTML=''; return; }
     const seq=++PARSE_SEQ;
     box.style.display='block';
     box.innerHTML='<div style="font-size:12.5px;color:#1f8a61;font-weight:700">📊 Reading figures from the bank book…</div>';
-    let p=null; try{ p=await parseBankFiles(dateInp.value, dateInp2.value||dateInp.value); }catch(e){}
+    let p=null; try{ if(hasSheet) p=await parseBankFiles(dateInp.value, dateInp2.value||dateInp.value); }catch(e){}
     if(seq!==PARSE_SEQ) return;
+    // merge AI-extracted transactions (PDF/photo) into the same totals
+    if(EN_AI.length){
+      p=p||{count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null};
+      const from=dateInp.value, to=dateInp2.value||from;
+      const aiFiles=new Set();
+      EN_AI.forEach(t=>{
+        const dt=String(t.date||'').slice(0,10);
+        if(!dt||!t.amt) return;
+        p.allCount++;
+        if(!p.minDate||dt<p.minDate) p.minDate=dt;
+        if(!p.maxDate||dt>p.maxDate) p.maxDate=dt;
+        if(from&&dt<from) return;
+        if(to&&dt>to) return;
+        const fin=t.kind==='financing'||FIN_RX.test(t.desc||'');
+        if(t.dir==='in'){ if(fin) p.finIn+=t.amt; else p.rev+=t.amt; }
+        else { if(fin) p.finOut+=t.amt; else p.opex+=t.amt; }
+        p.count++; aiFiles.add((t.src||'document')+' (AI)');
+      });
+      aiFiles.forEach(f=>p.files.push(f));
+    }
     if(p && !p.count && p.allCount && p.minDate){
       // the file's transactions fall outside the selected dates
       if(!DATES_TOUCHED){ adoptFileDates(p); return; }   // user never picked dates — follow the file
@@ -4091,7 +4115,7 @@ async function renderEntryBody(){
     figs.style.display=open?'none':'block';
     figT.textContent=open?'＋ Add amount details (optional — only if you also want to enter figures)':'－ Remove amount details (save documents only)'; };
   // attachments picker
-  EN_FILES=[];
+  EN_FILES=[]; EN_AI=[];
   const fInp=document.getElementById('en-file'), fList=document.getElementById('en-files');
   function renderFiles(){
     fList.innerHTML=EN_FILES.map((x,i)=>
@@ -4100,9 +4124,33 @@ async function renderEntryBody(){
       +'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">'+escH(x.file.name)+'</span>'
       +'<span style="color:#3a4254">'+(x.file.size/1048576).toFixed(1)+' MB</span>'
       +'<button class="fx" data-i="'+i+'" aria-label="Remove '+escH(x.file.name)+'" style="border:0;background:#f3f4f8;color:#262e3f;border-radius:9px;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:1">×</button></span>').join('');
-    fList.querySelectorAll('.fx').forEach(b=>b.onclick=()=>{EN_FILES.splice(parseInt(b.dataset.i,10),1);renderFiles();});
+    fList.querySelectorAll('.fx').forEach(b=>b.onclick=()=>{EN_FILES.splice(parseInt(b.dataset.i,10),1);EN_AI=[];renderFiles();});
+    const ai=document.getElementById('en-aibtn');
+    if(ai) ai.style.display = EN_FILES.some(x=>AI_FILE_RX.test(x.file.name)) ? 'inline-block' : 'none';
     if(ENTRY_REFRESH_PARSE) ENTRY_REFRESH_PARSE();
   }
+  const aiBtn=document.getElementById('en-aibtn');
+  if(aiBtn) aiBtn.onclick=async()=>{
+    const targets=EN_FILES.filter(x=>AI_FILE_RX.test(x.file.name));
+    if(!targets.length) return;
+    aiBtn.disabled=true; EN_AI=[];
+    try{
+      for(let i=0;i<targets.length;i++){
+        aiBtn.textContent='🤖 Reading document '+(i+1)+' of '+targets.length+'…';
+        const f=targets[i].file;
+        const b64=await fileB64(f);
+        const r=await authedFetch(SB_URL+'/functions/v1/ai-extract',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({filename:f.name,mime:f.type||'',data_b64:b64,from_date:document.getElementById('en-date').value,to_date:document.getElementById('en-date2').value})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+        (d.transactions||[]).forEach(t=>EN_AI.push({date:t.date,desc:t.description,amt:t.amount,dir:t.direction,kind:t.kind,src:f.name}));
+      }
+      aiBtn.textContent='🤖 Read again';
+      setMsg('en-msg','✅ AI read '+EN_AI.length+' transactions — check the figures below before saving.',true);
+    }catch(e){ setMsg('en-msg','AI reading failed: '+e.message); aiBtn.textContent='🤖 Read PDF/photo with AI'; }
+    aiBtn.disabled=false;
+    if(ENTRY_REFRESH_PARSE) ENTRY_REFRESH_PARSE();
+  };
   fInp.addEventListener('change',()=>{
     const dt=document.getElementById('en-dtype').value;
     for(const f of fInp.files){
@@ -4169,7 +4217,7 @@ async function renderEntryBody(){
         (BAL[entity]=BAL[entity]||{})[pcode]={open:bp.opening_idr,close:bp.closing_idr};
         ENTRY_DIRTY=true;
       }
-      EN_FILES=[];
+      EN_FILES=[]; EN_AI=[];
       await renderEntryBody();
       if(flow!=='docs') ENTRY_DIRTY=true;
       const m2=document.getElementById('en-msg'); if(m2){m2.style.color='#2b7a4b'; m2.textContent=(flow==='docs'&&!appliedParsed)?'✅ Documents saved — filed in the log below.':'✅ Applied to the dashboard report — the page refreshes when you close this panel.';}
