@@ -3573,6 +3573,7 @@ function showNoAccess(){
   document.getElementById('mag-out').onclick=signOut;
 }
 let MY_EMAIL='', IS_ADMIN=false, MY_ROLE='viewer';
+let RECENTTX_WIN=7;
 async function checkAdmin(){
   MY_EMAIL = SESSION ? jwtEmail(SESSION.access_token) : '';
   try{ const r=await sbFetch('app_admins?select=email&email=eq.'+encodeURIComponent(MY_EMAIL)); IS_ADMIN=Array.isArray(r)&&r.length>0; }
@@ -3600,45 +3601,102 @@ function showUserBar(){
   document.getElementById('mag-signout').onclick=signOut;
   const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
   const eb=document.getElementById('mag-entry-open'); if(eb) eb.onclick=openEntryPanel;
-  const hb=document.getElementById('mag-history-open'); if(hb) hb.onclick=openHistoryPanel;
+  const hb=document.getElementById('mag-history-open'); if(hb) hb.onclick=()=>openHistoryPanel('log');
   if(IS_ADMIN) refreshPendingBadge();
+  if(sessionStorage.getItem('mag_open_history_tx')){ sessionStorage.removeItem('mag_open_history_tx'); openHistoryPanel('tx'); }
 }
 /* ── Change history (audit log) ───────────────────────────────────────── */
-async function openHistoryPanel(){
+const HIST_TH='text-align:left;font-size:11px;color:#3a4254;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;white-space:nowrap';
+const HIST_TD='padding:8px;font-size:12.5px;border-top:1px solid #eef2f7;vertical-align:top';
+const histFmtT=t=>{const d=new Date(t);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});};
+const histPT=e=>e?((typeof ENT!=='undefined'&&ENT[e])?ENT[e].name:e):'—';
+let HIST_TAB='log';
+async function openHistoryPanel(tab){
+  HIST_TAB=tab||'log';
   const old=document.getElementById('mag-history'); if(old) old.remove();
   const wrap=document.createElement('div'); wrap.id='mag-history';
   wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(20,27,45,.45);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Plus Jakarta Sans,system-ui,sans-serif';
-  wrap.innerHTML='<div style="background:#fff;color:#141b2d;max-width:860px;width:100%;border-radius:14px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-weight:700;font-size:18px">Change History</div><button id="mag-history-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
-    +'<div style="font-size:12.5px;color:#3a4254;margin-bottom:16px">Every change made to the dashboard — data uploads, figures, balances and access management — with who made it.</div>'
+  const tabBtn=(id,lbl)=>'<button class="hist-tab" data-tab="'+id+'" style="border:0;background:none;padding:8px 4px;margin-right:18px;font-size:13.5px;font-weight:700;cursor:pointer;color:'+(HIST_TAB===id?'#141b2d':'#8891a8')+';border-bottom:2px solid '+(HIST_TAB===id?'#5b67f1':'transparent')+'">'+lbl+'</button>';
+  wrap.innerHTML='<div style="background:#fff;color:#141b2d;max-width:900px;width:100%;border-radius:14px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px"><div style="font-weight:700;font-size:18px">History</div><button id="mag-history-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
+    +'<div style="border-bottom:1px solid #eef2f7;margin-bottom:14px">'+tabBtn('log','Change Log')+tabBtn('tx','Recent Transactions')+'</div>'
     +'<div id="mag-history-body">Loading…</div></div>';
   document.body.appendChild(wrap);
   document.getElementById('mag-history-x').onclick=()=>wrap.remove();
   wrap.addEventListener('click',e=>{if(e.target===wrap)wrap.remove();});
+  wrap.querySelectorAll('.hist-tab').forEach(b=>b.onclick=()=>openHistoryPanel(b.dataset.tab));
+  if(HIST_TAB==='tx') await renderRecentTxTab(); else await renderChangeLogTab();
+}
+async function renderChangeLogTab(){
   const body=document.getElementById('mag-history-body');
+  body.innerHTML='<div style="font-size:12.5px;color:#3a4254;margin-bottom:14px">Every change made to the dashboard — data uploads, figures, balances and access management — with who made it.</div><div>Loading…</div>';
   let rows=[];
   try{ rows=await sbFetch('audit_log?select=*&order=id.desc&limit=250'); }
   catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+escH(err.message)+'</div>'; return; }
   if(!rows.length){ body.innerHTML='<div style="font-size:13px;color:#3a4254">No changes recorded yet.</div>'; return; }
-  const th='text-align:left;font-size:11px;color:#3a4254;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;white-space:nowrap';
-  const td='padding:8px;font-size:12.5px;border-top:1px solid #eef2f7;vertical-align:top';
-  const fmtT=t=>{const d=new Date(t);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});};
   const actChip=a=>{
     const c=/Upload|Stored/.test(a)?['#4550d8','#eef0fe']:/figures|balance/i.test(a)?['#1f8a61','#e3f2e8']:/Revoked|Removed/.test(a)?['#b3261e','#fbe9e7']:['#8a6d1a','#faf3d9'];
     return '<span style="display:inline-block;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;background:'+c[1]+';color:'+c[0]+';white-space:nowrap">'+escH(a)+'</span>';};
-  let h='<div style="overflow-x:auto;margin:0 -4px;padding:0 4px;max-height:60vh;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>'
-    +'<th style="'+th+'">When</th><th style="'+th+'">Who</th><th style="'+th+'">Action</th><th style="'+th+'">PT · Month</th><th style="'+th+'">Detail</th><th style="'+th+';text-align:right">Amount (IDR)</th></tr></thead><tbody>';
+  let h='<div style="font-size:12.5px;color:#3a4254;margin-bottom:14px">Every change made to the dashboard — data uploads, figures, balances and access management — with who made it.</div>'
+    +'<div style="overflow-x:auto;margin:0 -4px;padding:0 4px;max-height:60vh;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>'
+    +'<th style="'+HIST_TH+'">When</th><th style="'+HIST_TH+'">Who</th><th style="'+HIST_TH+'">Action</th><th style="'+HIST_TH+'">PT · Month</th><th style="'+HIST_TH+'">Detail</th><th style="'+HIST_TH+';text-align:right">Amount (IDR)</th></tr></thead><tbody>';
   rows.forEach(r=>{
-    const ptName=r.entity_code?((typeof ENT!=='undefined'&&ENT[r.entity_code])?ENT[r.entity_code].name:r.entity_code):'—';
-    h+='<tr><td style="'+td+';white-space:nowrap;color:#3a4254;font-size:12px">'+fmtT(r.at)+'</td>'
-      +'<td style="'+td+';word-break:break-word;max-width:170px">'+escH(r.email)+'</td>'
-      +'<td style="'+td+'">'+actChip(r.action)+'</td>'
-      +'<td style="'+td+'">'+escH(ptName)+(r.period_code?'<div style="color:#3a4254;font-size:11px">'+escH(r.period_code)+'</div>':'')+'</td>'
-      +'<td style="'+td+';word-break:break-word">'+escH(r.detail||'')+'</td>'
-      +'<td style="'+td+';text-align:right;white-space:nowrap">'+(r.amount_idr!=null?fmtIDR(r.amount_idr):'—')+'</td></tr>';
+    h+='<tr><td style="'+HIST_TD+';white-space:nowrap;color:#3a4254;font-size:12px">'+histFmtT(r.at)+'</td>'
+      +'<td style="'+HIST_TD+';word-break:break-word;max-width:170px">'+escH(r.email)+'</td>'
+      +'<td style="'+HIST_TD+'">'+actChip(r.action)+'</td>'
+      +'<td style="'+HIST_TD+'">'+escH(histPT(r.entity_code))+(r.period_code?'<div style="color:#3a4254;font-size:11px">'+escH(r.period_code)+'</div>':'')+'</td>'
+      +'<td style="'+HIST_TD+';word-break:break-word">'+escH(r.detail||'')+'</td>'
+      +'<td style="'+HIST_TD+';text-align:right;white-space:nowrap">'+(r.amount_idr!=null?fmtIDR(r.amount_idr):'—')+'</td></tr>';
   });
   h+='</tbody></table></div>';
   body.innerHTML=h;
+}
+async function renderRecentTxTab(){
+  const body=document.getElementById('mag-history-body');
+  const WINDOWS=[[2,'Last 2 days'],[7,'Last 7 days'],[30,'Last 30 days'],[36500,'All time']];
+  const win=RECENTTX_WIN||7;
+  const flowChip=f=>{const m={rev:['Revenue','#1f8a61','#e3f2e8'],opex:['Expense','#b3261e','#fbe9e7'],fin_in:['Financing in','#4550d8','#eef0fe'],fin_out:['Financing out','#8a6d1a','#faf3d9']};
+    const c=m[f]||[f,'#3a4254','#eef2f7']; return '<span style="display:inline-block;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;background:'+c[2]+';color:'+c[1]+';white-space:nowrap">'+c[0]+'</span>';};
+  body.innerHTML='<div style="font-size:12.5px;color:#3a4254;margin-bottom:10px">Every transaction added by an upload, for cross-checking line-by-line against the source document (bank recap / statement / voucher).</div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:12px">'+WINDOWS.map(([d,lbl])=>'<button class="rtx-win" data-d="'+d+'" style="border:1px solid '+(win===d?'#5b67f1':'#e4e7ef')+';background:'+(win===d?'#eef0fe':'#fff')+';color:'+(win===d?'#4550d8':'#3a4254')+';border-radius:20px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer">'+lbl+'</button>').join('')+'</div>'
+    +'<div id="rtx-list">Loading…</div>';
+  body.querySelectorAll('.rtx-win').forEach(b=>b.onclick=()=>{RECENTTX_WIN=parseInt(b.dataset.d,10);renderRecentTxTab();});
+  const list=document.getElementById('rtx-list');
+  let rows=[];
+  try{
+    const since=new Date(Date.now()-win*86400000).toISOString();
+    rows=await sbFetch('transactions?select=*&source=eq.TX_MULTI&created_at=gte.'+encodeURIComponent(since)+'&order=created_at.desc&limit=500');
+  }catch(err){ list.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+escH(err.message)+'</div>'; return; }
+  if(!rows.length){ list.innerHTML='<div style="font-size:13px;color:#3a4254">No transactions added in this window.</div>'; return; }
+  // group by upload batch (explicit id); legacy rows without one fall back to created_by+entity+2min window
+  const groups=[]; let cur=null;
+  rows.slice().sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).forEach(r=>{
+    const key=r.upload_batch||null;
+    const matches=cur && (key ? cur.batch===key : (!cur.batch && cur.by===r.created_by && cur.entity===r.entity_code && Math.abs(new Date(r.created_at)-cur.last)<120000));
+    if(matches){ cur.rows.push(r); cur.last=new Date(r.created_at); }
+    else { cur={batch:key,by:r.created_by,label:r.source_label||r.raw_label,entity:r.entity_code,rows:[r],last:new Date(r.created_at)}; groups.push(cur); }
+  });
+  groups.reverse();
+  let h='';
+  groups.forEach((g,gi)=>{
+    const tot={rev:0,opex:0,fin_in:0,fin_out:0}; g.rows.forEach(r=>{tot[r.flow]=(tot[r.flow]||0)+Number(r.amount_idr);});
+    const totLine=Object.entries(tot).filter(([,v])=>v).map(([f,v])=>flowChip(f)+' '+fmtIDR(v)).join(' &nbsp; ');
+    h+='<div style="border:1px solid #eef2f7;border-radius:14px;margin-bottom:12px;overflow:hidden">'
+      +'<div style="background:#f7f8fd;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between">'
+      +'<div><b style="font-size:13px">'+escH(histPT(g.entity))+'</b> <span style="color:#3a4254;font-size:12px">— '+escH(g.label||'')+'</span>'
+      +'<div style="font-size:11px;color:#3a4254;margin-top:2px">'+escH(g.by)+' · '+histFmtT(g.last.toISOString())+' · '+g.rows.length+' transactions</div></div>'
+      +'<div style="font-size:12px">'+totLine+'</div></div>'
+      +'<table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+HIST_TH+'">Date</th><th style="'+HIST_TH+'">Type</th><th style="'+HIST_TH+'">Description</th><th style="'+HIST_TH+'">Category</th><th style="'+HIST_TH+';text-align:right">Amount (IDR)</th></tr></thead><tbody>';
+    g.rows.slice().sort((a,b)=>a.id-b.id).forEach(r=>{
+      h+='<tr><td style="'+HIST_TD+';white-space:nowrap">'+escH(r.day_label)+'</td>'
+        +'<td style="'+HIST_TD+'">'+flowChip(r.flow)+'</td>'
+        +'<td style="'+HIST_TD+';word-break:break-word;max-width:320px">'+escH(r.description||'')+'</td>'
+        +'<td style="'+HIST_TD+';color:#3a4254">'+escH(/^Bank book/.test(r.raw_label||'')?'—':(r.raw_label||''))+'</td>'
+        +'<td style="'+HIST_TD+';text-align:right;white-space:nowrap">'+fmtIDR(r.amount_idr)+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+  });
+  list.innerHTML=h;
 }
 async function refreshPendingBadge(){
   try{
@@ -4418,11 +4476,13 @@ async function renderEntryBody(){
         for(const pr of subsRows) await adminAdd('entry_submissions',pr);
         // save every NEW transaction so the breakdown drill-down shows full detail (financing rows stored for future dedup)
         const baseOrd=Math.floor(Date.now()/1000);
+        const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
         const txRows=rowsToStore.map((r,i)=>({
           source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDate(r.date).code,
           flow:r.fin?(r.dir==='in'?'fin_in':'fin_out'):(r.dir==='in'?'rev':'opex'),
           entity_code:entity,day_label:dayLbl(r.date),
-          description:String(r.desc||'').slice(0,200),raw_label:(r.fin?bkLabel:(r.canon||bkLabel)),amount_idr:r.amt,contra:false}));
+          description:String(r.desc||'').slice(0,200),raw_label:(r.fin?bkLabel:(r.canon||bkLabel)),
+          source_label:bkLabel,upload_batch:batchId,amount_idr:r.amt,contra:false}));
         if(txRows.length) await adminAddBatch('transactions',txRows);
         if(subsRows.length||txRows.length){ appliedParsed=true; ENTRY_DIRTY=true; }
       }
@@ -4442,7 +4502,15 @@ async function renderEntryBody(){
       EN_FILES=[]; EN_AI=[];
       await renderEntryBody();
       if(flow!=='docs') ENTRY_DIRTY=true;
-      const m2=document.getElementById('en-msg'); if(m2){m2.style.color='#2b7a4b'; m2.textContent=(flow==='docs'&&!appliedParsed)?'✅ Documents saved — filed in the log below.':'✅ Applied to the dashboard report — the page refreshes when you close this panel.';}
+      const m2=document.getElementById('en-msg');
+      if(m2){
+        m2.style.color='#2b7a4b';
+        if(flow==='docs'&&!appliedParsed){ m2.textContent='✅ Documents saved — filed in the log below.'; }
+        else{
+          m2.innerHTML='✅ Applied to the dashboard report — the page refreshes when you close this panel. <a href="#" id="en-viewtx" style="color:#4550d8;font-weight:700;text-decoration:none">🔍 Cross-check the transactions →</a>';
+          const vt=document.getElementById('en-viewtx'); if(vt) vt.onclick=(ev)=>{ev.preventDefault();sessionStorage.setItem('mag_open_history_tx','1');closeEntry();};
+        }
+      }
       if(IS_ADMIN) refreshPendingBadge();
     }catch(e){ setMsg('en-msg','Failed: '+e.message); b.disabled=false; b.textContent='Save update'; }
   };
