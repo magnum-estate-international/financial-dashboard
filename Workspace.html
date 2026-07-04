@@ -3813,6 +3813,7 @@ async function rpcReview(id,decision,note){
 const DT_LBL={rekap_bank:'Bank recap',rekening_koran:'Bank statement',voucher:'Payment voucher',other:'Document'};
 let EN_FILES=[];
 let EN_AI=[];            // transactions extracted from PDFs/photos by the ai-extract edge function
+let EN_PARSED_ROWS=[];   // in-range rows from the last parse (xlsx + AI) — saved as per-tx detail
 let ENTRY_REFRESH_PARSE=null;
 function fileB64(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(f); }); }
 const AI_FILE_RX=/\.(pdf|jpe?g|png|webp|heic)$/i;
@@ -3842,9 +3843,11 @@ function xlsNum(v){
   else if(ld>=0 && t.length-ld-1===3 && t.indexOf('.')!==ld){ t=t.replace(/\./g,''); }
   return parseFloat(t)||0;
 }
+const MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function dayLbl(iso){ return iso.slice(8,10)+' '+MON3[parseInt(iso.slice(5,7),10)-1]; }
 async function parseBankFiles(from,to){
   if(typeof XLSX==='undefined') return null;
-  const out={count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null};
+  const out={count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null,rows:[]};
   for(const x of EN_FILES){
     if(!/\.(xlsx|xls|csv)$/i.test(x.file.name)) continue;
     let wb; try{ wb=XLSX.read(await x.file.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){ continue; }
@@ -3884,8 +3887,8 @@ async function parseBankFiles(from,to){
         if(to && dt>to) continue;
         const tag=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'')+' '+desc;
         const fin=FIN_RX.test(tag);
-        if(inn){ if(fin) out.finIn+=inn; else out.rev+=inn; }
-        if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; }
+        if(inn){ if(fin) out.finIn+=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin}); }
+        if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin}); }
         out.count++; used=true;
       }
     });
@@ -4062,7 +4065,7 @@ async function renderEntryBody(){
   async function refreshParsePreview(){
     const box=document.getElementById('en-parse'); if(!box) return;
     const hasSheet=EN_FILES.some(x=>/\.(xlsx|xls|csv)$/i.test(x.file.name));
-    if(!hasSheet && !EN_AI.length){ box.style.display='none'; box.innerHTML=''; return; }
+    if(!hasSheet && !EN_AI.length){ box.style.display='none'; box.innerHTML=''; EN_PARSED_ROWS=[]; return; }
     const seq=++PARSE_SEQ;
     box.style.display='block';
     box.innerHTML='<div style="font-size:12.5px;color:#1f8a61;font-weight:700">📊 Reading figures from the bank book…</div>';
@@ -4070,7 +4073,7 @@ async function renderEntryBody(){
     if(seq!==PARSE_SEQ) return;
     // merge AI-extracted transactions (PDF/photo) into the same totals
     if(EN_AI.length){
-      p=p||{count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null};
+      p=p||{count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null,rows:[]};
       const from=dateInp.value, to=dateInp2.value||from;
       const aiFiles=new Set();
       EN_AI.forEach(t=>{
@@ -4085,9 +4088,11 @@ async function renderEntryBody(){
         if(t.dir==='in'){ if(fin) p.finIn+=t.amt; else p.rev+=t.amt; }
         else { if(fin) p.finOut+=t.amt; else p.opex+=t.amt; }
         p.count++; aiFiles.add((t.src||'document')+' (AI)');
+        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin});
       });
       aiFiles.forEach(f=>p.files.push(f));
     }
+    EN_PARSED_ROWS = (p&&p.rows)?p.rows:[];
     if(p && !p.count && p.allCount && p.minDate){
       // the file's transactions fall outside the selected dates
       if(!DATES_TOUCHED){ adoptFileDates(p); return; }   // user never picked dates — follow the file
@@ -4222,12 +4227,42 @@ async function renderEntryBody(){
       const parseBox=document.getElementById('en-parse');
       if(parseBox && parseBox.style.display!=='none' && document.getElementById('p-rev')){
         const gv=id=>{const el=document.getElementById(id); return el?(Number((el.value||'').replace(/[^0-9-]/g,''))||0):0;};
-        const parsedRows=[['revenue',gv('p-rev')],['opex',gv('p-opex')],['financing_in',gv('p-fin')],['financing_out',gv('p-fout')]]
-          .filter(([,v])=>v>0)
-          .map(([fl,v])=>({entity_code:entity,period_code:pcode,period_label:plabel,entry_date:dval,entry_date_end:(dval2!==dval?dval2:null),
-            flow:fl,category:'Bank book import',label:('Bank book '+dval+(dval2!==dval?' → '+dval2:'')).slice(0,200),amount_idr:v,note:null,attachments:[]}));
-        for(const pr of parsedRows) await adminAdd('entry_submissions',pr);
-        if(parsedRows.length){ appliedParsed=true; ENTRY_DIRTY=true; }
+        const bkLabel=('Bank book '+dval+(dval2!==dval?' → '+dval2:'')).slice(0,200);
+        // each transaction counts in its own month (a file spanning May–June no longer lands entirely in May)
+        const byMonth={};
+        (EN_PARSED_ROWS||[]).forEach(r=>{
+          const P2=periodFromDate(r.date);
+          const b=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,revenue:0,opex:0,financing_in:0,financing_out:0,min:r.date,max:r.date};
+          if(r.date<b.min)b.min=r.date; if(r.date>b.max)b.max=r.date;
+          if(r.dir==='in'){ if(r.fin)b.financing_in+=r.amt; else b.revenue+=r.amt; }
+          else { if(r.fin)b.financing_out+=r.amt; else b.opex+=r.amt; }
+        });
+        const sums={revenue:0,opex:0,financing_in:0,financing_out:0};
+        Object.values(byMonth).forEach(b=>{sums.revenue+=b.revenue;sums.opex+=b.opex;sums.financing_in+=b.financing_in;sums.financing_out+=b.financing_out;});
+        const edited={revenue:gv('p-rev'),opex:gv('p-opex'),financing_in:gv('p-fin'),financing_out:gv('p-fout')};
+        const subsRows=[];
+        Object.entries(byMonth).forEach(([code,b])=>{
+          ['revenue','opex','financing_in','financing_out'].forEach(fl=>{
+            if(b[fl]>0) subsRows.push({entity_code:entity,period_code:code,period_label:perName[code]?null:b.label,
+              entry_date:b.min,entry_date_end:(b.max!==b.min?b.max:null),flow:fl,category:'Bank book import',
+              label:bkLabel,amount_idr:b[fl],note:null,attachments:[]});
+          });
+        });
+        // numbers hand-edited in the preview become a visible adjustment on the start month
+        ['revenue','opex','financing_in','financing_out'].forEach(fl=>{
+          const d=edited[fl]-sums[fl];
+          if(d) subsRows.push({entity_code:entity,period_code:pcode,period_label:plabel,entry_date:dval,entry_date_end:(dval2!==dval?dval2:null),
+            flow:fl,category:'Bank book import',label:('Manual adjustment — '+bkLabel).slice(0,200),amount_idr:d,note:null,attachments:[]});
+        });
+        for(const pr of subsRows) await adminAdd('entry_submissions',pr);
+        // save every parsed transaction so the breakdown drill-down shows full detail
+        const baseOrd=Math.floor(Date.now()/1000);
+        const txRows=(EN_PARSED_ROWS||[]).filter(r=>!r.fin).map((r,i)=>({
+          source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDate(r.date).code,
+          flow:r.dir==='in'?'rev':'opex',entity_code:entity,day_label:dayLbl(r.date),
+          description:String(r.desc||'').slice(0,200),raw_label:bkLabel,amount_idr:r.amt,contra:false}));
+        if(txRows.length) await adminAddBatch('transactions',txRows);
+        if(subsRows.length||txRows.length){ appliedParsed=true; ENTRY_DIRTY=true; }
       }
       // optional saldo awal / saldo akhir -> upsert balance row (keep the other side if only one entered)
       const openRaw=(document.getElementById('en-open').value||'').replace(/[^0-9-]/g,'');
