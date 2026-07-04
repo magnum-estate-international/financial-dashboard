@@ -3925,16 +3925,52 @@ async function parseBankFiles(from,to){
         if(!out.maxDate||dt>out.maxDate) out.maxDate=dt;
         if(from && dt<from) continue;
         if(to && dt>to) continue;
-        const tag=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'')+' '+desc;
+        const catRaw=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'').trim();
+        const tag=catRaw+' '+desc;
         const fin=FIN_RX.test(tag);
-        if(inn){ if(fin) out.finIn+=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin}); }
-        if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin}); }
+        if(inn){ if(fin) out.finIn+=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,cat:catRaw}); }
+        if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw}); }
         out.count++; used=true;
       }
     });
     if(used) out.files.push(x.file.name);
   }
   return out;
+}
+/* ── Per-transaction categorisation: file category → alias map → AI classify ── */
+let CAT_MAP=null;
+async function loadCatMap(){
+  if(CAT_MAP) return CAT_MAP;
+  const [cats,aliases]=await Promise.all([
+    sbFetch('categories?select=name,kind&limit=200'),
+    sbFetch('category_aliases?select=raw_label,category&limit=1000')
+  ]);
+  const m={alias:{},rev:new Set(),opex:new Set()};
+  cats.forEach(c=>{ if(c.kind==='revenue')m.rev.add(c.name); else if(c.kind==='opex')m.opex.add(c.name); m.alias[c.name.toLowerCase()]=c.name; });
+  aliases.forEach(a2=>{ const k=String(a2.raw_label||'').toLowerCase().trim(); if(k) m.alias[k]=a2.category; });
+  CAT_MAP=m; return m;
+}
+async function categorizeRows(rows){
+  const m=await loadCatMap();
+  const pending=[];
+  rows.forEach((r,i)=>{
+    if(r.fin||r.canon) return;
+    const want=r.dir==='in'?m.rev:m.opex;
+    const c1=m.alias[String(r.cat||'').toLowerCase().trim()];
+    if(c1&&want.has(c1)){ r.canon=c1; return; }
+    const c2=m.alias[String(r.desc||'').toLowerCase().trim()];
+    if(c2&&want.has(c2)){ r.canon=c2; return; }
+    pending.push(i);
+  });
+  if(pending.length){
+    try{
+      const items=pending.map(i=>({i:i,description:String(rows[i].desc||'').slice(0,140),direction:rows[i].dir}));
+      const r=await authedFetch(SB_URL+'/functions/v1/ai-extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'classify',items:items})});
+      const d=await r.json().catch(()=>({}));
+      if(r.ok)(d.categories||[]).forEach(c=>{ const row=rows[c.i]; if(row&&!row.fin){ const want=row.dir==='in'?m.rev:m.opex; if(want.has(c.category)) row.canon=c.category; } });
+    }catch(e){}
+  }
+  rows.forEach(r=>{ if(!r.fin&&!r.canon) r.canon=(r.dir==='in'?'Other Guest Services & Income':'Other Operating Expense'); });
 }
 const subDocUrl=path=>SB_URL+'/storage/v1/object/submission-docs/'+path.split('/').map(encodeURIComponent).join('/');
 async function uploadSubDoc(f,dt){
@@ -4128,7 +4164,7 @@ async function renderEntryBody(){
         if(t.dir==='in'){ if(fin) p.finIn+=t.amt; else p.rev+=t.amt; }
         else { if(fin) p.finOut+=t.amt; else p.opex+=t.amt; }
         p.count++; aiFiles.add((t.src||'document')+' (AI)');
-        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin});
+        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin,cat:t.cat||''});
       });
       aiFiles.forEach(f=>p.files.push(f));
     }
@@ -4257,7 +4293,7 @@ async function renderEntryBody(){
           body:JSON.stringify({filename:f.name,mime:f.type||'',data_b64:b64,from_date:document.getElementById('en-date').value,to_date:document.getElementById('en-date2').value})});
         const d=await r.json().catch(()=>({}));
         if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-        (d.transactions||[]).forEach(t=>EN_AI.push({date:t.date,desc:t.description,amt:t.amount,dir:t.direction,kind:t.kind,src:f.name}));
+        (d.transactions||[]).forEach(t=>EN_AI.push({date:t.date,desc:t.description,amt:t.amount,dir:t.direction,kind:t.kind,cat:t.category||'',src:f.name}));
       }
       if(aiBtn) aiBtn.textContent='🤖 Read again';
       setMsg('en-msg','✅ Read '+EN_AI.length+' transactions from the document — check the figures below, then press Save.',true);
@@ -4332,28 +4368,45 @@ async function renderEntryBody(){
         const bkLabel=('Bank book '+dval+(dval2!==dval?' → '+dval2:'')).slice(0,200);
         // only rows NOT already in the dashboard are stored/applied (dedup); fall back to all rows if the comparison failed
         const rowsToStore=EN_DEDUP?EN_DEDUP.newRows:(EN_PARSED_ROWS||[]);
+        // analyse each transaction into its proper revenue/expense category
+        if(rowsToStore.length){ b.textContent='Categorising transactions…'; try{ await categorizeRows(rowsToStore); }catch(e){} }
         // each transaction counts in its own month (a file spanning May–June no longer lands entirely in May)
         const byMonth={};
         rowsToStore.forEach(r=>{
           const P2=periodFromDate(r.date);
-          const b=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,sum:{revenue:0,opex:0,financing_in:0,financing_out:0}};
-          if(r.date<b.min)b.min=r.date; if(r.date>b.max)b.max=r.date;
-          if(r.dir==='in'){ if(r.fin)b.sum.financing_in+=r.amt; else b.sum.revenue+=r.amt; }
-          else { if(r.fin)b.sum.financing_out+=r.amt; else b.sum.opex+=r.amt; }
+          const b2=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,sum:{revenue:0,opex:0,financing_in:0,financing_out:0},cats:{revenue:{},opex:{},financing_in:{},financing_out:{}}};
+          if(r.date<b2.min)b2.min=r.date; if(r.date>b2.max)b2.max=r.date;
+          const fl=r.dir==='in'?(r.fin?'financing_in':'revenue'):(r.fin?'financing_out':'opex');
+          b2.sum[fl]+=r.amt;
+          const cat=r.fin?'Financing':(r.canon||'Other');
+          b2.cats[fl][cat]=(b2.cats[fl][cat]||0)+r.amt;
         });
         // amounts to add to the monthly totals: dedup result caps out what the totals already include
-        Object.entries(byMonth).forEach(([code,b])=>{
-          b.apply=(EN_DEDUP&&EN_DEDUP.byMonth[code]&&EN_DEDUP.byMonth[code].add)?EN_DEDUP.byMonth[code].add:b.sum;
+        Object.entries(byMonth).forEach(([code,b2])=>{
+          b2.apply=(EN_DEDUP&&EN_DEDUP.byMonth[code]&&EN_DEDUP.byMonth[code].add)?EN_DEDUP.byMonth[code].add:b2.sum;
         });
         const sums={revenue:0,opex:0,financing_in:0,financing_out:0};
-        Object.values(byMonth).forEach(b=>{['revenue','opex','financing_in','financing_out'].forEach(f=>{sums[f]+=b.apply[f];});});
+        Object.values(byMonth).forEach(b2=>{['revenue','opex','financing_in','financing_out'].forEach(f=>{sums[f]+=b2.apply[f];});});
         const edited={revenue:gv('p-rev'),opex:gv('p-opex'),financing_in:gv('p-fin'),financing_out:gv('p-fout')};
         const subsRows=[];
-        Object.entries(byMonth).forEach(([code,b])=>{
+        Object.entries(byMonth).forEach(([code,b2])=>{
           ['revenue','opex','financing_in','financing_out'].forEach(fl=>{
-            if(b.apply[fl]>0) subsRows.push({entity_code:entity,period_code:code,period_label:perName[code]?null:b.label,
-              entry_date:b.min,entry_date_end:(b.max!==b.min?b.max:null),flow:fl,category:'Bank book import',
-              label:bkLabel,amount_idr:b.apply[fl],note:null,attachments:[]});
+            const applyAmt=b2.apply[fl];
+            if(applyAmt<=0) return;
+            // distribute the applied amount across the categories proportionally (gap-capping shrinks all equally)
+            const cats=Object.entries(b2.cats[fl]); const catSum=cats.reduce((s,c)=>s+c[1],0)||1;
+            let allotted=0; let largest=null;
+            const parts=cats.map(([cat,v])=>{
+              const a2=Math.round(applyAmt*v/catSum); allotted+=a2;
+              if(!largest||v>largest.v) largest={cat:cat,v:v};
+              return {cat:cat,amt:a2};
+            });
+            if(largest){ const drift=applyAmt-allotted; const lp=parts.find(x=>x.cat===largest.cat); if(lp) lp.amt+=drift; }
+            parts.filter(x=>x.amt>0).forEach(x=>{
+              subsRows.push({entity_code:entity,period_code:code,period_label:perName[code]?null:b2.label,
+                entry_date:b2.min,entry_date_end:(b2.max!==b2.min?b2.max:null),flow:fl,category:x.cat,
+                label:(x.cat==='Financing'?bkLabel:x.cat),amount_idr:x.amt,note:null,attachments:[]});
+            });
           });
         });
         // numbers hand-edited in the preview become a visible adjustment on the start month
@@ -4369,7 +4422,7 @@ async function renderEntryBody(){
           source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDate(r.date).code,
           flow:r.fin?(r.dir==='in'?'fin_in':'fin_out'):(r.dir==='in'?'rev':'opex'),
           entity_code:entity,day_label:dayLbl(r.date),
-          description:String(r.desc||'').slice(0,200),raw_label:bkLabel,amount_idr:r.amt,contra:false}));
+          description:String(r.desc||'').slice(0,200),raw_label:(r.fin?bkLabel:(r.canon||bkLabel)),amount_idr:r.amt,contra:false}));
         if(txRows.length) await adminAddBatch('transactions',txRows);
         if(subsRows.length||txRows.length){ appliedParsed=true; ENTRY_DIRTY=true; }
       }
