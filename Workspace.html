@@ -3592,6 +3592,7 @@ function showUserBar(){
   b.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;margin-right:8px;min-width:0"><span style="width:27px;height:27px;flex:none;border-radius:50%;background:linear-gradient(135deg,#5b67f1,#8d7bf0);color:#fff;font-weight:700;font-size:12px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
     +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">✎ Update data</button>':'')
     +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">⚙ Manage access</button>':'')
+    +'<button id="mag-history-open" style="'+pill+'">🕘 History</button>'
     +'<button id="mag-signout" style="'+pill+'">Sign out</button>';
   const host=document.querySelector('header.hero');
   if(host){ host.insertBefore(b, host.firstChild); }
@@ -3599,7 +3600,45 @@ function showUserBar(){
   document.getElementById('mag-signout').onclick=signOut;
   const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
   const eb=document.getElementById('mag-entry-open'); if(eb) eb.onclick=openEntryPanel;
+  const hb=document.getElementById('mag-history-open'); if(hb) hb.onclick=openHistoryPanel;
   if(IS_ADMIN) refreshPendingBadge();
+}
+/* ── Change history (audit log) ───────────────────────────────────────── */
+async function openHistoryPanel(){
+  const old=document.getElementById('mag-history'); if(old) old.remove();
+  const wrap=document.createElement('div'); wrap.id='mag-history';
+  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(20,27,45,.45);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Plus Jakarta Sans,system-ui,sans-serif';
+  wrap.innerHTML='<div style="background:#fff;color:#141b2d;max-width:860px;width:100%;border-radius:14px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-weight:700;font-size:18px">Change History</div><button id="mag-history-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
+    +'<div style="font-size:12.5px;color:#3a4254;margin-bottom:16px">Every change made to the dashboard — data uploads, figures, balances and access management — with who made it.</div>'
+    +'<div id="mag-history-body">Loading…</div></div>';
+  document.body.appendChild(wrap);
+  document.getElementById('mag-history-x').onclick=()=>wrap.remove();
+  wrap.addEventListener('click',e=>{if(e.target===wrap)wrap.remove();});
+  const body=document.getElementById('mag-history-body');
+  let rows=[];
+  try{ rows=await sbFetch('audit_log?select=*&order=id.desc&limit=250'); }
+  catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+escH(err.message)+'</div>'; return; }
+  if(!rows.length){ body.innerHTML='<div style="font-size:13px;color:#3a4254">No changes recorded yet.</div>'; return; }
+  const th='text-align:left;font-size:11px;color:#3a4254;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;white-space:nowrap';
+  const td='padding:8px;font-size:12.5px;border-top:1px solid #eef2f7;vertical-align:top';
+  const fmtT=t=>{const d=new Date(t);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});};
+  const actChip=a=>{
+    const c=/Upload|Stored/.test(a)?['#4550d8','#eef0fe']:/figures|balance/i.test(a)?['#1f8a61','#e3f2e8']:/Revoked|Removed/.test(a)?['#b3261e','#fbe9e7']:['#8a6d1a','#faf3d9'];
+    return '<span style="display:inline-block;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;background:'+c[1]+';color:'+c[0]+';white-space:nowrap">'+escH(a)+'</span>';};
+  let h='<div style="overflow-x:auto;margin:0 -4px;padding:0 4px;max-height:60vh;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>'
+    +'<th style="'+th+'">When</th><th style="'+th+'">Who</th><th style="'+th+'">Action</th><th style="'+th+'">PT · Month</th><th style="'+th+'">Detail</th><th style="'+th+';text-align:right">Amount (IDR)</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    const ptName=r.entity_code?((typeof ENT!=='undefined'&&ENT[r.entity_code])?ENT[r.entity_code].name:r.entity_code):'—';
+    h+='<tr><td style="'+td+';white-space:nowrap;color:#3a4254;font-size:12px">'+fmtT(r.at)+'</td>'
+      +'<td style="'+td+';word-break:break-word;max-width:170px">'+escH(r.email)+'</td>'
+      +'<td style="'+td+'">'+actChip(r.action)+'</td>'
+      +'<td style="'+td+'">'+escH(ptName)+(r.period_code?'<div style="color:#3a4254;font-size:11px">'+escH(r.period_code)+'</div>':'')+'</td>'
+      +'<td style="'+td+';word-break:break-word">'+escH(r.detail||'')+'</td>'
+      +'<td style="'+td+';text-align:right;white-space:nowrap">'+(r.amount_idr!=null?fmtIDR(r.amount_idr):'—')+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  body.innerHTML=h;
 }
 async function refreshPendingBadge(){
   try{
