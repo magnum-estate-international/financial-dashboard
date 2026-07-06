@@ -3095,19 +3095,47 @@ function openFinEntity(key,id){
   if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this entity in scope.</p>`;
   showModal(`${ENT[id].name} — ${isIn?'Financing Inflows':'Financing & Non-Op Outflows'}`,h);
 }
+function openCapDepPerson(encPerson){
+  const person=decodeURIComponent(encPerson);
+  const nameRx=/\bstan(islav)?\b/i.test(person)?/\bstan(islav)?\b/i:/\bigor\b/i.test(person)?/\bigor\b/i:null;
+  const list=activeMonths().flatMap(mo=>(LOANS_BY_MONTH[mo]||[])).filter(l=>l.ty==='Capital deposit'&&l.f===person);
+  const toName=(list[0]&&list[0].t)||'';
+  const id=EIDS.find(x=>ENT[x]&&toName.indexOf(ENT[x].name)>=0);
+  const total=list.reduce((s,l)=>s+l.amt,0);
+  const tx=(id?TX:[]).filter(x=>x.e===id && x.type==='fin_in' && x.k==='Shareholder Capital Deposit (Stan & Igor)'
+    && activeMonths().includes(x.mo||'MAY') && (!nameRx||nameRx.test(x.desc||'')));
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openDetail('capdep')">‹ Back to breakdown</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${person} — Shareholder Capital Deposit</h4>`;
+  let s=0;
+  if(tx.length){
+    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
+    tx.forEach(x=>{s+=x.amt;
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}</td><td class="num pos">${fmt(x.amt)}</td></tr>`;});
+  } else {
+    h+=`<table><tbody>`;
+  }
+  const residual=total-s;
+  if(Math.abs(residual)>0.5){
+    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[MONTH]||MONTH}</td><td style="font-size:12.5px;color:var(--muted)">Consolidated from the loan-flow total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td><td class="num pos">${fmt(residual)}</td></tr>`;
+  }
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?2:1}"><strong>TOTAL</strong></td><td class="num pos"><strong>${fmt(total)}</strong></td></tr></tbody></table>`;
+  if(tx.length) h+=`</div>`;
+  if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this shareholder in scope.</p>`;
+  showModal(`${person} — Shareholder Capital Deposit`,h);
+}
 function openDetail(kind){
   const a=agg();
   if(kind==='rev') showModal('Operating Revenue — Breakdown',bdTableHtml(a.revBD,a.rev,'pos'));
   else if(kind==='opex') showModal('Operating Expenses — Breakdown',bdTableHtml(a.opexBD,a.opex,'neg'));
   else if(kind==='finin') showModal('Financing Inflows — Detail',finTableHtml('finIn'));
   else if(kind==='capdep'){
-    const list=(LOANS_BY_MONTH[MONTH]||[]).filter(l=>l.ty==='Capital deposit');
-    const byP={}; list.forEach(l=>{byP[l.f]=(byP[l.f]||0)+l.amt;});
+    const list=activeMonths().flatMap(mo=>(LOANS_BY_MONTH[mo]||[])).filter(l=>l.ty==='Capital deposit');
+    const byP={}, byPEnt={}; list.forEach(l=>{byP[l.f]=(byP[l.f]||0)+l.amt; byPEnt[l.f]=l.t;});
     let h=`<table><thead><tr><th>Shareholder</th><th>Entity</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`,tot=0;
     Object.entries(byP).forEach(([p,v])=>{tot+=v;
-      h+=`<tr><td style="font-size:12.5px">${p}</td><td style="font-size:12.5px">PT Magnum Estate International</td><td class="num">${fmt(v)}</td></tr>`;});
+      h+=`<tr class="clickable" style="cursor:pointer" onclick="openCapDepPerson('${encodeURIComponent(p)}')"><td style="font-size:12.5px">${p} <span style="color:var(--blue-500);font-size:11px">›</span></td><td style="font-size:12.5px">${byPEnt[p]||'—'}</td><td class="num">${fmt(v)}</td></tr>`;});
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="2"><strong>TOTAL SHAREHOLDER CAPITAL DEPOSIT</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-    h+=`<p style="color:var(--muted);font-size:12px;margin-top:10px;line-height:1.7">All shareholder money received by PT Magnum Estate International (from Stanislav Sadovnikov &amp; Igor Maksimov) in June 2026 — covering the Capital Contribution (12 Jun) <b>and</b> Refund Other Receivable (8 Jun). Tracked as its own <em>financing</em> category and <b>not counted inside Financing Inflows</b> (avoids double-counting); separate from inter-company loans, loan repayments and receivables. Still included in Net Financing &amp; Net Cash Movement as an inflow. This differs from payments <em>to</em> them (receivables &amp; shareholder payments), which stay in financing out.</p>`;
+    h+=`<p style="color:var(--muted);font-size:12px;margin-top:10px;line-height:1.7">Click a shareholder to see their individual transactions. Tracked as its own <em>financing</em> category and <b>not counted inside Financing Inflows</b> (avoids double-counting); separate from inter-company loans, loan repayments and receivables. Still included in Net Financing &amp; Net Cash Movement as an inflow. This differs from payments <em>to</em> them (receivables &amp; shareholder payments), which stay in financing out.</p>`;
     showModal('Shareholder Capital Deposit — Detail',h);
   }
   else if(kind==='finout') showModal('Financing & Non-Op Outflows — Detail',finTableHtml('finOut'));
