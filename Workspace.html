@@ -4376,6 +4376,11 @@ async function renderEntryBody(){
         // without stored detail); neg = refund reductions, which always apply in full regardless of that gap.
         const byMonth={}; let gapFilled=0;
         newRows.forEach(r=>{
+          // Shareholder capital deposits are tracked ONLY via loan_flows (the capDep card), never inside
+          // entity_period_totals.financing_in — must be excluded here too, not just in the save handler's
+          // own byMonth pass, since THIS computation (EN_DEDUP.byMonth[code].add) is what the save handler
+          // actually applies (its own b2.sum is only used for the per-category proportional split).
+          if(r.canon==='Shareholder Capital Deposit (Stan & Igor)') return;
           const P2=periodFromDate(r.date);
           const b=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,
             pos:{revenue:0,opex:0,financing_in:0,financing_out:0},neg:{revenue:0,opex:0,financing_in:0,financing_out:0}};
@@ -4555,6 +4560,10 @@ async function renderEntryBody(){
         // each transaction counts in its own month (a file spanning May–June no longer lands entirely in May)
         const byMonth={};
         rowsToStore.forEach(r=>{
+          // Shareholder capital deposits are tracked ONLY via loan_flows (the dedicated capDep card) —
+          // NOT added to entity_period_totals.financing_in too, or the dashboard's own fullNet formula
+          // (rev+finIn+capDep-opex-finOut) would double-count them, exactly like the card's own text warns.
+          if(r.canon==='Shareholder Capital Deposit (Stan & Igor)') return;
           const P2=periodFromDate(r.date);
           const b2=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,sum:{revenue:0,opex:0,financing_in:0,financing_out:0},cats:{revenue:{},opex:{},financing_in:{},financing_out:{}}};
           if(r.date<b2.min)b2.min=r.date; if(r.date>b2.max)b2.max=r.date;
