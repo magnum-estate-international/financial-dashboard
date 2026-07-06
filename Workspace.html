@@ -303,6 +303,18 @@ a{color:#4550d8}
 <div class="divlabel" id="secFinLabel">🔄 Loan, Financing &amp; Non-Operational Activity — May 2026</div>
 <div class="kpi4" id="kpiFin"></div>
 
+<div id="secHealthWrap" style="display:none">
+  <div class="divlabel" id="secHealthLabel">🩺 Data Health — Itemization &amp; Reconciliation Check</div>
+  <div class="panel" style="margin-bottom:16px">
+    <div class="pn-sub" style="margin-bottom:10px">Compares each entity/month/category's official total against its itemized transactions. <b>❌ Tidak cocok</b> means itemized detail exceeds the total (a possible double-count — check first). <b>⚠️ Sebagian</b> means the total is correct but not all transactions have been itemized yet. Click a row to see the transactions behind it.</div>
+    <div id="healthSummary" style="margin-bottom:12px"></div>
+    <div class="table-scroll" style="max-height:420px"><table>
+      <thead><tr><th>Entity</th><th>Month</th><th>Category</th><th class="num" style="text-align:right">Official total</th><th class="num" style="text-align:right">Itemized</th><th class="num" style="text-align:right">Residual</th><th>Status</th></tr></thead>
+      <tbody id="healthBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
 <div class="divlabel" id="secRecoLabel">📌 Points of Attention — Recommendations for Management</div>
 <div id="recoGrid" class="reco-grid"></div>
 
@@ -3346,6 +3358,84 @@ function renderRecos(a){
     : '<div class="reco good"><div class="reco-top"><div class="ric">'+RECO_ICONS.good+'</div><span class="rtag">On track</span></div><h4>No pressing issues for this view</h4><p>Figures for this scope and period look balanced. Switch scope or month to check other entities.</p></div>';
 }
 
+// ─── DATA HEALTH (itemization completeness & double-count check) ────────────
+const HEALTH_FLOWS=[
+  {key:'rev',   label:'Revenue',        txType:'rev'},
+  {key:'opex',  label:'Opex',           txType:'opex'},
+  {key:'finIn', label:'Financing In',   txType:'fin_in'},
+  {key:'finOut',label:'Financing Out',  txType:'fin_out'},
+];
+function healthItemized(id,mo,txType){
+  return TX.filter(x=>x.e===id && x.type===txType && (x.mo||'MAY')===mo
+    && x.k!=='Shareholder Capital Deposit (Stan & Igor)').reduce((s,x)=>s+x.amt,0);
+}
+function dataHealthRows(){
+  const rows=[];
+  scopeIds().forEach(id=>{
+    Q2_MONTHS.forEach(mo=>{
+      const m=effMonth(id,mo); if(!m) return;
+      HEALTH_FLOWS.forEach(f=>{
+        const total=m[f.key]||0; if(Math.abs(total)<1) return;
+        const itemized=healthItemized(id,mo,f.txType);
+        const residual=total-itemized;
+        const status=Math.abs(residual)<=1000?'ok':(residual>0?'partial':'mismatch');
+        rows.push({id,mo,flow:f,total,itemized,residual,status});
+      });
+    });
+  });
+  return rows;
+}
+function openHealthCell(id,mo,txType,label){
+  const tx=TX.filter(x=>x.e===id && x.type===txType && (x.mo||'MAY')===mo
+    && x.k!=='Shareholder Capital Deposit (Stan & Igor)');
+  const total=(effMonth(id,mo)||{})[HEALTH_FLOWS.find(f=>f.txType===txType).key]||0;
+  let s=0;
+  let h=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">${ENT[id].name} — ${label} — ${MONTHS[mo]||mo}</h4>`;
+  if(tx.length){
+    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
+    tx.forEach(x=>{s+=x.amt;
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}</td><td style="font-size:12px;color:var(--muted)">${x.k&&!/^Bank book/.test(x.k)?x.k:'—'}</td><td class="num">${fmt(x.amt)}</td></tr>`;});
+  } else { h+=`<table><tbody>`; }
+  const residual=total-s;
+  if(Math.abs(residual)>1000){
+    const neg=residual<0;
+    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[mo]||mo}</td><td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized detail exceeds the official total — investigate for a possible double-count':'Consolidated from the bank-report total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td><td></td><td class="num" style="color:${neg?'var(--red)':'inherit'}">${fmt(residual)}</td></tr>`;
+  }
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?3:1}"><strong>OFFICIAL TOTAL</strong></td><td class="num"><strong>${fmt(total)}</strong></td></tr></tbody></table>`;
+  if(tx.length) h+=`</div>`;
+  showModal(`${ENT[id].name} — ${label} — ${MONTHS[mo]||mo}`,h);
+}
+function renderDataHealth(){
+  const wrap=document.getElementById('secHealthWrap'); if(!wrap) return;
+  const show=MY_ROLE==='editor';
+  wrap.style.display=show?'':'none';
+  if(!show) return;
+  const rows=dataHealthRows();
+  const mismatch=rows.filter(r=>r.status==='mismatch');
+  const partial=rows.filter(r=>r.status==='partial');
+  const ok=rows.filter(r=>r.status==='ok');
+  const summary=document.getElementById('healthSummary');
+  if(summary) summary.innerHTML=
+    `<span class="tag" style="background:#fde8e8;color:var(--red);font-weight:700;padding:4px 10px;border-radius:999px">❌ ${mismatch.length} tidak cocok</span>`+
+    `<span class="tag" style="background:var(--amber-bg);color:var(--amber);font-weight:700;padding:4px 10px;border-radius:999px;margin-left:8px">⚠️ ${partial.length} sebagian</span>`+
+    `<span class="tag" style="background:#e6f7ee;color:var(--green);font-weight:700;padding:4px 10px;border-radius:999px;margin-left:8px">✅ ${ok.length} lengkap</span>`;
+  const body=document.getElementById('healthBody'); if(!body) return;
+  const toShow=[...mismatch,...partial].sort((a,b)=>(a.status==='mismatch'?0:1)-(b.status==='mismatch'?0:1)||Math.abs(b.residual)-Math.abs(a.residual));
+  if(!toShow.length){
+    body.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Semua data pada scope ini sudah lengkap &amp; cocok ✅</td></tr>`;
+    return;
+  }
+  body.innerHTML=toShow.map(r=>{
+    const badge=r.status==='mismatch'
+      ?`<span class="tag" style="background:#fde8e8;color:var(--red)">❌ Tidak cocok</span>`
+      :`<span class="tag" style="background:var(--amber-bg);color:var(--amber)">⚠️ Sebagian</span>`;
+    return `<tr class="clickable" style="cursor:pointer" onclick="openHealthCell('${r.id}','${r.mo}','${r.flow.txType}','${r.flow.label}')">`
+      +`<td>${pill(r.id)}</td><td>${MONTHS[r.mo]||r.mo}</td><td>${r.flow.label}</td>`
+      +`<td class="num">${fmt(r.total)}</td><td class="num">${fmt(r.itemized)}</td>`
+      +`<td class="num" style="color:${r.residual<0?'var(--red)':'inherit'}">${fmt(r.residual)}</td><td>${badge}</td></tr>`;
+  }).join('');
+}
+
 // ─── BALANCE RECONCILIATION (saldo awal / saldo akhir vs reported movement) ──
 function balFor(id){
   const per=(typeof BAL!=='undefined'&&BAL[id])||{};
@@ -3428,7 +3518,7 @@ function renderBalances(){
 
 function renderAll(){
   const a=agg();
-  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderBalances();
+  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderDataHealth();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
@@ -3549,12 +3639,14 @@ async function loadFromSupabase(){
   const mkTx=r=>{const o={mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,k:r.raw_label,amt:+r.amount_idr}; if(r.contra)o.contra=1; return o;};
   const bs={TX:[],TX_MULTI:[],TX_MS:[],TX_ICG_OPEX:[]};
   txAll.forEach(r=>{(bs[r.source]=bs[r.source]||[]).push(mkTx(r));});
+  // TX must include every source bucket (not just the four original ones) — a fixed allow-list here
+  // silently drops any later source tag (e.g. TX_FILL3) from the whole dashboard with no error.
   return {ENT:E,MULTI:M,
     LOANS_MAY:loans.filter(l=>l.period_code==='MAY').map(mkLoan),
     LOANS_APR:loans.filter(l=>l.period_code==='APR').map(mkLoan),
     LOANS_JUN:loans.filter(l=>l.period_code==='JUN').map(mkLoan),
     HIGHLIGHTS:hls.map(h=>({d:h.day_label,e:h.entity_code,desc:h.description,ty:h.flow_type,amt:+h.amount_idr})),
-    TX:[...bs.TX,...bs.TX_MULTI,...bs.TX_MS,...bs.TX_ICG_OPEX],
+    TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
 function rebuildScopeSelect(){
@@ -3613,6 +3705,7 @@ async function runDashboard(){
   applyScopeChrome();
   renderAll();
   try{ await checkAdmin(); }catch(e){}
+  renderDataHealth(); // MY_ROLE is only known after checkAdmin resolves, above
   showUserBar();
 }
 
