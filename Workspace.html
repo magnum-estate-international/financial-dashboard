@@ -3047,22 +3047,53 @@ function finTableHtml(key){
     let h=`<table><thead><tr><th>Entity</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`,tot=0,any=false;
     ids.forEach(id=>{const v=eff(id)[key==='finIn'?'finIn':'finOut'];
       if(v>0){any=true;tot+=v;
-        h+=`<tr><td>${pill(id)}</td><td class="num">${fmt(v)}</td></tr>`;
+        h+=`<tr class="clickable" style="cursor:pointer" onclick="openFinEntity('${key}','${id}')"><td>${pill(id)} <span style="color:var(--blue-500);font-size:11px">›</span></td><td class="num">${fmt(v)}</td></tr>`;
       }});
     if(!any) return `<p style="color:var(--muted);font-size:13px">No flows in this scope for ${MONTHS[MONTH]}.</p>`;
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-    h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Per-counterparty detail for ${MONTHS[MONTH]} is shown in the "Inter-Company Loan Flows" table (ICG + PT BBU); the per-entity summary is shown here.</p>`;
+    h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click a row to see its transactions. Per-counterparty detail is also shown in the "Inter-Company Loan Flows" table (ICG + PT BBU).</p>`;
     return h;
   }
   let h='',tot=0,any=false;
-  h=`<table><thead><tr><th>Entity</th><th>Flow</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
+  const byId={};
   ids.forEach(id=>{
-    Object.entries(ENT[id][key]).forEach(([k,v])=>{any=true;tot+=v;
-      h+=`<tr><td>${pill(id)}</td><td style="font-size:12.5px">${k}</td><td class="num">${fmt(v)}</td></tr>`;});
+    Object.entries(ENT[id][key]).forEach(([k,v])=>{any=true;tot+=v; (byId[id]=byId[id]||[]).push([k,v]);});
   });
   if(!any) return `<p style="color:var(--muted);font-size:13px">No flows in this scope.</p>`;
+  h=`<table><thead><tr><th>Entity</th><th>Flow</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
+  Object.entries(byId).forEach(([id,list])=>{
+    list.forEach(([k,v])=>{
+      h+=`<tr class="clickable" style="cursor:pointer" onclick="openFinEntity('${key}','${id}')"><td>${pill(id)} <span style="color:var(--blue-500);font-size:11px">›</span></td><td style="font-size:12.5px">${k}</td><td class="num">${fmt(v)}</td></tr>`;
+    });
+  });
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="2"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+  h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click a row to see its transactions.</p>`;
   return h;
+}
+function openFinEntity(key,id){
+  const isIn=key==='finIn';
+  const cls=isIn?'pos':'neg';
+  const total=eff(id)[isIn?'finIn':'finOut']||0;
+  const txType=isIn?'fin_in':'fin_out';
+  const tx=TX.filter(x=>x.e===id && x.type===txType && activeMonths().includes(x.mo||'MAY'));
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openDetail('${isIn?'finin':'finout'}')">‹ Back to breakdown</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id].name} — ${isIn?'Financing Inflows':'Financing &amp; Non-Op Outflows'}</h4>`;
+  let s=0;
+  if(tx.length){
+    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
+    tx.forEach(x=>{s+=x.amt;
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}</td><td style="font-size:12px;color:var(--muted)">${x.k&&!/^Bank book/.test(x.k)?x.k:'—'}</td><td class="num ${cls}">${fmt(x.amt)}</td></tr>`;});
+  } else {
+    h+=`<table><tbody>`;
+  }
+  const residual=total-s;
+  if(Math.abs(residual)>0.5){
+    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[MONTH]||MONTH}</td><td style="font-size:12.5px;color:var(--muted)">Consolidated from the bank-report total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td><td></td><td class="num ${cls}">${fmt(residual)}</td></tr>`;
+  }
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?3:1}"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(total)}</strong></td></tr></tbody></table>`;
+  if(tx.length) h+=`</div>`;
+  if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this entity in scope.</p>`;
+  showModal(`${ENT[id].name} — ${isIn?'Financing Inflows':'Financing & Non-Op Outflows'}`,h);
 }
 function openDetail(kind){
   const a=agg();
