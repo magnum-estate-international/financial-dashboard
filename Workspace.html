@@ -3961,10 +3961,20 @@ function otherEntityMentioned(desc, myEntityName){
   const m=desc.match(ENTITY_NAME_RX);
   return !!(m && (!myEntityName || myEntityName.toLowerCase().indexOf(m[0].toLowerCase())<0));
 }
+/* Outflows merely NAMING Stan/Igor are common for ordinary business expenses they paid/collected on the
+   company's behalf ("Worker salary advance via Mr. Igor", "Reimbursement ... (Igor Maksimov)", "Marketing
+   – payment via Mr. Stan", BOD tax withholding) — these must stay as normal opex, not become a shareholder
+   receivable. Only outflows that explicitly say so (Other Receivable / personal use / shareholder) qualify;
+   inflows are the safer signal (money physically coming FROM them) and don't need this extra confirmation. */
+const SHAREHOLDER_OUT_CONFIRM_RX=/\bother\s+receivable\b|\bpersonal\s+use\b|\bshareholder\b/i;
 /* Deterministic financing sub-category for a row (Stan/Igor, inter-company); returns null if neither applies
-   so the row falls back to today's plain "Financing" bucket. No AI call needed — both checks are exact. */
+   so the row falls back to today's plain "Financing" bucket (or, for an unconfirmed Stan/Igor outflow, to
+   normal opex categorisation). No AI call needed — both checks are exact. */
 function financingCanon(desc, dir, myEntityName){
-  if(STAN_IGOR_RX.test(desc)) return dir==='in'?'Shareholder Capital Deposit (Stan & Igor)':'Shareholder Other Receivable (Stan & Igor)';
+  if(STAN_IGOR_RX.test(desc)){
+    if(dir==='in') return 'Shareholder Capital Deposit (Stan & Igor)';
+    return SHAREHOLDER_OUT_CONFIRM_RX.test(desc) ? 'Shareholder Other Receivable (Stan & Igor)' : null;
+  }
   if(otherEntityMentioned(desc, myEntityName)) return 'Inter-company Transfer';
   return null;
 }
@@ -4036,11 +4046,24 @@ async function parseBankFiles(from,to,myEntityName){
         const catRaw=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'').trim();
         const tag=catRaw+' '+desc;
         if(EXCLUDE_RX.test(tag)){ out.excluded++; out.excludedAmt+=(inn||outv); continue; }
-        const canonIn=financingCanon(tag,'in',myEntityName), canonOut=financingCanon(tag,'out',myEntityName);
-        const fin=FIN_RX.test(tag)||!!canonIn||!!canonOut;
-        const refund=!fin && inn>0 && REFUND_RX.test(tag);
-        if(inn){ if(fin) out.finIn+=inn; else if(refund) out.opex-=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw,canon:fin?canonIn:null,shName:canonIn==='Shareholder Capital Deposit (Stan & Igor)'?shareholderName(desc):null}); }
-        if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw,canon:fin?canonOut:null}); }
+        // canon/fin must be evaluated per the row's OWN direction — computing both hypothetically and
+        // OR-ing them together wrongly flagged plain expenses as financing whenever the inflow-hypothesis
+        // matched (e.g. "Worker salary advance via Mr. Igor" is an outflow, but testing it as an inflow
+        // hits the permissive Stan/Igor-in branch and would wrongly mark this outflow as financing too).
+        const genericFin=FIN_RX.test(tag);
+        if(inn){
+          const canonIn=financingCanon(tag,'in',myEntityName);
+          const fin=genericFin||!!canonIn;
+          const refund=!fin && REFUND_RX.test(tag);
+          if(fin) out.finIn+=inn; else if(refund) out.opex-=inn; else out.rev+=inn;
+          out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw,canon:fin?canonIn:null,shName:canonIn==='Shareholder Capital Deposit (Stan & Igor)'?shareholderName(desc):null});
+        }
+        if(outv){
+          const canonOut=financingCanon(tag,'out',myEntityName);
+          const fin=genericFin||!!canonOut;
+          if(fin) out.finOut+=outv; else out.opex+=outv;
+          out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw,canon:fin?canonOut:null});
+        }
         out.count++; used=true;
       }
     });
