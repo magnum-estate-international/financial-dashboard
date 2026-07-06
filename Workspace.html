@@ -3075,7 +3075,8 @@ function openFinEntity(key,id){
   const cls=isIn?'pos':'neg';
   const total=eff(id)[isIn?'finIn':'finOut']||0;
   const txType=isIn?'fin_in':'fin_out';
-  const tx=TX.filter(x=>x.e===id && x.type===txType && activeMonths().includes(x.mo||'MAY'));
+  const tx=TX.filter(x=>x.e===id && x.type===txType && activeMonths().includes(x.mo||'MAY')
+    && x.k!=='Shareholder Capital Deposit (Stan & Igor)');
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openDetail('${isIn?'finin':'finout'}')">‹ Back to breakdown</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id].name} — ${isIn?'Financing Inflows':'Financing &amp; Non-Op Outflows'}</h4>`;
   let s=0;
