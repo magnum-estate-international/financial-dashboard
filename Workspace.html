@@ -615,6 +615,16 @@ const MONTHS={APR:'April 2026',MAY:'May 2026',JUN:'June 2026',Q2:'April – 22 J
 const Q2_MONTHS=['APR','MAY','JUN'];
 let CUSTOM_MONTHS=[];   // months covered by the user-picked "Custom range"
 function activeMonths(){ return MONTH==='Q2'?Q2_MONTHS:(MONTH==='CUSTOM'?CUSTOM_MONTHS:[MONTH]); }
+// Recompute the "Year to Date" label/option text from whichever months are actually loaded,
+// instead of a hardcoded date — so it stays correct as new months (Jul, Aug, ... Dec) are approved.
+function updateYtdLabel(){
+  if(!Q2_MONTHS.length) return;
+  const startMo=(MONTHS[Q2_MONTHS[0]]||'').split(' ')[0];
+  const endLbl=MONTHS[Q2_MONTHS[Q2_MONTHS.length-1]]||'';
+  MONTHS.Q2=`${startMo} – ${endLbl} (YTD)`;
+  const opt=document.querySelector('#monthSel option[value="Q2"]');
+  if(opt) opt.textContent=MONTHS.Q2;
+}
 const ICG_IDS=['icgg','icalam','ics','icdev','icbm','ichp'];
 // Per-month figures for entities with multi-month data.
 // ics (Magnum Sanur) now carries Apr/Jun from the ICS Cash-In/Cash-Out dashboard (May = raw ENT.ics).
@@ -3692,6 +3702,7 @@ async function runDashboard(){
         sel.insertBefore(o, sel.querySelector('option[value="Q2"]')); }
     });
   }catch(e){}
+  updateYtdLabel();
   // opening / closing balances per entity+month (reconciliation benchmark)
   try{
     BAL={};
