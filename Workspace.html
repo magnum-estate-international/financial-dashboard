@@ -3927,6 +3927,41 @@ const EXCLUDE_RX=/\bin\s*to\s*out\b|\bout\s*to\s*in\b|\bintertransfer\b|inter[\s
 /* Money received back for an expense already booked (e.g. "Refund Payment for ...") — reduces the expense
    category it came from, instead of counting as new revenue. */
 const REFUND_RX=/\brefund\b|\bpengembalian\b/i;
+/* Shareholder movements: money IN from Stan/Igor = capital deposit; money OUT to them = a receivable owed
+   back to the company. Both are financing, not revenue/opex. */
+const STAN_IGOR_RX=/\bstan\b|\bigor\b/i;
+/* Transfers between two of our own PTs (different legal entity, same corporate family) are financing —
+   built dynamically from the entities list so it stays correct as PTs are added/renamed. */
+let ENTITY_NAME_RX=null, ENTITY_NAMES_LOADED=false;
+async function loadEntityNameRx(){
+  if(ENTITY_NAMES_LOADED) return;
+  ENTITY_NAMES_LOADED=true;
+  try{
+    const ents=await sbFetch('entities?select=code,name,short_name');
+    const toks=[]; const GAP='[\\s\\u2010-\\u2015-]+';
+    ents.forEach(e=>{ [e.name,e.short_name].forEach(n=>{
+      let t=String(n||'').replace(/^PT\s+/i,'').replace(/\([^)]*\)/g,'').trim();
+      if(t.length<5) return;
+      // tolerate punctuation/spacing bank statements won't replicate: any run of
+      // whitespace and/or dash-like chars (em-dash, hyphen) matches as one gap
+      t=t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/[\s‐-―-]+/g,GAP);
+      if(t) toks.push(t);
+    }); });
+    if(toks.length) ENTITY_NAME_RX=new RegExp('\\b('+toks.join('|')+')\\b','i');
+  }catch(e){}
+}
+function otherEntityMentioned(desc, myEntityName){
+  if(!ENTITY_NAME_RX) return false;
+  const m=desc.match(ENTITY_NAME_RX);
+  return !!(m && (!myEntityName || myEntityName.toLowerCase().indexOf(m[0].toLowerCase())<0));
+}
+/* Deterministic financing sub-category for a row (Stan/Igor, inter-company); returns null if neither applies
+   so the row falls back to today's plain "Financing" bucket. No AI call needed — both checks are exact. */
+function financingCanon(desc, dir, myEntityName){
+  if(STAN_IGOR_RX.test(desc)) return dir==='in'?'Shareholder Capital Deposit (Stan & Igor)':'Shareholder Other Receivable (Stan & Igor)';
+  if(otherEntityMentioned(desc, myEntityName)) return 'Inter-company Transfer';
+  return null;
+}
 function xlsDate(v){
   if(v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
   if(typeof v==='number' && v>20000 && v<60000) return xlsDate(new Date(Math.round((v-25569)*86400000)));
@@ -3951,8 +3986,9 @@ function xlsNum(v){
 }
 const MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function dayLbl(iso){ return iso.slice(8,10)+' '+MON3[parseInt(iso.slice(5,7),10)-1]; }
-async function parseBankFiles(from,to){
+async function parseBankFiles(from,to,myEntityName){
   if(typeof XLSX==='undefined') return null;
+  await loadEntityNameRx();
   const out={count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null,rows:[],excluded:0,excludedAmt:0};
   for(const x of EN_FILES){
     if(!/\.(xlsx|xls|csv)$/i.test(x.file.name)) continue;
@@ -3994,10 +4030,11 @@ async function parseBankFiles(from,to){
         const catRaw=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'').trim();
         const tag=catRaw+' '+desc;
         if(EXCLUDE_RX.test(tag)){ out.excluded++; out.excludedAmt+=(inn||outv); continue; }
-        const fin=FIN_RX.test(tag);
+        const canonIn=financingCanon(tag,'in',myEntityName), canonOut=financingCanon(tag,'out',myEntityName);
+        const fin=FIN_RX.test(tag)||!!canonIn||!!canonOut;
         const refund=!fin && inn>0 && REFUND_RX.test(tag);
-        if(inn){ if(fin) out.finIn+=inn; else if(refund) out.opex-=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw}); }
-        if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw}); }
+        if(inn){ if(fin) out.finIn+=inn; else if(refund) out.opex-=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw,canon:fin?canonIn:null}); }
+        if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw,canon:fin?canonOut:null}); }
         out.count++; used=true;
       }
     });
@@ -4216,10 +4253,12 @@ async function renderEntryBody(){
     const seq=++PARSE_SEQ;
     box.style.display='block';
     box.innerHTML='<div style="font-size:12.5px;color:#1f8a61;font-weight:700">📊 Reading figures from the bank book…</div>';
-    let p=null; try{ if(hasSheet) p=await parseBankFiles(dateInp.value, dateInp2.value||dateInp.value); }catch(e){}
+    const myEntityId=document.getElementById('en-ent').value, myEntityName=(ENT[myEntityId]&&ENT[myEntityId].name)||'';
+    let p=null; try{ if(hasSheet) p=await parseBankFiles(dateInp.value, dateInp2.value||dateInp.value, myEntityName); }catch(e){}
     if(seq!==PARSE_SEQ) return;
     // merge AI-extracted transactions (PDF/photo) into the same totals
     if(EN_AI.length){
+      await loadEntityNameRx();
       p=p||{count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null,rows:[]};
       const from=dateInp.value, to=dateInp2.value||from;
       const aiFiles=new Set();
@@ -4233,12 +4272,13 @@ async function renderEntryBody(){
         if(to&&dt>to) return;
         const tag=(t.cat||'')+' '+(t.desc||'');
         if(EXCLUDE_RX.test(tag)){ p.excluded=(p.excluded||0)+1; p.excludedAmt=(p.excludedAmt||0)+t.amt; return; }
-        const fin=t.kind==='financing'||FIN_RX.test(tag);
+        const canon=financingCanon(tag,t.dir,myEntityName);
+        const fin=t.kind==='financing'||FIN_RX.test(tag)||!!canon;
         const refund=!fin && t.dir==='in' && REFUND_RX.test(tag);
         if(t.dir==='in'){ if(fin) p.finIn+=t.amt; else if(refund) p.opex-=t.amt; else p.rev+=t.amt; }
         else { if(fin) p.finOut+=t.amt; else p.opex+=t.amt; }
         p.count++; aiFiles.add((t.src||'document')+' (AI)');
-        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin,refund:refund,cat:t.cat||''});
+        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin,refund:refund,cat:t.cat||'',canon:fin?canon:null});
       });
       aiFiles.forEach(f=>p.files.push(f));
     }
@@ -4461,7 +4501,7 @@ async function renderEntryBody(){
           const fl=r.fin?(r.dir==='in'?'financing_in':'financing_out'):((r.dir==='in'&&!r.refund)?'revenue':'opex');
           const signed=r.refund?-r.amt:r.amt;
           b2.sum[fl]+=signed;
-          const cat=r.fin?'Financing':(r.canon||'Other');
+          const cat=r.canon||(r.fin?'Financing':'Other');
           b2.cats[fl][cat]=(b2.cats[fl][cat]||0)+signed;
         });
         // amounts to add to the monthly totals: dedup result caps out what the totals already include
@@ -4506,7 +4546,7 @@ async function renderEntryBody(){
           source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDate(r.date).code,
           flow:r.fin?(r.dir==='in'?'fin_in':'fin_out'):((r.dir==='in'&&!r.refund)?'rev':'opex'),
           entity_code:entity,day_label:dayLbl(r.date),
-          description:String(r.desc||'').slice(0,200),raw_label:(r.fin?bkLabel:(r.canon||bkLabel)),
+          description:String(r.desc||'').slice(0,200),raw_label:(r.canon||bkLabel),
           source_label:bkLabel,upload_batch:batchId,amount_idr:(r.refund?-r.amt:r.amt),contra:false}));
         if(txRows.length) await adminAddBatch('transactions',txRows);
         if(subsRows.length||txRows.length){ appliedParsed=true; ENTRY_DIRTY=true; }
