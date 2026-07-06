@@ -3191,7 +3191,7 @@ function openBDItem(type,encKey){
   }
   Object.entries(byEnt).forEach(([id,v])=>{any=true;tot+=v;
     const lbl=byEntLbl[id]?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${byEntLbl[id]}</div>`:'';
-    t+=`<tr><td>${pill(id)}${lbl}</td><td class="num ${cls}">${fmt(v)}</td></tr>`;});
+    t+=`<tr class="clickable" style="cursor:pointer" onclick="openCatEntity('${type}','${encKey}','${id}')"><td>${pill(id)} <span>›</span>${lbl}</td><td class="num ${cls}">${fmt(v)}</td></tr>`;});
   t+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">By Entity${MONTH==='MAY'?' <span style="font-weight:400;color:var(--muted);font-size:11px">(original report labels shown below each entity)</span>':''}</h4>`;
   h+= any?t:`<p style="color:var(--muted);font-size:13px">No entities with this item in scope.</p>`;
@@ -3221,6 +3221,44 @@ function openBDItem(type,encKey){
     h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals — their largest transactions appear under <b>"Key Transactions of the Month"</b>.</p>`;
   }
   showModal((isRev?'Revenue — ':'OpEx Category — ')+key,h);
+}
+function openCatEntity(type,encKey,id){
+  const key=decodeURIComponent(encKey), isRev=type==='rev', fld=isRev?'rev':'opex', cls=isRev?'pos':'neg';
+  let val=0, lbl='';
+  if(MONTH==='MAY'){
+    const ents=Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key);
+    val=ents.reduce((s,e2)=>s+e2[1],0); lbl=ents.map(e2=>e2[0]).join(' · ');
+  } else if(MONTH==='Q2'||MONTH==='CUSTOM'){
+    const span=activeMonths();
+    if(span.includes('MAY')&&effMonth(id,'MAY')!==null){
+      Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key).forEach(([k0,v])=>{val+=v;});
+    }
+    TX.filter(x=>{const mo=x.mo||'MAY';return mo!=='MAY'&&span.includes(mo)&&x.type===type&&canon(x.k)===key&&x.e===id;}).forEach(x=>{val+=x.amt;});
+  } else {
+    TX.filter(x=>(x.mo||'MAY')===MONTH&&x.type===type&&canon(x.k)===key&&x.e===id).forEach(x=>{val+=x.amt;});
+  }
+  const tx=TX.filter(x=>activeMonths().includes(x.mo||'MAY')&&x.e===id&&x.type===type&&canon(x.k)===key);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openBDItem('${type}','${encKey}')">‹ Back to breakdown</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">${ENT[id].name} — ${key}${lbl?` <span style="font-weight:400;color:var(--muted);font-size:11px">(${lbl})</span>`:''}</h4>`;
+  let s=0;
+  if(tx.length){
+    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
+    tx.forEach(x=>{s+=x.amt;
+      const sign = x.contra ? '–' : (isRev?'+':'–');
+      const amtCls = x.contra ? 'amb' : cls;
+      const tagHtml = x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '';
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}${tagHtml}</td><td class="num ${amtCls}">${sign} ${fmt(Math.abs(x.amt))}</td></tr>`;});
+  } else {
+    h+=`<table><tbody>`;
+  }
+  const residual=val-s;
+  if(Math.abs(residual)>0.5){
+    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[MONTH]||MONTH}</td><td style="font-size:12.5px;color:var(--muted)">Consolidated from the bank-report category total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td><td class="num ${cls}">${isRev?'+':'–'} ${fmt(Math.abs(residual))}</td></tr>`;
+  }
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?2:1}"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(val)}</strong></td></tr></tbody></table>`;
+  if(tx.length) h+=`</div>`;
+  if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this entity in scope.</p>`;
+  showModal(`${ENT[id].name} — ${key}`,h);
 }
 function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
 
