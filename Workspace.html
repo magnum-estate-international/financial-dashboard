@@ -3929,7 +3929,13 @@ const EXCLUDE_RX=/\bin\s*to\s*out\b|\bout\s*to\s*in\b|\bintertransfer\b|inter[\s
 const REFUND_RX=/\brefund\b|\bpengembalian\b/i;
 /* Shareholder movements: money IN from Stan/Igor = capital deposit; money OUT to them = a receivable owed
    back to the company. Both are financing, not revenue/opex. */
-const STAN_IGOR_RX=/\bstan\b|\bigor\b/i;
+const STAN_RX=/\bstan(islav)?\b/i, IGOR_RX=/\bigor\b/i;
+const STAN_IGOR_RX=new RegExp(STAN_RX.source+'|'+IGOR_RX.source,'i');
+function shareholderName(desc){
+  if(STAN_RX.test(desc)) return 'Stanislav Sadovnikov (shareholder)';
+  if(IGOR_RX.test(desc)) return 'Igor Maksimov (shareholder)';
+  return 'Shareholder (Stan & Igor)';
+}
 /* Transfers between two of our own PTs (different legal entity, same corporate family) are financing —
    built dynamically from the entities list so it stays correct as PTs are added/renamed. */
 let ENTITY_NAME_RX=null, ENTITY_NAMES_LOADED=false;
@@ -4033,7 +4039,7 @@ async function parseBankFiles(from,to,myEntityName){
         const canonIn=financingCanon(tag,'in',myEntityName), canonOut=financingCanon(tag,'out',myEntityName);
         const fin=FIN_RX.test(tag)||!!canonIn||!!canonOut;
         const refund=!fin && inn>0 && REFUND_RX.test(tag);
-        if(inn){ if(fin) out.finIn+=inn; else if(refund) out.opex-=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw,canon:fin?canonIn:null}); }
+        if(inn){ if(fin) out.finIn+=inn; else if(refund) out.opex-=inn; else out.rev+=inn; out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw,canon:fin?canonIn:null,shName:canonIn==='Shareholder Capital Deposit (Stan & Igor)'?shareholderName(desc):null}); }
         if(outv){ if(fin) out.finOut+=outv; else out.opex+=outv; out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw,canon:fin?canonOut:null}); }
         out.count++; used=true;
       }
@@ -4278,7 +4284,7 @@ async function renderEntryBody(){
         if(t.dir==='in'){ if(fin) p.finIn+=t.amt; else if(refund) p.opex-=t.amt; else p.rev+=t.amt; }
         else { if(fin) p.finOut+=t.amt; else p.opex+=t.amt; }
         p.count++; aiFiles.add((t.src||'document')+' (AI)');
-        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin,refund:refund,cat:t.cat||'',canon:fin?canon:null});
+        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin,refund:refund,cat:t.cat||'',canon:fin?canon:null,shName:canon==='Shareholder Capital Deposit (Stan & Igor)'&&t.dir==='in'?shareholderName(t.desc||''):null});
       });
       aiFiles.forEach(f=>p.files.push(f));
     }
@@ -4549,6 +4555,13 @@ async function renderEntryBody(){
           description:String(r.desc||'').slice(0,200),raw_label:(r.canon||bkLabel),
           source_label:bkLabel,upload_batch:batchId,amount_idr:(r.refund?-r.amt:r.amt),contra:false}));
         if(txRows.length) await adminAddBatch('transactions',txRows);
+        // shareholder capital deposits also feed the dedicated "Shareholder Capital Deposit" card,
+        // which reads from loan_flows (not entity_period_totals) — same convention as the original import
+        const loanRows=rowsToStore.filter(r=>r.dir==='in'&&r.canon==='Shareholder Capital Deposit (Stan & Igor)').map(r=>({
+          period_code:periodFromDate(r.date).code, from_label:r.shName||'Shareholder (Stan & Igor)',
+          to_label:(ENT[entity]&&ENT[entity].name)||entity, flow_type:'Capital deposit',
+          amount_idr:r.amt, from_group:null, to_group:(ENT[entity]&&ENT[entity].grp)||null}));
+        if(loanRows.length) await adminAddBatch('loan_flows',loanRows);
         if(subsRows.length||txRows.length){ appliedParsed=true; ENTRY_DIRTY=true; }
       }
       // optional saldo awal / saldo akhir -> upsert balance row (keep the other side if only one entered)
