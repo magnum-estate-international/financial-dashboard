@@ -3100,7 +3100,10 @@ function openCapDepPerson(encPerson){
   const nameRx=/\bstan(islav)?\b/i.test(person)?/\bstan(islav)?\b/i:/\bigor\b/i.test(person)?/\bigor\b/i:null;
   const list=activeMonths().flatMap(mo=>(LOANS_BY_MONTH[mo]||[])).filter(l=>l.ty==='Capital deposit'&&l.f===person);
   const toName=(list[0]&&list[0].t)||'';
-  const id=EIDS.find(x=>ENT[x]&&toName.indexOf(ENT[x].name)>=0);
+  // to_label varies by source ("PT Magnum Estate Int'l" from the original April import vs the full
+  // "PT Magnum Estate International" from later uploads) — same known inconsistency handled elsewhere
+  // in this file's loan-flow scoping (inScope) via a "Magnum Estate" substring special-case for mei.
+  const id=EIDS.find(x=>ENT[x]&&(toName.indexOf(ENT[x].name)>=0 || (x==='mei'&&/Magnum Estate/.test(toName))));
   const total=list.reduce((s,l)=>s+l.amt,0);
   const tx=(id?TX:[]).filter(x=>x.e===id && x.type==='fin_in' && x.k==='Shareholder Capital Deposit (Stan & Igor)'
     && activeMonths().includes(x.mo||'MAY') && (!nameRx||nameRx.test(x.desc||'')));
