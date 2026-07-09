@@ -429,7 +429,7 @@ a{color:#4550d8}
 </div>
 
 <div class="overlay" id="overlay">
-  <div class="modal">
+  <div class="modal" id="modalBox">
     <div class="modal-head"><h3 id="mTitle">Detail</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="modal-body" id="mBody"></div>
   </div>
@@ -2897,9 +2897,9 @@ function outstandingCard(){
   const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
   return `<div class="pcard clickable" onclick="openOutstanding()">
       ${`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>`}
-      <div class="lab">Outstanding (Utang)</div>
+      <div class="lab">Outstanding Payables</div>
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
-      <div class="meta">${open.length?`${open.length} invoice belum lunas${overdueN?`, <span style="color:var(--red)">${overdueN} sudah lewat jatuh tempo</span>`:''}`:'Belum ada data — klik untuk menambahkan'}</div>
+      <div class="meta">${open.length?`${open.length} unpaid invoice${open.length>1?'s':''}${overdueN?`, <span style="color:var(--red)">${overdueN} overdue</span>`:''}`:'No outstanding payables — click to add one'}</div>
     </div>`;
 }
 function daysOverdue(due){
@@ -3066,9 +3066,10 @@ function renderOpexChart(a){
 }
 
 // ─── MODALS ──────────────────────────────────────────────────────────────────
-function showModal(title,html){
+function showModal(title,html,wide){
   document.getElementById('mTitle').textContent=title;
   document.getElementById('mBody').innerHTML=html;
+  document.getElementById('modalBox').style.maxWidth=wide?'1180px':'';
   document.getElementById('overlay').classList.add('show');
 }
 function closeModal(){document.getElementById('overlay').classList.remove('show');}
@@ -3466,21 +3467,21 @@ function renderDataHealth(){
   }).join('');
 }
 
-// ─── OUTSTANDING (UTANG) MANAGEMENT ──────────────────────────────────────────
+// ─── OUTSTANDING PAYABLES MANAGEMENT ─────────────────────────────────────────
 function outstandingRowHtml(o){
   const od=daysOverdue(o.due);
-  const odCell=od>0?`<span style="color:var(--red);font-weight:700">${od} hari</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">jatuh tempo hari ini</span>`:`<span style="color:var(--muted)">belum jatuh tempo</span>`);
+  const odCell=od>0?`<span style="color:var(--red);font-weight:700">${od} day${od>1?'s':''} overdue</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
   const canEdit=MY_ROLE==='editor';
   return `<tr>
     <td>${pill(o.e)}</td>
-    <td style="font-size:12.5px">${escH(o.vendor)}</td>
-    <td style="font-size:12px;color:var(--muted)">${escH(o.cat||'—')}</td>
+    <td style="font-size:12.5px;white-space:nowrap">${escH(o.vendor)}</td>
+    <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escH(o.cat||'—')}</td>
     <td style="font-size:12.5px">${escH(o.desc)}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.inv}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.due}</td>
-    <td style="font-size:12px">${odCell}</td>
-    <td class="num neg">${fmt(o.amt)}</td>
-    <td>${canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="markOutstandingPaid(${o.id})">✓ Tandai Lunas</button>`:''}</td>
+    <td style="font-size:12px;white-space:nowrap">${odCell}</td>
+    <td class="num neg" style="white-space:nowrap">${fmt(o.amt)}</td>
+    <td style="white-space:nowrap">${canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="markOutstandingPaid(${o.id})">✓ Mark as Paid</button>`:''}</td>
   </tr>`;
 }
 let OPEX_CATS=null;
@@ -3490,34 +3491,39 @@ async function ensureOpexCats(){
   catch(e){ OPEX_CATS=['Other Operating Expense']; }
   return OPEX_CATS;
 }
+function opField(label,inputHtml){
+  return `<div><label style="display:block;font-size:10px;font-weight:700;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px">${label}</label>${inputHtml}</div>`;
+}
 async function openOutstanding(){
   const cats=await ensureOpexCats();
   const open=outstandingOpen().slice().sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
   const tot=open.reduce((s,o)=>s+o.amt,0);
   const canEdit=MY_ROLE==='editor';
-  let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total outstanding pada scope ini: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${open.length} invoice)</div>`;
+  let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total outstanding in this scope: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${open.length} invoice${open.length===1?'':'s'})</div>`;
   if(canEdit){
     h+=`<div class="panel" style="padding:16px;margin-bottom:16px;background:var(--blue-50,#f3f5ff)">
-      <h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--blue-900);margin:0 0 10px">+ Tambah Outstanding</h4>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:8px">
-        <select id="op-ent">${EIDS.map(id=>`<option value="${id}">${escH(ENT[id].name)}</option>`).join('')}</select>
-        <select id="op-cat">${cats.map(c=>`<option value="${escH(c)}">${escH(c)}</option>`).join('')}</select>
-        <input id="op-vendor" type="text" placeholder="Nama Vendor">
-        <input id="op-inv" type="date">
-        <input id="op-due" type="date">
-        <input id="op-amt" type="number" min="1" placeholder="Jumlah (IDR)">
+      <h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--blue-900);margin:0 0 10px">+ Add Outstanding</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">
+        ${opField('Entity',`<select id="op-ent" style="width:100%">${EIDS.map(id=>`<option value="${id}">${escH(ENT[id].name)}</option>`).join('')}</select>`)}
+        ${opField('Cost category',`<select id="op-cat" style="width:100%">${cats.map(c=>`<option value="${escH(c)}">${escH(c)}</option>`).join('')}</select>`)}
+        ${opField('Vendor name',`<input id="op-vendor" type="text" placeholder="Vendor name" style="width:100%">`)}
+        ${opField('Invoice date',`<input id="op-inv" type="date" style="width:100%">`)}
+        ${opField('Due date',`<input id="op-due" type="date" style="width:100%">`)}
+        ${opField('Amount (IDR)',`<input id="op-amt" type="number" min="1" placeholder="Amount (IDR)" style="width:100%">`)}
       </div>
-      <input id="op-desc" type="text" placeholder="Deskripsi transaksi" style="width:100%;margin-bottom:8px">
-      <button class="btn" style="background:#5b67f1;color:#fff;border:0" onclick="submitOutstanding()">Simpan</button>
-      <span id="op-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>
+      ${opField('Transaction description',`<input id="op-desc" type="text" placeholder="Transaction description" style="width:100%">`)}
+      <div style="margin-top:10px">
+        <button class="btn" style="background:#5b67f1;color:#fff;border:0" onclick="submitOutstanding()">Save</button>
+        <span id="op-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>
+      </div>
     </div>`;
   }
   h+=`<div class="table-scroll" style="max-height:380px"><table><thead><tr>`
-    +`<th>Entity</th><th>Vendor</th><th>Kategori Biaya</th><th>Deskripsi</th><th>Tgl Invoice</th><th>Jatuh Tempo</th><th>Overdue</th><th class="num" style="text-align:right">Jumlah (IDR)</th><th></th>`
+    +`<th>Entity</th><th>Vendor</th><th>Cost Category</th><th>Description</th><th>Invoice Date</th><th>Due Date</th><th>Overdue</th><th class="num" style="text-align:right">Amount (IDR)</th><th></th>`
     +`</tr></thead><tbody id="opBody">`
-    +(open.length?open.map(outstandingRowHtml).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Tidak ada outstanding pada scope ini</td></tr>`)
+    +(open.length?open.map(outstandingRowHtml).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">No outstanding payables in this scope</td></tr>`)
     +`</tbody></table></div>`;
-  showModal('Outstanding (Utang)',h);
+  showModal('Outstanding Payables',h,true);
 }
 async function submitOutstanding(){
   const err=document.getElementById('op-err'); err.textContent='';
@@ -3528,14 +3534,14 @@ async function submitOutstanding(){
   const inv=document.getElementById('op-inv').value;
   const due=document.getElementById('op-due').value;
   const amt=Number(document.getElementById('op-amt').value);
-  if(!vendor||!desc||!inv||!due||!amt||amt<=0){ err.textContent='Lengkapi semua field.'; return; }
+  if(!vendor||!desc||!inv||!due||!amt||amt<=0){ err.textContent='Please fill in all fields.'; return; }
   try{
     await adminAddBatch('outstanding_payables',[{entity_code:entity,category,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt}]);
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
     renderKpiFin(agg());
     openOutstanding();
-  }catch(e){ err.textContent='Gagal menyimpan: '+e.message; }
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
 async function markOutstandingPaid(id){
   try{
@@ -3545,7 +3551,7 @@ async function markOutstandingPaid(id){
     const o=OUTSTANDING.find(x=>x.id===id); if(o) o.status='paid';
     renderKpiFin(agg());
     openOutstanding();
-  }catch(e){ alert('Gagal menandai lunas: '+e.message); }
+  }catch(e){ alert('Failed to mark as paid: '+e.message); }
 }
 
 // ─── BALANCE RECONCILIATION (saldo awal / saldo akhir vs reported movement) ──
