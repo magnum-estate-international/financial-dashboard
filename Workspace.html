@@ -5201,21 +5201,25 @@ async function renderEntryBody(){
         document.getElementById('opd-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
       }
       const sheet=wb.Sheets[wb.SheetNames[0]];
-      const raw=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
-      if(!raw.length){ OPD_ROWS=[]; renderOpdPreview(); return; }
-      const header=raw[0].map(h=>String(h||'').trim().toLowerCase());
-      const col=names=>{ for(const n of names){ const i=header.indexOf(n); if(i>=0) return i; } return -1; };
-      const cEnt=col(['entity','pt']), cInvNo=col(['invoice #','invoice no','invoice number']), cVendor=col(['vendor','vendor name']), cCat=col(['category','cost category']),
-        cInv=col(['invoice date','invoice']), cDue=col(['due date','due']), cAmt=col(['amount','amount (idr)','amount idr']),
-        cDesc=col(['description','transaction description']);
-      OPD_ROWS=raw.slice(1).filter(r=>r.some(v=>v!=='')).map(r=>{
-        const entityRaw=cEnt>=0?r[cEnt]:'', entityMatch=findEntityByName(entityRaw);
-        const catRaw=cCat>=0?r[cCat]:'', catMatch=findCategory(catRaw);
-        const invNo=cInvNo>=0?String(r[cInvNo]||'').trim():'';
-        const vendor=cVendor>=0?String(r[cVendor]||'').trim():'';
-        const desc=cDesc>=0?String(r[cDesc]||'').trim():'';
-        const inv=cInv>=0?parseFlexDate(r[cInv]):null, due=cDue>=0?parseFlexDate(r[cDue]):null;
-        const amt=cAmt>=0?Number(r[cAmt]):NaN;
+      // Read as header-keyed objects (not header:1 positional arrays) so a blank cell anywhere in a row
+      // — leading, middle, or trailing — never shifts or drops any OTHER column's value for that row.
+      // SheetJS trims a positional array to that row's own last populated cell, which silently misaligns
+      // later columns whenever an earlier optional field (e.g. Invoice #) is left blank.
+      const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+      if(!rows.length){ OPD_ROWS=[]; renderOpdPreview(); return; }
+      const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
+      const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
+      const kEnt=col(['entity','pt']), kInvNo=col(['invoice #','invoice no','invoice number']), kVendor=col(['vendor','vendor name']), kCat=col(['category','cost category']),
+        kInv=col(['invoice date','invoice']), kDue=col(['due date','due']), kAmt=col(['amount','amount (idr)','amount idr']),
+        kDesc=col(['description','transaction description']);
+      OPD_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+        const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByName(entityRaw);
+        const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategory(catRaw);
+        const invNo=kInvNo!=null?String(r[kInvNo]||'').trim():'';
+        const vendor=kVendor!=null?String(r[kVendor]||'').trim():'';
+        const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
+        const inv=kInv!=null?parseFlexDate(r[kInv]):null, due=kDue!=null?parseFlexDate(r[kDue]):null;
+        const amt=kAmt!=null?Number(r[kAmt]):NaN;
         let error=null;
         if(!entityMatch) error='Entity not recognized';
         else if(!catMatch) error='Category not recognized — must match one of the existing cost categories exactly';
