@@ -303,25 +303,13 @@ a{color:#4550d8}
 <div class="divlabel" id="secFinLabel">🔄 Loan, Financing &amp; Non-Operational Activity — May 2026</div>
 <div class="kpi4" id="kpiFin"></div>
 
-<div class="divlabel" id="secOutLabel">💼 Outstanding Balances by PT</div>
+<div class="divlabel" id="secOutLabel">💼 Outstanding (Utang)</div>
 <div class="panel" style="margin-bottom:16px">
-  <div class="pn-sub" style="margin-bottom:14px">Sisa saldo yang masih berjalan per PT — belum termasuk transaksi bulanan di atas. Akan diisi melalui panel <b>✎ Update data</b>.</div>
-  <div class="grid cols-eq">
-    <div>
-      <h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--blue-900);margin:0 0 10px">Outstanding Pinjaman &amp; Shareholder</h4>
-      <div class="table-scroll" style="max-height:280px"><table>
-        <thead><tr><th>Entity</th><th>Lawan Transaksi</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead>
-        <tbody id="outLoanBody"><tr><td colspan="3" style="text-align:center;color:var(--muted);font-size:12.5px;padding:22px 10px">Belum ada data — akan diinput melalui <b>Update data</b></td></tr></tbody>
-      </table></div>
-    </div>
-    <div>
-      <h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--blue-900);margin:0 0 10px">Outstanding Piutang &amp; Utang Usaha (AR/AP)</h4>
-      <div class="table-scroll" style="max-height:280px"><table>
-        <thead><tr><th>Entity</th><th>Lawan Transaksi</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead>
-        <tbody id="outArApBody"><tr><td colspan="3" style="text-align:center;color:var(--muted);font-size:12.5px;padding:22px 10px">Belum ada data — akan diinput melalui <b>Update data</b></td></tr></tbody>
-      </table></div>
-    </div>
-  </div>
+  <div class="pn-sub" style="margin-bottom:14px">Sisa utang yang masih berjalan per PT — belum termasuk transaksi bulanan di atas. Akan diisi melalui panel <b>✎ Update data</b>.</div>
+  <div class="table-scroll" style="max-height:320px"><table>
+    <thead><tr><th>Entity</th><th>Kepada</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead>
+    <tbody id="outUtangBody"><tr><td colspan="3" style="text-align:center;color:var(--muted);font-size:12.5px;padding:22px 10px">Belum ada data — akan diinput melalui <b>Update data</b></td></tr></tbody>
+  </table></div>
 </div>
 
 <div id="secHealthWrap" style="display:none">
