@@ -3481,13 +3481,15 @@ function outstandingRowHtml(o){
   const canEdit=MY_ROLE==='editor';
   let statusCell, actionCell;
   const historyBtn=`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')">🧾 History</button>`;
+  const editBtn=canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')">✎ Edit</button>`:'';
+  const delBtn=canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;color:var(--red)" onclick="deleteOutstanding(${o.id},'${o.e}','${OPE_TAB}')">🗑 Delete</button>`:'';
   if(o.status==='paid'){
     statusCell=`<span style="color:var(--green);font-weight:700">Paid on ${o.paidDate}</span>`;
-    actionCell=historyBtn+(canEdit?` <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="reopenOutstanding(${o.id},'${o.e}')">↺ Undo last payment</button>`:'');
+    actionCell=historyBtn+(canEdit?` <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="reopenOutstanding(${o.id},'${o.e}')">↺ Undo last payment</button>`:'')+' '+editBtn+' '+delBtn;
   } else {
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${od} day${od>1?'s':''} overdue</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
-    actionCell=o.paidAmt>0?historyBtn:'';
+    actionCell=(o.paidAmt>0?historyBtn+' ':'')+editBtn+' '+delBtn;
   }
   const amtCell=(o.status==='open'&&o.paidAmt>0)
     ? `<div>${fmt(o.remaining)}</div><div style="font-size:10px;color:var(--muted);font-weight:400">of ${fmt(o.amt)} — ${fmt(o.paidAmt)} paid</div>`
@@ -3623,6 +3625,72 @@ function renderOutstandingEntityRows(){
   body.innerHTML=(filtered.length?filtered.map(outstandingRowHtml).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">No ${OPE_TAB} payables match these filters</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="7"><strong>TOTAL${filtered.length!==OPE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`;
   updateOpeFilterIndicators();
+}
+let OPEX_CATS_G=null;
+async function ensureOpexCatsG(){
+  if(OPEX_CATS_G) return OPEX_CATS_G;
+  try{ OPEX_CATS_G=(await sbFetch('categories?select=name&kind=eq.opex&order=name')).map(r=>r.name); }
+  catch(e){ OPEX_CATS_G=['Other Operating Expense']; }
+  return OPEX_CATS_G;
+}
+function opeField(label,html){
+  return `<div><label style="display:block;font-size:10px;font-weight:700;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px">${label}</label>${html}</div>`;
+}
+async function openOutstandingEdit(id,entityId,tab){
+  const cats=await ensureOpexCatsG();
+  const o=OUTSTANDING.find(x=>x.id===id);
+  if(!o) return;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstandingEntity('${entityId}','${tab}')">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Outstanding Payable</h4>`;
+  if(o.paidAmt>0) h+=`<div style="font-size:12.5px;color:#8a6d1a;background:var(--amber-bg);border-radius:10px;padding:8px 12px;margin-bottom:12px">This invoice already has <b>${fmt(o.paidAmt)}</b> recorded in payments — the amount can't be edited below that without first undoing a payment.</div>`;
+  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
+    +opeField('Entity',`<select id="ope-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===o.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
+    +opeField('Cost category',`<select id="ope-cat" style="width:100%;padding:8px 10px">${cats.map(c=>`<option value="${escH(c)}"${c===o.cat?' selected':''}>${escH(c)}</option>`).join('')}</select>`)
+    +opeField('Invoice #',`<input id="ope-invno" value="${escH(o.invNo||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +opeField('Vendor',`<input id="ope-vendor" value="${escH(o.vendor)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +opeField('Invoice date',`<input id="ope-inv" type="date" value="${o.inv}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +opeField('Due date',`<input id="ope-due" type="date" value="${o.due}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +opeField('Amount (IDR)',`<input id="ope-amt" type="number" min="${o.paidAmt||1}" value="${o.amt}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +`</div>`
+    +opeField('Description',`<input id="ope-desc" value="${escH(o.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button class="btn" style="background:#5b67f1;color:#fff;border:0" onclick="saveOutstandingEdit(${id},'${entityId}','${tab}')">Save changes</button>`
+    +`<span id="ope-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Outstanding Payable',h,true);
+}
+async function saveOutstandingEdit(id,entityId,tab){
+  const err=document.getElementById('ope-err'); err.textContent='';
+  const o=OUTSTANDING.find(x=>x.id===id);
+  const entity=document.getElementById('ope-ent').value;
+  const category=document.getElementById('ope-cat').value;
+  const invNo=document.getElementById('ope-invno').value.trim();
+  const vendor=document.getElementById('ope-vendor').value.trim();
+  const desc=document.getElementById('ope-desc').value.trim();
+  const inv=document.getElementById('ope-inv').value;
+  const due=document.getElementById('ope-due').value;
+  const amt=Number(document.getElementById('ope-amt').value);
+  if(!vendor||!desc||!inv||!due||!amt||amt<=0) return void(err.textContent='Please fill in all fields.');
+  if(o&&amt<o.paidAmt) return void(err.textContent='Amount can\'t be less than the '+fmt(o.paidAmt)+' already paid — undo a payment first if you need to reduce it below that.');
+  try{
+    await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({entity_code:entity,category,invoice_number:invNo||null,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt})});
+    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+    OUTSTANDING=fresh.map(mkOutstanding);
+    renderKpiFin(agg());
+    openOutstandingEntity(entity,tab);
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function deleteOutstanding(id,entityId,tab){
+  const o=OUTSTANDING.find(x=>x.id===id);
+  const warn=o&&o.paidAmt>0?' This invoice has '+fmt(o.paidAmt)+' in recorded payments — deleting it also deletes that payment history.':'';
+  if(!confirm('Delete this outstanding payable?'+warn+' This cannot be undone.')) return;
+  try{
+    await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'DELETE'});
+    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+    OUTSTANDING=fresh.map(mkOutstanding);
+    renderKpiFin(agg());
+    openOutstandingEntity(entityId,tab);
+  }catch(e){ alert('Failed to delete: '+e.message); }
 }
 async function reopenOutstanding(id,entityId){
   try{
