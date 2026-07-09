@@ -3524,7 +3524,7 @@ function openOutstanding(){
 let OPE_ID=null, OPE_TAB='open', OPE_ROWS=[];
 const OPE_FKEYS={invno:['opef-invno'],vendor:['opef-vendor'],cat:['opef-cat'],desc:['opef-desc'],inv:['opef-inv-from','opef-inv-to'],due:['opef-due-from','opef-due-to'],status:['opef-status'],amt:['opef-amt-min','opef-amt-max']};
 function thFilterable(label,key,controlsHtml){
-  return `<th style="position:relative"><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="opef-btn-${key}" onclick="toggleOpeFilterPop('${key}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
+  return `<th><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="opef-btn-${key}" onclick="toggleOpeFilterPop('${key}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
     +`<div id="opef-pop-${key}" class="ope-filter-pop" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:10px;z-index:100001;min-width:170px">`
     +controlsHtml
     +`<div style="margin-top:6px;text-align:right"><button type="button" class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="clearOpeFilterGroup('${key}')">Clear</button></div>`
