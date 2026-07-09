@@ -303,15 +303,6 @@ a{color:#4550d8}
 <div class="divlabel" id="secFinLabel">🔄 Loan, Financing &amp; Non-Operational Activity — May 2026</div>
 <div class="kpi4" id="kpiFin"></div>
 
-<div class="divlabel" id="secOutLabel">💼 Outstanding (Utang)</div>
-<div class="panel" style="margin-bottom:16px">
-  <div class="pn-sub" style="margin-bottom:14px">Sisa utang yang masih berjalan per PT — belum termasuk transaksi bulanan di atas. Akan diisi melalui panel <b>✎ Update data</b>.</div>
-  <div class="table-scroll" style="max-height:320px"><table>
-    <thead><tr><th>Entity</th><th>Kepada</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead>
-    <tbody id="outUtangBody"><tr><td colspan="3" style="text-align:center;color:var(--muted);font-size:12.5px;padding:22px 10px">Belum ada data — akan diinput melalui <b>Update data</b></td></tr></tbody>
-  </table></div>
-</div>
-
 <div id="secHealthWrap" style="display:none">
   <div class="divlabel" id="secHealthLabel">🩺 Data Health — Itemization &amp; Reconciliation Check</div>
   <div class="panel" style="margin-bottom:16px">
@@ -2893,6 +2884,11 @@ function renderKpiFin(a){
       <div class="lab">Net Cash Movement (All Flows)</div>
       <div class="big" style="color:${pos?'#86efac':'#f87171'}">${pos?'+':'–'} ${fmt(Math.abs(a.fullNet))}</div>
       <div class="meta" style="color:rgba(255,255,255,.65)">Operating net + financing net · excludes internal inter-bank transfers</div>
+    </div>
+    <div class="pcard">
+      <div class="lab">Outstanding (Utang)</div>
+      <div class="big" style="color:var(--muted)">—</div>
+      <div class="meta">Belum ada data — akan diinput melalui <b>Update data</b></div>
     </div>`;
 }
 
