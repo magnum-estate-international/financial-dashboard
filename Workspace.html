@@ -2887,13 +2887,18 @@ function renderKpiFin(a){
     </div>
     ${outstandingCard()}`;
 }
+function mkOutstanding(o){
+  const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
+  return {id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,
+    amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date};
+}
 function outstandingOpen(){
   const ids=new Set(scopeIds());
   return OUTSTANDING.filter(o=>o.status==='open'&&ids.has(o.e));
 }
 function outstandingCard(){
   const open=outstandingOpen();
-  const tot=open.reduce((s,o)=>s+o.amt,0);
+  const tot=open.reduce((s,o)=>s+o.remaining,0);
   const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
   return `<div class="pcard clickable" onclick="openOutstanding()">
       ${`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>`}
@@ -3475,14 +3480,18 @@ function outstandingPaid(){
 function outstandingRowHtml(o){
   const canEdit=MY_ROLE==='editor';
   let statusCell, actionCell;
+  const historyBtn=`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')">🧾 History</button>`;
   if(o.status==='paid'){
     statusCell=`<span style="color:var(--green);font-weight:700">Paid on ${o.paidDate}</span>`;
-    actionCell=canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="reopenOutstanding(${o.id},'${o.e}')">↺ Undo</button>`:'';
+    actionCell=historyBtn+(canEdit?` <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="reopenOutstanding(${o.id},'${o.e}')">↺ Undo last payment</button>`:'');
   } else {
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${od} day${od>1?'s':''} overdue</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
-    actionCell='';
+    actionCell=o.paidAmt>0?historyBtn:'';
   }
+  const amtCell=(o.status==='open'&&o.paidAmt>0)
+    ? `<div>${fmt(o.remaining)}</div><div style="font-size:10px;color:var(--muted);font-weight:400">of ${fmt(o.amt)} — ${fmt(o.paidAmt)} paid</div>`
+    : `${fmt(o.amt)}`;
   return `<tr>
     <td style="font-size:12.5px;white-space:nowrap">${escH(o.vendor)}</td>
     <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escH(o.cat||'—')}</td>
@@ -3490,14 +3499,14 @@ function outstandingRowHtml(o){
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.inv}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.due}</td>
     <td style="font-size:12px;white-space:nowrap">${statusCell}</td>
-    <td class="num neg" style="white-space:nowrap">${fmt(o.amt)}</td>
+    <td class="num neg" style="white-space:nowrap">${amtCell}</td>
     <td style="white-space:nowrap">${actionCell}</td>
   </tr>`;
 }
 function openOutstanding(){
   const open=outstandingOpen();
-  const tot=open.reduce((s,o)=>s+o.amt,0);
-  const byEnt={}; open.forEach(o=>{const e=byEnt[o.e]=byEnt[o.e]||{tot:0,n:0}; e.tot+=o.amt; e.n++;});
+  const tot=open.reduce((s,o)=>s+o.remaining,0);
+  const byEnt={}; open.forEach(o=>{const e=byEnt[o.e]=byEnt[o.e]||{tot:0,n:0}; e.tot+=o.remaining; e.n++;});
   const rows=Object.entries(byEnt).sort((a,b)=>b[1].tot-a[1].tot);
   let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total outstanding in this scope: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${open.length} invoice${open.length===1?'':'s'})</div>`;
   h+=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">Invoices</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
@@ -3606,20 +3615,89 @@ function renderOutstandingEntityRows(){
     if(amtMax && o.amt>Number(amtMax)) return false;
     return true;
   });
-  const tot=filtered.reduce((s,o)=>s+o.amt,0);
+  const tot=filtered.reduce((s,o)=>s+(OPE_TAB==='open'?o.remaining:o.amt),0);
   body.innerHTML=(filtered.length?filtered.map(outstandingRowHtml).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">No ${OPE_TAB} payables match these filters</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="6"><strong>TOTAL${filtered.length!==OPE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`;
   updateOpeFilterIndicators();
 }
 async function reopenOutstanding(id,entityId){
   try{
-    await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
-      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({status:'open',paid_date:null})});
-    const o=OUTSTANDING.find(x=>x.id===id); if(o){ o.status='open'; o.paidDate=null; }
+    const pays=await sbFetch('outstanding_payments?select=id&outstanding_id=eq.'+id+'&order=paid_date.desc,id.desc&limit=1');
+    if(!pays.length){ alert('No payment record found to undo.'); return; }
+    await authedFetch(SB_URL+'/rest/v1/outstanding_payments?id=eq.'+pays[0].id,{method:'DELETE'});
+    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+    OUTSTANDING=fresh.map(mkOutstanding);
     renderKpiFin(agg());
-    openOutstandingEntity(entityId,'paid');
+    const o=OUTSTANDING.find(x=>x.id===id);
+    openOutstandingEntity(entityId,(o&&o.status==='paid')?'paid':'open');
   }catch(e){ alert('Failed to undo: '+e.message); }
+}
+async function openOutstandingHistory(id,entityId,tab){
+  let pays=[];
+  try{ pays=await sbFetch('outstanding_payments?select=*&outstanding_id=eq.'+id+'&order=paid_date.desc,id.desc'); }catch(e){}
+  const o=OUTSTANDING.find(x=>x.id===id);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstandingEntity('${entityId}','${tab}')">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(o?o.vendor:'')} — Payment History</h4>`;
+  if(o) h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Invoice amount: <b style="color:var(--ink)">${fmt(o.amt)}</b> &nbsp;·&nbsp; Paid so far: <b style="color:var(--green)">${fmt(o.paidAmt)}</b> &nbsp;·&nbsp; Remaining: <b style="color:${o.remaining>0?'var(--red)':'var(--green)'}">${fmt(o.remaining)}</b></div>`;
+  h+=`<table><thead><tr><th>Date</th><th>Note</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
+    +(pays.length?pays.map(p=>`<tr><td style="font-size:12.5px;white-space:nowrap">${p.paid_date}</td><td style="font-size:12.5px">${escH(p.note||'—')}</td><td class="num" style="text-align:right">${fmt(+p.amount_idr)}</td></tr>`).join(''):`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No payments recorded yet</td></tr>`)
+    +`</tbody></table>`;
+  showModal('Payment History',h);
+}
+// ── Record-a-Payment picker (used by the Update Data panel, supports partial payments) ──
+function oppPickerHtml(openOP,inp){
+  if(!openOP.length) return '<div style="font-size:12.5px;color:#3a4254">No open outstanding payables to record a payment against.</div>';
+  return '<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Supports partial payments — enter less than the remaining balance and the invoice stays open with the updated balance.</div>'
+    +'<select id="opp-pick" style="'+inp+';width:100%;margin-bottom:8px" onchange="onOppPick()">'
+      +openOP.map(o=>{
+        const remaining=Number(o.amount_idr)-Number(o.paid_amount_idr||0);
+        const entName=ENT[o.entity_code]?ENT[o.entity_code].name:o.entity_code;
+        return '<option value="'+o.id+'" data-remaining="'+remaining+'">'+escH(entName)+' — '+escH(o.vendor_name)+' — '+escH(o.description)+' — remaining IDR '+fmtIDR(remaining)+' (due '+o.due_date+')</option>';
+      }).join('')
+    +'</select>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+      +'<input id="opp-amt" inputmode="numeric" placeholder="Payment amount (IDR)" style="'+inp+'">'
+      +'<input id="opp-date" type="date" aria-label="Payment date" style="'+inp+'">'
+    +'</div>'
+    +'<input id="opp-note" placeholder="Note (optional)" style="'+inp+';width:100%;margin-bottom:10px">'
+    +'<button id="opp-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Record payment</button>'
+    +'<div id="opp-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+}
+function onOppPick(){
+  const pick=document.getElementById('opp-pick'), amtEl=document.getElementById('opp-amt');
+  if(!pick||!amtEl||!pick.selectedOptions[0]) return;
+  amtEl.value=pick.selectedOptions[0].dataset.remaining;
+}
+function wireOppPicker(inp){
+  onOppPick();
+  const btn=document.getElementById('opp-send');
+  if(btn) btn.onclick=()=>doRecordOutstandingPayment(inp);
+}
+async function doRecordOutstandingPayment(inp){
+  const btn=document.getElementById('opp-send'), pick=document.getElementById('opp-pick'),
+    amtEl=document.getElementById('opp-amt'), dateEl=document.getElementById('opp-date'), noteEl=document.getElementById('opp-note'),
+    msg=document.getElementById('opp-msg');
+  if(!btn||!pick) return;
+  msg.style.color='#b3261e'; msg.textContent='';
+  const id=pick.value, amt=Number(amtEl.value), date=dateEl.value;
+  const remaining=Number(pick.selectedOptions[0].dataset.remaining);
+  if(!amt||amt<=0) return void(msg.textContent='Enter a valid payment amount.');
+  if(!date) return void(msg.textContent='Pick a payment date.');
+  if(amt>remaining+0.5) return void(msg.textContent='Payment exceeds the remaining balance of IDR '+fmtIDR(remaining)+'.');
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    await adminAddBatch('outstanding_payments',[{outstanding_id:Number(id),amount_idr:amt,paid_date:date,note:(noteEl.value||'').trim()||null}]);
+    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+    OUTSTANDING=fresh.map(mkOutstanding);
+    renderKpiFin(agg());
+    const stillOpen=fresh.filter(o=>o.status==='open');
+    const wrap=document.getElementById('opp-wrap');
+    wrap.innerHTML=stillOpen.length?oppPickerHtml(stillOpen,inp):'<div style="font-size:12.5px;color:#2b7a4b">✓ Payment recorded. No more open outstanding payables.</div>';
+    if(stillOpen.length){ wireOppPicker(inp); const m=document.getElementById('opp-msg'); m.style.color='#2b7a4b'; m.textContent='✓ Payment recorded.'; }
+  }catch(e){
+    msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message;
+    btn.disabled=false; btn.textContent='Record payment';
+  }
 }
 
 // ─── BALANCE RECONCILIATION (saldo awal / saldo akhir vs reported movement) ──
@@ -3833,7 +3911,7 @@ async function loadFromSupabase(){
     LOANS_APR:loans.filter(l=>l.period_code==='APR').map(mkLoan),
     LOANS_JUN:loans.filter(l=>l.period_code==='JUN').map(mkLoan),
     HIGHLIGHTS:hls.map(h=>({d:h.day_label,e:h.entity_code,desc:h.description,ty:h.flow_type,amt:+h.amount_idr})),
-    OUTSTANDING:(outs||[]).map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date})),
+    OUTSTANDING:(outs||[]).map(mkOutstanding),
     TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
@@ -4635,19 +4713,13 @@ async function renderEntryBody(){
       +'</div>'
       +'</div></details>';
   }
-  // ── Mark an outstanding payable as paid ──
+  // ── Record a payment against an outstanding payable (supports partial payments) ──
   {
     let openOP=[];
     try{ openOP=await sbFetch('outstanding_payables?select=*&status=eq.open&order=due_date'); }catch(e){}
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer">✓ Mark an Outstanding Payable as Paid</summary>'
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer">💵 Record a Payment</summary>'
       +'<div id="opp-wrap" style="padding:12px 2px 0">'
-      +(openOP.length
-        ? '<select id="opp-pick" style="'+inp+';width:100%;margin-bottom:10px">'
-          +openOP.map(o=>'<option value="'+o.id+'">'+escH(eName(o.entity_code))+' — '+escH(o.vendor_name)+' — '+escH(o.description)+' — IDR '+fmtIDR(o.amount_idr)+' (due '+o.due_date+')</option>').join('')
-          +'</select>'
-          +'<button id="opp-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Mark as paid</button>'
-          +'<div id="opp-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
-        : '<div style="font-size:12.5px;color:#3a4254">No open outstanding payables to mark.</div>')
+      +oppPickerHtml(openOP,inp)
       +'</div></details>';
   }
   // ── Submission history ──
@@ -4932,7 +5004,7 @@ async function renderEntryBody(){
     try{
       await adminAddBatch('outstanding_payables',[{entity_code:entity,category,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt}]);
       const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
-      OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
+      OUTSTANDING=fresh.map(mkOutstanding);
       renderKpiFin(agg());
       setMsg('opd-msg','✓ Saved.',true);
       ['opd-vendor','opd-desc','opd-amt'].forEach(id=>{document.getElementById(id).value='';});
@@ -5016,7 +5088,7 @@ async function renderEntryBody(){
           const payload=valid.map(r=>({entity_code:r.entityMatch,category:r.category,vendor_name:r.vendor,description:r.desc,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt}));
           await adminAddBatch('outstanding_payables',payload);
           const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
-          OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
+          OUTSTANDING=fresh.map(mkOutstanding);
           renderKpiFin(agg());
           document.getElementById('opd-import-msg').style.color='#2b7a4b';
           document.getElementById('opd-import-msg').textContent='✓ Imported '+payload.length+' outstanding payable(s).';
@@ -5062,33 +5134,7 @@ async function renderEntryBody(){
       renderOpdPreview();
     };
   }
-  async function doMarkOutstandingPaid(){
-    const btn=document.getElementById('opp-send'), pick=document.getElementById('opp-pick');
-    if(!btn||!pick) return;
-    setMsg('opp-msg','');
-    const id=pick.value;
-    btn.disabled=true; btn.textContent='Saving…';
-    try{
-      await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
-        headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-        body:JSON.stringify({status:'paid',paid_date:new Date().toISOString().slice(0,10)})});
-      const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
-      OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
-      renderKpiFin(agg());
-      const remaining=fresh.filter(o=>o.status==='open');
-      const wrap=document.getElementById('opp-wrap');
-      wrap.innerHTML=remaining.length
-        ?'<select id="opp-pick" style="'+inp+';width:100%;margin-bottom:10px">'
-          +remaining.map(o=>'<option value="'+o.id+'">'+escH(eName(o.entity_code))+' — '+escH(o.vendor_name)+' — '+escH(o.description)+' — IDR '+fmtIDR(o.amount_idr)+' (due '+o.due_date+')</option>').join('')
-          +'</select><button id="opp-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Mark as paid</button>'
-          +'<div id="opp-msg" style="font-size:12px;margin-top:8px;min-height:1px;color:#2b7a4b">✓ Marked as paid.</div>'
-        :'<div style="font-size:12.5px;color:#2b7a4b">✓ Marked as paid. No more open outstanding payables.</div>';
-      const newBtn=document.getElementById('opp-send');
-      if(newBtn) newBtn.onclick=doMarkOutstandingPaid;
-    }catch(e){ setMsg('opp-msg','Failed to save: '+e.message); btn.disabled=false; btn.textContent='Mark as paid'; }
-  }
-  const oppSend=document.getElementById('opp-send');
-  if(oppSend) oppSend.onclick=doMarkOutstandingPaid;
+  wireOppPicker(inp);
   document.getElementById('en-send').onclick=async()=>{
     const entity=document.getElementById('en-ent').value;
     const dval=dateInp.value, dval2=dateInp2.value||dval;
