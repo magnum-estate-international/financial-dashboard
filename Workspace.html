@@ -5046,11 +5046,24 @@ async function renderEntryBody(){
       if(!hit) hit=EIDS.find(id=>eName(id).toLowerCase().includes(n)||n.includes(eName(id).toLowerCase()));
       return hit||null;
     }
+    // Unambiguous synonyms seen in real imported files that map cleanly to exactly one canonical
+    // category — deliberately does NOT include ambiguous terms (e.g. "Legal & Professional Fees",
+    // which could mean either Legal & Permit or Professional & Management Fees) so those still get
+    // flagged for a human to pick, instead of being silently guessed.
+    const CAT_SYNONYMS={
+      'taxes':'Tax & BPJS','tax':'Tax & BPJS','payroll':'Payroll & Salaries','security':'Security Services',
+      'professional fees':'Professional & Management Fees','repairs & maintenance':'Cleaning, Repair & Maintenance',
+      'repairs and maintenance':'Cleaning, Repair & Maintenance','operational expenses':'Other Operating Expense',
+      'equipment & installation':'Equipment, FF&E & Supplies','equipment and installation':'Equipment, FF&E & Supplies',
+    };
     function findCategory(name){
       if(!name) return null;
       const n=String(name).trim().toLowerCase();
       const hit=opexCats2.find(c=>c.name.toLowerCase()===n);
-      return hit?hit.name:null;
+      if(hit) return hit.name;
+      const syn=CAT_SYNONYMS[n];
+      if(syn && opexCats2.some(c=>c.name===syn)) return syn;
+      return null;
     }
     function parseFlexDate(v){
       if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
@@ -5076,7 +5089,7 @@ async function renderEntryBody(){
           +'<td style="font-size:12px">'+escH(r.entityMatch?eName(r.entityMatch):(r.entityRaw||'—'))+'</td>'
           +'<td style="font-size:12px">'+escH(r.invNo||'—')+'</td>'
           +'<td style="font-size:12px">'+escH(r.vendor||'—')+'</td>'
-          +'<td style="font-size:12px;'+(r.catWarn?'color:#8a6d1a':'')+'">'+escH(r.category||'—')+(r.catWarn?' ⚠':'')+'</td>'
+          +'<td style="font-size:12px">'+escH(r.category||'—')+'</td>'
           +'<td style="font-size:12px;white-space:nowrap">'+(r.inv||'—')+'</td>'
           +'<td style="font-size:12px;white-space:nowrap">'+(r.due||'—')+'</td>'
           +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
@@ -5132,12 +5145,13 @@ async function renderEntryBody(){
         const amt=cAmt>=0?Number(r[cAmt]):NaN;
         let error=null;
         if(!entityMatch) error='Entity not recognized';
+        else if(!catMatch) error='Category not recognized — must match one of the existing cost categories exactly';
         else if(!vendor) error='Missing vendor';
         else if(!desc) error='Missing description';
         else if(!inv) error='Invalid invoice date';
         else if(!due) error='Invalid due date';
         else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
-        return {entityRaw,entityMatch,category:catMatch||catRaw||'Other Operating Expense',catWarn:!catMatch,invNo,vendor,desc,inv,due,amt,error};
+        return {entityRaw,entityMatch,category:catMatch||catRaw,invNo,vendor,desc,inv,due,amt,error};
       });
       renderOpdPreview();
     };
