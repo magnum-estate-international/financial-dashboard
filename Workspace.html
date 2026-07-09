@@ -4608,6 +4608,11 @@ async function renderEntryBody(){
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer">💼 Add an Outstanding Payable (unpaid invoice)</summary>'
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks unpaid invoices per PT — separate from the monthly figures above. Mark it paid once the payment shows up in a bank statement (recorded normally via the file upload above).</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px">'
+      +'<button id="opd-tab-one" type="button" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
+      +'<button id="opd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
+      +'</div>'
+      +'<div id="opd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<select id="opd-cat" style="'+inp+'">'+opexCats.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
@@ -4619,6 +4624,15 @@ async function renderEntryBody(){
       +'<input id="opd-desc" placeholder="Transaction description" style="'+inp+';width:100%;margin-bottom:10px">'
       +'<button id="opd-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save outstanding</button>'
       +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div>'
+      +'<div id="opd-bulk" style="display:none">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Vendor, Category, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
+      +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px">⬇ Download template (.xlsx)</button>'
+      +'<div><label for="opd-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Choose Excel/CSV file</label>'
+      +'<input id="opd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'<span id="opd-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
+      +'<div id="opd-preview" style="margin-top:12px"></div>'
+      +'</div>'
       +'</div></details>';
   }
   // ── Mark an outstanding payable as paid ──
@@ -4925,6 +4939,129 @@ async function renderEntryBody(){
     }catch(e){ setMsg('opd-msg','Failed to save: '+e.message); }
     opdSend.disabled=false; opdSend.textContent='Save outstanding';
   };
+  // ── Outstanding: tab toggle + bulk Excel import ──
+  {
+    const tabOne=document.getElementById('opd-tab-one'), tabBulk=document.getElementById('opd-tab-bulk');
+    const paneOne=document.getElementById('opd-single'), paneBulk=document.getElementById('opd-bulk');
+    const setTab=t=>{
+      const one=t==='one';
+      if(paneOne) paneOne.style.display=one?'':'none';
+      if(paneBulk) paneBulk.style.display=one?'none':'';
+      if(tabOne){ tabOne.style.background=one?'#5b67f1':'#fff'; tabOne.style.color=one?'#fff':'#3a4254'; tabOne.style.border=one?'0':'1px solid #e4e7ef'; }
+      if(tabBulk){ tabBulk.style.background=one?'#fff':'#5b67f1'; tabBulk.style.color=one?'#3a4254':'#fff'; tabBulk.style.border=one?'1px solid #e4e7ef':'0'; }
+    };
+    if(tabOne) tabOne.onclick=()=>setTab('one');
+    if(tabBulk) tabBulk.onclick=()=>setTab('bulk');
+    const opexCats2=cats.filter(c=>c.kind==='opex');
+    const tplBtn=document.getElementById('opd-template');
+    if(tplBtn) tplBtn.onclick=()=>{
+      const rows=[['Entity','Vendor','Category','Invoice Date','Due Date','Amount','Description'],
+        [eName(EIDS[0]),'Sample Vendor',opexCats2[0]?opexCats2[0].name:'Other Operating Expense','2026-07-01','2026-07-31',1000000,'Sample transaction description']];
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
+      XLSX.writeFile(wb,'outstanding_payables_template.xlsx');
+    };
+    function findEntityByName(name){
+      if(!name) return null;
+      const n=String(name).trim().toLowerCase();
+      let hit=EIDS.find(id=>eName(id).toLowerCase()===n);
+      if(!hit) hit=EIDS.find(id=>eName(id).toLowerCase().includes(n)||n.includes(eName(id).toLowerCase()));
+      return hit||null;
+    }
+    function findCategory(name){
+      if(!name) return null;
+      const n=String(name).trim().toLowerCase();
+      const hit=opexCats2.find(c=>c.name.toLowerCase()===n);
+      return hit?hit.name:null;
+    }
+    function parseFlexDate(v){
+      if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+      if(typeof v==='number') { const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?null:d.toISOString().slice(0,10); }
+      if(typeof v==='string'){
+        const s=v.trim();
+        let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+        m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+        const d=new Date(s); if(!isNaN(d)) return d.toISOString().slice(0,10);
+      }
+      return null;
+    }
+    let OPD_ROWS=[];
+    function renderOpdPreview(){
+      const el=document.getElementById('opd-preview'); if(!el) return;
+      if(!OPD_ROWS.length){ el.innerHTML=''; return; }
+      const valid=OPD_ROWS.filter(r=>!r.error);
+      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+      OPD_ROWS.forEach((r,i)=>{
+        h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+          +'<td style="font-size:12px">'+escH(r.entityMatch?eName(r.entityMatch):(r.entityRaw||'—'))+'</td>'
+          +'<td style="font-size:12px">'+escH(r.vendor||'—')+'</td>'
+          +'<td style="font-size:12px;'+(r.catWarn?'color:#8a6d1a':'')+'">'+escH(r.category||'—')+(r.catWarn?' ⚠':'')+'</td>'
+          +'<td style="font-size:12px;white-space:nowrap">'+(r.inv||'—')+'</td>'
+          +'<td style="font-size:12px;white-space:nowrap">'+(r.due||'—')+'</td>'
+          +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
+          +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
+          +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
+      });
+      h+='</tbody></table></div>';
+      h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+OPD_ROWS.length+' row(s) ready to import'+(OPD_ROWS.length>valid.length?' — fix the flagged rows in your file and re-upload to include them':'')+'.</div>';
+      h+='<button id="opd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' outstanding payable'+(valid.length===1?'':'s')+'</button>';
+      h+='<div id="opd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+      el.innerHTML=h;
+      const impBtn=document.getElementById('opd-import');
+      if(impBtn) impBtn.onclick=async()=>{
+        impBtn.disabled=true; impBtn.textContent='Importing…';
+        try{
+          const payload=valid.map(r=>({entity_code:r.entityMatch,category:r.category,vendor_name:r.vendor,description:r.desc,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt}));
+          await adminAddBatch('outstanding_payables',payload);
+          const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+          OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
+          renderKpiFin(agg());
+          document.getElementById('opd-import-msg').style.color='#2b7a4b';
+          document.getElementById('opd-import-msg').textContent='✓ Imported '+payload.length+' outstanding payable(s).';
+          impBtn.textContent='Imported ✓';
+        }catch(e){
+          document.getElementById('opd-import-msg').style.color='#b3261e';
+          document.getElementById('opd-import-msg').textContent='Import failed: '+e.message;
+          impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' outstanding payable'+(valid.length===1?'':'s');
+        }
+      };
+    }
+    const fileInp=document.getElementById('opd-file');
+    if(fileInp) fileInp.onchange=async()=>{
+      const f=fileInp.files[0]; if(!f) return;
+      document.getElementById('opd-filename').textContent=f.name;
+      let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
+        document.getElementById('opd-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
+      }
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      const raw=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
+      if(!raw.length){ OPD_ROWS=[]; renderOpdPreview(); return; }
+      const header=raw[0].map(h=>String(h||'').trim().toLowerCase());
+      const col=names=>{ for(const n of names){ const i=header.indexOf(n); if(i>=0) return i; } return -1; };
+      const cEnt=col(['entity','pt']), cVendor=col(['vendor','vendor name']), cCat=col(['category','cost category']),
+        cInv=col(['invoice date','invoice']), cDue=col(['due date','due']), cAmt=col(['amount','amount (idr)','amount idr']),
+        cDesc=col(['description','transaction description']);
+      OPD_ROWS=raw.slice(1).filter(r=>r.some(v=>v!=='')).map(r=>{
+        const entityRaw=cEnt>=0?r[cEnt]:'', entityMatch=findEntityByName(entityRaw);
+        const catRaw=cCat>=0?r[cCat]:'', catMatch=findCategory(catRaw);
+        const vendor=cVendor>=0?String(r[cVendor]||'').trim():'';
+        const desc=cDesc>=0?String(r[cDesc]||'').trim():'';
+        const inv=cInv>=0?parseFlexDate(r[cInv]):null, due=cDue>=0?parseFlexDate(r[cDue]):null;
+        const amt=cAmt>=0?Number(r[cAmt]):NaN;
+        let error=null;
+        if(!entityMatch) error='Entity not recognized';
+        else if(!vendor) error='Missing vendor';
+        else if(!desc) error='Missing description';
+        else if(!inv) error='Invalid invoice date';
+        else if(!due) error='Invalid due date';
+        else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
+        return {entityRaw,entityMatch,category:catMatch||catRaw||'Other Operating Expense',catWarn:!catMatch,vendor,desc,inv,due,amt,error};
+      });
+      renderOpdPreview();
+    };
+  }
   async function doMarkOutstandingPaid(){
     const btn=document.getElementById('opp-send'), pick=document.getElementById('opp-pick');
     if(!btn||!pick) return;
