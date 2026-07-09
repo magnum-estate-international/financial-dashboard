@@ -3468,19 +3468,30 @@ function renderDataHealth(){
 }
 
 // ─── OUTSTANDING PAYABLES MANAGEMENT ─────────────────────────────────────────
+function outstandingPaid(){
+  const ids=new Set(scopeIds());
+  return OUTSTANDING.filter(o=>o.status==='paid'&&ids.has(o.e));
+}
 function outstandingRowHtml(o){
-  const od=daysOverdue(o.due);
-  const odCell=od>0?`<span style="color:var(--red);font-weight:700">${od} day${od>1?'s':''} overdue</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
   const canEdit=MY_ROLE==='editor';
+  let statusCell, actionCell;
+  if(o.status==='paid'){
+    statusCell=`<span style="color:var(--green);font-weight:700">Paid on ${o.paidDate}</span>`;
+    actionCell=canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="reopenOutstanding(${o.id},'${o.e}')">↺ Undo</button>`:'';
+  } else {
+    const od=daysOverdue(o.due);
+    statusCell=od>0?`<span style="color:var(--red);font-weight:700">${od} day${od>1?'s':''} overdue</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
+    actionCell=canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="markOutstandingPaid(${o.id},'${o.e}')">✓ Mark as Paid</button>`:'';
+  }
   return `<tr>
     <td style="font-size:12.5px;white-space:nowrap">${escH(o.vendor)}</td>
     <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escH(o.cat||'—')}</td>
     <td style="font-size:12.5px">${escH(o.desc)}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.inv}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.due}</td>
-    <td style="font-size:12px;white-space:nowrap">${odCell}</td>
+    <td style="font-size:12px;white-space:nowrap">${statusCell}</td>
     <td class="num neg" style="white-space:nowrap">${fmt(o.amt)}</td>
-    <td style="white-space:nowrap">${canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="markOutstandingPaid(${o.id},'${o.e}')">✓ Mark as Paid</button>`:''}</td>
+    <td style="white-space:nowrap">${actionCell}</td>
   </tr>`;
 }
 function openOutstanding(){
@@ -3496,15 +3507,18 @@ function openOutstanding(){
     +`</tbody></table>`;
   showModal('Outstanding Payables',h);
 }
-function openOutstandingEntity(id){
-  const open=outstandingOpen().filter(o=>o.e===id).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
-  const tot=open.reduce((s,o)=>s+o.amt,0);
+function openOutstandingEntity(id,tab){
+  tab=tab||'open';
+  const rows=(tab==='paid'?outstandingPaid():outstandingOpen()).filter(o=>o.e===id).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
+  const tot=rows.reduce((s,o)=>s+o.amt,0);
+  const tabBtn=(t,label)=>`<button class="btn ${tab===t?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${tab===t?';background:#5b67f1;color:#fff;border:0':''}" onclick="openOutstandingEntity('${id}','${t}')">${label}</button>`;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstanding()">‹ Back to breakdown</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id].name} — Outstanding Payables</h4>`;
+  h+=`<div style="display:flex;gap:8px;margin-bottom:12px">${tabBtn('open','Open')}${tabBtn('paid','Paid')}</div>`;
   h+=`<div class="table-scroll" style="max-height:380px"><table><thead><tr>`
-    +`<th>Vendor</th><th>Cost Category</th><th>Description</th><th>Invoice Date</th><th>Due Date</th><th>Overdue</th><th class="num" style="text-align:right">Amount (IDR)</th><th></th>`
+    +`<th>Vendor</th><th>Cost Category</th><th>Description</th><th>Invoice Date</th><th>Due Date</th><th>Status</th><th class="num" style="text-align:right">Amount (IDR)</th><th></th>`
     +`</tr></thead><tbody>`
-    +(open.length?open.map(outstandingRowHtml).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">No outstanding payables for this entity</td></tr>`)
+    +(rows.length?rows.map(outstandingRowHtml).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">No ${tab} payables for this entity</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="6"><strong>TOTAL</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`
     +`</tbody></table></div>`;
   showModal(`${ENT[id].name} — Outstanding Payables`,h,true);
@@ -3514,10 +3528,20 @@ async function markOutstandingPaid(id,entityId){
     await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
       body:JSON.stringify({status:'paid',paid_date:new Date().toISOString().slice(0,10)})});
-    const o=OUTSTANDING.find(x=>x.id===id); if(o) o.status='paid';
+    const o=OUTSTANDING.find(x=>x.id===id); if(o){ o.status='paid'; o.paidDate=new Date().toISOString().slice(0,10); }
     renderKpiFin(agg());
-    openOutstandingEntity(entityId);
+    openOutstandingEntity(entityId,'open');
   }catch(e){ alert('Failed to mark as paid: '+e.message); }
+}
+async function reopenOutstanding(id,entityId){
+  try{
+    await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({status:'open',paid_date:null})});
+    const o=OUTSTANDING.find(x=>x.id===id); if(o){ o.status='open'; o.paidDate=null; }
+    renderKpiFin(agg());
+    openOutstandingEntity(entityId,'paid');
+  }catch(e){ alert('Failed to undo: '+e.message); }
 }
 
 // ─── BALANCE RECONCILIATION (saldo awal / saldo akhir vs reported movement) ──
