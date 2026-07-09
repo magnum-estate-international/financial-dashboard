@@ -3508,42 +3508,79 @@ function openOutstanding(){
   showModal('Outstanding Payables',h);
 }
 let OPE_ID=null, OPE_TAB='open', OPE_ROWS=[];
-function opeFilterField(id2,html){ return `<td>${html}</td>`; }
+const OPE_FKEYS={vendor:['opef-vendor'],cat:['opef-cat'],desc:['opef-desc'],inv:['opef-inv-from','opef-inv-to'],due:['opef-due-from','opef-due-to'],status:['opef-status'],amt:['opef-amt-min','opef-amt-max']};
+function thFilterable(label,key,controlsHtml){
+  return `<th style="position:relative"><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="opef-btn-${key}" onclick="toggleOpeFilterPop('${key}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
+    +`<div id="opef-pop-${key}" class="ope-filter-pop" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:10px;z-index:100001;min-width:170px">`
+    +controlsHtml
+    +`<div style="margin-top:6px;text-align:right"><button type="button" class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="clearOpeFilterGroup('${key}')">Clear</button></div>`
+    +`</div></th>`;
+}
+function toggleOpeFilterPop(key,btnEl){
+  const pop=document.getElementById('opef-pop-'+key);
+  const willOpen=pop.style.display!=='block';
+  document.querySelectorAll('.ope-filter-pop').forEach(p=>p.style.display='none');
+  if(willOpen){
+    const r=btnEl.getBoundingClientRect();
+    pop.style.top=(r.bottom+4)+'px';
+    pop.style.left=Math.max(8,Math.min(r.left-70,window.innerWidth-190))+'px';
+    pop.style.display='block';
+  }
+}
+document.addEventListener('click',e=>{
+  if(e.target.closest('.ope-filter-pop')||e.target.closest('[id^="opef-btn-"]')) return;
+  document.querySelectorAll('.ope-filter-pop').forEach(p=>p.style.display='none');
+});
+function clearOpeFilterGroup(key){
+  (OPE_FKEYS[key]||[]).forEach(id=>{const el=document.getElementById(id); if(el) el.value=(el.tagName==='SELECT'?'All':'');});
+  renderOutstandingEntityRows();
+  document.querySelectorAll('.ope-filter-pop').forEach(p=>p.style.display='none');
+}
 function openOutstandingEntity(id,tab){
   OPE_ID=id; OPE_TAB=tab=tab||'open';
   OPE_ROWS=(tab==='paid'?outstandingPaid():outstandingOpen()).filter(o=>o.e===id).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
   const cats=['All',...new Set(OPE_ROWS.map(o=>o.cat||'—'))];
   const tabBtn=(t,label)=>`<button class="btn ${tab===t?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${tab===t?';background:#5b67f1;color:#fff;border:0':''}" onclick="openOutstandingEntity('${id}','${t}')">${label}</button>`;
-  const txt=(id2,ph)=>`<input id="${id2}" type="text" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px" oninput="renderOutstandingEntityRows()">`;
-  const dt=(id2,ph)=>`<input id="${id2}" type="date" aria-label="${ph}" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">`;
-  const num=(id2,ph)=>`<input id="${id2}" type="number" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px" oninput="renderOutstandingEntityRows()">`;
+  const txt=(id2,ph)=>`<input id="${id2}" type="text" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box" oninput="renderOutstandingEntityRows()">`;
+  const dt=(id2,ph)=>`<input id="${id2}" type="date" aria-label="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" onchange="renderOutstandingEntityRows()">`;
+  const num=(id2,ph)=>`<input id="${id2}" type="number" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" oninput="renderOutstandingEntityRows()">`;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstanding()">‹ Back to breakdown</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id].name} — Outstanding Payables</h4>`;
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div style="display:flex;gap:8px">${tabBtn('open','Open')}${tabBtn('paid','Paid')}</div>
-    <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearOutstandingEntityFilters()">Clear filters</button>
+    <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearOutstandingEntityFilters()">Clear all filters</button>
   </div>`;
-  h+=`<div class="table-scroll" style="max-height:440px"><table><thead>`
-    +`<tr><th>Vendor</th><th>Cost Category</th><th>Description</th><th>Invoice Date</th><th>Due Date</th><th>Status</th><th class="num" style="text-align:right">Amount (IDR)</th><th></th></tr>`
-    +`<tr>`
-    +opeFilterField('opef-vendor',txt('opef-vendor','Filter…'))
-    +opeFilterField('opef-cat',`<select id="opef-cat" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${cats.map(c=>`<option value="${escH(c)}">${escH(c)}</option>`).join('')}</select>`)
-    +opeFilterField('opef-desc',txt('opef-desc','Filter…'))
-    +opeFilterField('opef-inv',`${dt('opef-inv-from','From')}${dt('opef-inv-to','To')}`)
-    +opeFilterField('opef-due',`${dt('opef-due-from','From')}${dt('opef-due-to','To')}`)
-    +opeFilterField('opef-status', tab==='open'
-      ? `<select id="opef-status" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${['All','Overdue','Due today','Not yet due'].map(o=>`<option value="${o}">${o}</option>`).join('')}</select>`
-      : '')
-    +opeFilterField('opef-amt',`${num('opef-amt-min','Min')}${num('opef-amt-max','Max')}`)
-    +`<td></td></tr>`
-    +`</thead><tbody id="opeBody"></tbody></table></div>`;
+  h+=`<div class="table-scroll" style="max-height:440px"><table><thead><tr>`
+    +thFilterable('Vendor','vendor',txt('opef-vendor','Filter vendor…'))
+    +thFilterable('Cost Category','cat',`<select id="opef-cat" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${cats.map(c=>`<option value="${escH(c)}">${escH(c)}</option>`).join('')}</select>`)
+    +thFilterable('Description','desc',txt('opef-desc','Filter description…'))
+    +thFilterable('Invoice Date','inv',`${dt('opef-inv-from','From')}${dt('opef-inv-to','To')}`)
+    +thFilterable('Due Date','due',`${dt('opef-due-from','From')}${dt('opef-due-to','To')}`)
+    +(tab==='open'
+      ? thFilterable('Status','status',`<select id="opef-status" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${['All','Overdue','Due today','Not yet due'].map(o=>`<option value="${o}">${o}</option>`).join('')}</select>`)
+      : '<th>Status</th>')
+    +thFilterable('Amount (IDR)','amt',`${num('opef-amt-min','Min')}${num('opef-amt-max','Max')}`)
+    +`<th></th></tr></thead><tbody id="opeBody"></tbody></table></div>`;
   showModal(`${ENT[id].name} — Outstanding Payables`,h,true);
   renderOutstandingEntityRows();
 }
 function clearOutstandingEntityFilters(){
-  ['opef-vendor','opef-desc','opef-inv-from','opef-inv-to','opef-due-from','opef-due-to','opef-amt-min','opef-amt-max'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
-  ['opef-cat','opef-status'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='All';});
+  Object.values(OPE_FKEYS).flat().forEach(id=>{const el=document.getElementById(id); if(el) el.value=(el.tagName==='SELECT'?'All':'');});
   renderOutstandingEntityRows();
+  document.querySelectorAll('.ope-filter-pop').forEach(p=>p.style.display='none');
+}
+function updateOpeFilterIndicators(){
+  const g=id=>{const el=document.getElementById(id); return el?el.value:'';};
+  const active={
+    vendor:!!g('opef-vendor'), cat:g('opef-cat')&&g('opef-cat')!=='All', desc:!!g('opef-desc'),
+    inv:!!g('opef-inv-from')||!!g('opef-inv-to'), due:!!g('opef-due-from')||!!g('opef-due-to'),
+    status:g('opef-status')&&g('opef-status')!=='All', amt:!!g('opef-amt-min')||!!g('opef-amt-max'),
+  };
+  Object.entries(active).forEach(([k,isActive])=>{
+    const btn=document.getElementById('opef-btn-'+k); if(!btn) return;
+    btn.style.color=isActive?'#5b67f1':'var(--muted)';
+    btn.style.fontWeight=isActive?'900':'400';
+  });
 }
 function renderOutstandingEntityRows(){
   const body=document.getElementById('opeBody'); if(!body) return;
@@ -3572,6 +3609,7 @@ function renderOutstandingEntityRows(){
   const tot=filtered.reduce((s,o)=>s+o.amt,0);
   body.innerHTML=(filtered.length?filtered.map(outstandingRowHtml).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">No ${OPE_TAB} payables match these filters</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="6"><strong>TOTAL${filtered.length!==OPE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`;
+  updateOpeFilterIndicators();
 }
 async function reopenOutstanding(id,entityId){
   try{
