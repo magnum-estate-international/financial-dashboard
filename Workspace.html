@@ -3481,7 +3481,7 @@ function outstandingRowHtml(o){
   } else {
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${od} day${od>1?'s':''} overdue</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
-    actionCell=canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="markOutstandingPaid(${o.id},'${o.e}')">✓ Mark as Paid</button>`:'';
+    actionCell='';
   }
   return `<tr>
     <td style="font-size:12.5px;white-space:nowrap">${escH(o.vendor)}</td>
@@ -3522,16 +3522,6 @@ function openOutstandingEntity(id,tab){
     +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="6"><strong>TOTAL</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`
     +`</tbody></table></div>`;
   showModal(`${ENT[id].name} — Outstanding Payables`,h,true);
-}
-async function markOutstandingPaid(id,entityId){
-  try{
-    await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
-      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({status:'paid',paid_date:new Date().toISOString().slice(0,10)})});
-    const o=OUTSTANDING.find(x=>x.id===id); if(o){ o.status='paid'; o.paidDate=new Date().toISOString().slice(0,10); }
-    renderKpiFin(agg());
-    openOutstandingEntity(entityId,'open');
-  }catch(e){ alert('Failed to mark as paid: '+e.message); }
 }
 async function reopenOutstanding(id,entityId){
   try{
@@ -4543,6 +4533,21 @@ async function renderEntryBody(){
       +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
   }
+  // ── Mark an outstanding payable as paid ──
+  {
+    let openOP=[];
+    try{ openOP=await sbFetch('outstanding_payables?select=*&status=eq.open&order=due_date'); }catch(e){}
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer">✓ Mark an Outstanding Payable as Paid</summary>'
+      +'<div id="opp-wrap" style="padding:12px 2px 0">'
+      +(openOP.length
+        ? '<select id="opp-pick" style="'+inp+';width:100%;margin-bottom:10px">'
+          +openOP.map(o=>'<option value="'+o.id+'">'+escH(eName(o.entity_code))+' — '+escH(o.vendor_name)+' — '+escH(o.description)+' — IDR '+fmtIDR(o.amount_idr)+' (due '+o.due_date+')</option>').join('')
+          +'</select>'
+          +'<button id="opp-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Mark as paid</button>'
+          +'<div id="opp-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+        : '<div style="font-size:12.5px;color:#3a4254">No open outstanding payables to mark.</div>')
+      +'</div></details>';
+  }
   // ── Submission history ──
   const hist=IS_ADMIN?subs.filter(s=>s.status!=='pending'):subs;
   h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:8px">'+(IS_ADMIN?'Submission log':'My submissions')+'</div>';
@@ -4832,6 +4837,33 @@ async function renderEntryBody(){
     }catch(e){ setMsg('opd-msg','Failed to save: '+e.message); }
     opdSend.disabled=false; opdSend.textContent='Save outstanding';
   };
+  async function doMarkOutstandingPaid(){
+    const btn=document.getElementById('opp-send'), pick=document.getElementById('opp-pick');
+    if(!btn||!pick) return;
+    setMsg('opp-msg','');
+    const id=pick.value;
+    btn.disabled=true; btn.textContent='Saving…';
+    try{
+      await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
+        headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+        body:JSON.stringify({status:'paid',paid_date:new Date().toISOString().slice(0,10)})});
+      const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+      OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
+      renderKpiFin(agg());
+      const remaining=fresh.filter(o=>o.status==='open');
+      const wrap=document.getElementById('opp-wrap');
+      wrap.innerHTML=remaining.length
+        ?'<select id="opp-pick" style="'+inp+';width:100%;margin-bottom:10px">'
+          +remaining.map(o=>'<option value="'+o.id+'">'+escH(eName(o.entity_code))+' — '+escH(o.vendor_name)+' — '+escH(o.description)+' — IDR '+fmtIDR(o.amount_idr)+' (due '+o.due_date+')</option>').join('')
+          +'</select><button id="opp-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Mark as paid</button>'
+          +'<div id="opp-msg" style="font-size:12px;margin-top:8px;min-height:1px;color:#2b7a4b">✓ Marked as paid.</div>'
+        :'<div style="font-size:12.5px;color:#2b7a4b">✓ Marked as paid. No more open outstanding payables.</div>';
+      const newBtn=document.getElementById('opp-send');
+      if(newBtn) newBtn.onclick=doMarkOutstandingPaid;
+    }catch(e){ setMsg('opp-msg','Failed to save: '+e.message); btn.disabled=false; btn.textContent='Mark as paid'; }
+  }
+  const oppSend=document.getElementById('opp-send');
+  if(oppSend) oppSend.onclick=doMarkOutstandingPaid;
   document.getElementById('en-send').onclick=async()=>{
     const entity=document.getElementById('en-ent').value;
     const dval=dateInp.value, dval2=dateInp2.value||dval;
