@@ -3494,11 +3494,12 @@ function outstandingRowHtml(o){
   const amtCell=(o.status==='open'&&o.paidAmt>0)
     ? `<div>${fmt(o.remaining)}</div><div style="font-size:10px;color:var(--muted);font-weight:400">of ${fmt(o.amt)} — ${fmt(o.paidAmt)} paid</div>`
     : `${fmt(o.amt)}`;
+  const ellip='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block';
   return `<tr>
-    <td style="font-size:12.5px;white-space:nowrap">${escH(o.invNo||'—')}</td>
-    <td style="font-size:12.5px;white-space:nowrap">${escH(o.vendor)}</td>
+    <td style="font-size:12.5px;max-width:100px" title="${escH(o.invNo||'')}"><span style="${ellip}">${escH(o.invNo||'—')}</span></td>
+    <td style="font-size:12.5px;max-width:140px" title="${escH(o.vendor)}"><span style="${ellip}">${escH(o.vendor)}</span></td>
     <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escH(o.cat||'—')}</td>
-    <td style="font-size:12.5px">${escH(o.desc)}</td>
+    <td style="font-size:12.5px;max-width:220px" title="${escH(o.desc)}"><span style="${ellip}">${escH(o.desc)}</span></td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.inv}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.due}</td>
     <td style="font-size:12px;white-space:nowrap">${statusCell}</td>
@@ -3562,7 +3563,9 @@ function openOutstandingEntity(id,tab){
     <div style="display:flex;gap:8px">${tabBtn('open','Open')}${tabBtn('paid','Paid')}</div>
     <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearOutstandingEntityFilters()">Clear all filters</button>
   </div>`;
-  h+=`<div class="table-scroll" style="max-height:440px"><table><thead><tr>`
+  h+=`<div class="table-scroll" style="max-height:440px"><table style="table-layout:fixed;width:100%">`
+    +`<colgroup><col style="width:95px"><col style="width:130px"><col style="width:125px"><col><col style="width:95px"><col style="width:95px"><col style="width:115px"><col style="width:120px"><col style="width:200px"></colgroup>`
+    +`<thead><tr>`
     +thFilterable('Invoice #','invno',txt('opef-invno','Filter invoice #…'))
     +thFilterable('Vendor','vendor',txt('opef-vendor','Filter vendor…'))
     +thFilterable('Cost Category','cat',`<select id="opef-cat" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${cats.map(c=>`<option value="${escH(c)}">${escH(c)}</option>`).join('')}</select>`)
