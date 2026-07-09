@@ -2889,7 +2889,7 @@ function renderKpiFin(a){
 }
 function mkOutstanding(o){
   const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
-  return {id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,
+  return {id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,invNo:o.invoice_number,inv:o.invoice_date,due:o.due_date,
     amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date};
 }
 function outstandingOpen(){
@@ -3493,6 +3493,7 @@ function outstandingRowHtml(o){
     ? `<div>${fmt(o.remaining)}</div><div style="font-size:10px;color:var(--muted);font-weight:400">of ${fmt(o.amt)} — ${fmt(o.paidAmt)} paid</div>`
     : `${fmt(o.amt)}`;
   return `<tr>
+    <td style="font-size:12.5px;white-space:nowrap">${escH(o.invNo||'—')}</td>
     <td style="font-size:12.5px;white-space:nowrap">${escH(o.vendor)}</td>
     <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escH(o.cat||'—')}</td>
     <td style="font-size:12.5px">${escH(o.desc)}</td>
@@ -3517,7 +3518,7 @@ function openOutstanding(){
   showModal('Outstanding Payables',h);
 }
 let OPE_ID=null, OPE_TAB='open', OPE_ROWS=[];
-const OPE_FKEYS={vendor:['opef-vendor'],cat:['opef-cat'],desc:['opef-desc'],inv:['opef-inv-from','opef-inv-to'],due:['opef-due-from','opef-due-to'],status:['opef-status'],amt:['opef-amt-min','opef-amt-max']};
+const OPE_FKEYS={invno:['opef-invno'],vendor:['opef-vendor'],cat:['opef-cat'],desc:['opef-desc'],inv:['opef-inv-from','opef-inv-to'],due:['opef-due-from','opef-due-to'],status:['opef-status'],amt:['opef-amt-min','opef-amt-max']};
 function thFilterable(label,key,controlsHtml){
   return `<th style="position:relative"><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="opef-btn-${key}" onclick="toggleOpeFilterPop('${key}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
     +`<div id="opef-pop-${key}" class="ope-filter-pop" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:10px;z-index:100001;min-width:170px">`
@@ -3560,6 +3561,7 @@ function openOutstandingEntity(id,tab){
     <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearOutstandingEntityFilters()">Clear all filters</button>
   </div>`;
   h+=`<div class="table-scroll" style="max-height:440px"><table><thead><tr>`
+    +thFilterable('Invoice #','invno',txt('opef-invno','Filter invoice #…'))
     +thFilterable('Vendor','vendor',txt('opef-vendor','Filter vendor…'))
     +thFilterable('Cost Category','cat',`<select id="opef-cat" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${cats.map(c=>`<option value="${escH(c)}">${escH(c)}</option>`).join('')}</select>`)
     +thFilterable('Description','desc',txt('opef-desc','Filter description…'))
@@ -3581,7 +3583,7 @@ function clearOutstandingEntityFilters(){
 function updateOpeFilterIndicators(){
   const g=id=>{const el=document.getElementById(id); return el?el.value:'';};
   const active={
-    vendor:!!g('opef-vendor'), cat:g('opef-cat')&&g('opef-cat')!=='All', desc:!!g('opef-desc'),
+    invno:!!g('opef-invno'), vendor:!!g('opef-vendor'), cat:g('opef-cat')&&g('opef-cat')!=='All', desc:!!g('opef-desc'),
     inv:!!g('opef-inv-from')||!!g('opef-inv-to'), due:!!g('opef-due-from')||!!g('opef-due-to'),
     status:g('opef-status')&&g('opef-status')!=='All', amt:!!g('opef-amt-min')||!!g('opef-amt-max'),
   };
@@ -3594,11 +3596,13 @@ function updateOpeFilterIndicators(){
 function renderOutstandingEntityRows(){
   const body=document.getElementById('opeBody'); if(!body) return;
   const g=id=>{const el=document.getElementById(id); return el?el.value:'';};
+  const invNo=g('opef-invno').toLowerCase();
   const vendor=g('opef-vendor').toLowerCase(), desc=g('opef-desc').toLowerCase();
   const cat=g('opef-cat')||'All', status=g('opef-status')||'All';
   const invFrom=g('opef-inv-from'), invTo=g('opef-inv-to'), dueFrom=g('opef-due-from'), dueTo=g('opef-due-to');
   const amtMin=g('opef-amt-min'), amtMax=g('opef-amt-max');
   const filtered=OPE_ROWS.filter(o=>{
+    if(invNo && !(o.invNo||'').toLowerCase().includes(invNo)) return false;
     if(vendor && !o.vendor.toLowerCase().includes(vendor)) return false;
     if(desc && !o.desc.toLowerCase().includes(desc)) return false;
     if(cat!=='All' && (o.cat||'—')!==cat) return false;
@@ -3616,8 +3620,8 @@ function renderOutstandingEntityRows(){
     return true;
   });
   const tot=filtered.reduce((s,o)=>s+(OPE_TAB==='open'?o.remaining:o.amt),0);
-  body.innerHTML=(filtered.length?filtered.map(outstandingRowHtml).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">No ${OPE_TAB} payables match these filters</td></tr>`)
-    +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="6"><strong>TOTAL${filtered.length!==OPE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`;
+  body.innerHTML=(filtered.length?filtered.map(outstandingRowHtml).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">No ${OPE_TAB} payables match these filters</td></tr>`)
+    +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="7"><strong>TOTAL${filtered.length!==OPE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`;
   updateOpeFilterIndicators();
 }
 async function reopenOutstanding(id,entityId){
@@ -3637,7 +3641,7 @@ async function openOutstandingHistory(id,entityId,tab){
   try{ pays=await sbFetch('outstanding_payments?select=*&outstanding_id=eq.'+id+'&order=paid_date.desc,id.desc'); }catch(e){}
   const o=OUTSTANDING.find(x=>x.id===id);
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstandingEntity('${entityId}','${tab}')">‹ Back</button>`;
-  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(o?o.vendor:'')} — Payment History</h4>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(o?o.vendor:'')}${o&&o.invNo?` (Inv# ${escH(o.invNo)})`:''} — Payment History</h4>`;
   if(o) h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Invoice amount: <b style="color:var(--ink)">${fmt(o.amt)}</b> &nbsp;·&nbsp; Paid so far: <b style="color:var(--green)">${fmt(o.paidAmt)}</b> &nbsp;·&nbsp; Remaining: <b style="color:${o.remaining>0?'var(--red)':'var(--green)'}">${fmt(o.remaining)}</b></div>`;
   h+=`<table><thead><tr><th>Date</th><th>Note</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
     +(pays.length?pays.map(p=>`<tr><td style="font-size:12.5px;white-space:nowrap">${p.paid_date}</td><td style="font-size:12.5px">${escH(p.note||'—')}</td><td class="num" style="text-align:right">${fmt(+p.amount_idr)}</td></tr>`).join(''):`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No payments recorded yet</td></tr>`)
@@ -3652,7 +3656,7 @@ function oppPickerHtml(openOP,inp){
       +openOP.map(o=>{
         const remaining=Number(o.amount_idr)-Number(o.paid_amount_idr||0);
         const entName=ENT[o.entity_code]?ENT[o.entity_code].name:o.entity_code;
-        return '<option value="'+o.id+'" data-remaining="'+remaining+'">'+escH(entName)+' — '+escH(o.vendor_name)+' — '+escH(o.description)+' — remaining IDR '+fmtIDR(remaining)+' (due '+o.due_date+')</option>';
+        return '<option value="'+o.id+'" data-remaining="'+remaining+'">'+escH(entName)+' — '+(o.invoice_number?'Inv# '+escH(o.invoice_number)+' — ':'')+escH(o.vendor_name)+' — '+escH(o.description)+' — remaining IDR '+fmtIDR(remaining)+' (due '+o.due_date+')</option>';
       }).join('')
     +'</select>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
@@ -4694,6 +4698,7 @@ async function renderEntryBody(){
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<select id="opd-cat" style="'+inp+'">'+opexCats.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
+      +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
       +'<input id="opd-vendor" placeholder="Vendor name" style="'+inp+'">'
       +'<input id="opd-inv" type="date" aria-label="Invoice date" style="'+inp+'">'
       +'<input id="opd-due" type="date" aria-label="Due date" style="'+inp+'">'
@@ -4704,7 +4709,7 @@ async function renderEntryBody(){
       +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div>'
       +'<div id="opd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Vendor, Category, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
       +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px">⬇ Download template (.xlsx)</button>'
       +'<div><label for="opd-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Choose Excel/CSV file</label>'
       +'<input id="opd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
@@ -4994,6 +4999,7 @@ async function renderEntryBody(){
     const msg=document.getElementById('opd-msg'); setMsg('opd-msg','');
     const entity=document.getElementById('opd-ent').value;
     const category=document.getElementById('opd-cat').value;
+    const invNo=document.getElementById('opd-invno').value.trim();
     const vendor=document.getElementById('opd-vendor').value.trim();
     const desc=document.getElementById('opd-desc').value.trim();
     const inv=document.getElementById('opd-inv').value;
@@ -5002,12 +5008,12 @@ async function renderEntryBody(){
     if(!vendor||!desc||!inv||!due||!amt||amt<=0) return setMsg('opd-msg','Please fill in all fields.');
     opdSend.disabled=true; opdSend.textContent='Saving…';
     try{
-      await adminAddBatch('outstanding_payables',[{entity_code:entity,category,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt}]);
+      await adminAddBatch('outstanding_payables',[{entity_code:entity,category,invoice_number:invNo||null,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt}]);
       const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
       OUTSTANDING=fresh.map(mkOutstanding);
       renderKpiFin(agg());
       setMsg('opd-msg','✓ Saved.',true);
-      ['opd-vendor','opd-desc','opd-amt'].forEach(id=>{document.getElementById(id).value='';});
+      ['opd-invno','opd-vendor','opd-desc','opd-amt'].forEach(id=>{document.getElementById(id).value='';});
     }catch(e){ setMsg('opd-msg','Failed to save: '+e.message); }
     opdSend.disabled=false; opdSend.textContent='Save outstanding';
   };
@@ -5027,8 +5033,8 @@ async function renderEntryBody(){
     const opexCats2=cats.filter(c=>c.kind==='opex');
     const tplBtn=document.getElementById('opd-template');
     if(tplBtn) tplBtn.onclick=()=>{
-      const rows=[['Entity','Vendor','Category','Invoice Date','Due Date','Amount','Description'],
-        [eName(EIDS[0]),'Sample Vendor',opexCats2[0]?opexCats2[0].name:'Other Operating Expense','2026-07-01','2026-07-31',1000000,'Sample transaction description']];
+      const rows=[['Entity','Invoice #','Vendor','Category','Invoice Date','Due Date','Amount','Description'],
+        [eName(EIDS[0]),'INV-0001','Sample Vendor',opexCats2[0]?opexCats2[0].name:'Other Operating Expense','2026-07-01','2026-07-31',1000000,'Sample transaction description']];
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
       XLSX.writeFile(wb,'outstanding_payables_template.xlsx');
@@ -5064,10 +5070,11 @@ async function renderEntryBody(){
       const el=document.getElementById('opd-preview'); if(!el) return;
       if(!OPD_ROWS.length){ el.innerHTML=''; return; }
       const valid=OPD_ROWS.filter(r=>!r.error);
-      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
       OPD_ROWS.forEach((r,i)=>{
         h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
           +'<td style="font-size:12px">'+escH(r.entityMatch?eName(r.entityMatch):(r.entityRaw||'—'))+'</td>'
+          +'<td style="font-size:12px">'+escH(r.invNo||'—')+'</td>'
           +'<td style="font-size:12px">'+escH(r.vendor||'—')+'</td>'
           +'<td style="font-size:12px;'+(r.catWarn?'color:#8a6d1a':'')+'">'+escH(r.category||'—')+(r.catWarn?' ⚠':'')+'</td>'
           +'<td style="font-size:12px;white-space:nowrap">'+(r.inv||'—')+'</td>'
@@ -5085,7 +5092,7 @@ async function renderEntryBody(){
       if(impBtn) impBtn.onclick=async()=>{
         impBtn.disabled=true; impBtn.textContent='Importing…';
         try{
-          const payload=valid.map(r=>({entity_code:r.entityMatch,category:r.category,vendor_name:r.vendor,description:r.desc,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt}));
+          const payload=valid.map(r=>({entity_code:r.entityMatch,category:r.category,invoice_number:r.invNo||null,vendor_name:r.vendor,description:r.desc,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt}));
           await adminAddBatch('outstanding_payables',payload);
           const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
           OUTSTANDING=fresh.map(mkOutstanding);
@@ -5112,12 +5119,13 @@ async function renderEntryBody(){
       if(!raw.length){ OPD_ROWS=[]; renderOpdPreview(); return; }
       const header=raw[0].map(h=>String(h||'').trim().toLowerCase());
       const col=names=>{ for(const n of names){ const i=header.indexOf(n); if(i>=0) return i; } return -1; };
-      const cEnt=col(['entity','pt']), cVendor=col(['vendor','vendor name']), cCat=col(['category','cost category']),
+      const cEnt=col(['entity','pt']), cInvNo=col(['invoice #','invoice no','invoice number']), cVendor=col(['vendor','vendor name']), cCat=col(['category','cost category']),
         cInv=col(['invoice date','invoice']), cDue=col(['due date','due']), cAmt=col(['amount','amount (idr)','amount idr']),
         cDesc=col(['description','transaction description']);
       OPD_ROWS=raw.slice(1).filter(r=>r.some(v=>v!=='')).map(r=>{
         const entityRaw=cEnt>=0?r[cEnt]:'', entityMatch=findEntityByName(entityRaw);
         const catRaw=cCat>=0?r[cCat]:'', catMatch=findCategory(catRaw);
+        const invNo=cInvNo>=0?String(r[cInvNo]||'').trim():'';
         const vendor=cVendor>=0?String(r[cVendor]||'').trim():'';
         const desc=cDesc>=0?String(r[cDesc]||'').trim():'';
         const inv=cInv>=0?parseFlexDate(r[cInv]):null, due=cDue>=0?parseFlexDate(r[cDue]):null;
@@ -5129,7 +5137,7 @@ async function renderEntryBody(){
         else if(!inv) error='Invalid invoice date';
         else if(!due) error='Invalid due date';
         else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
-        return {entityRaw,entityMatch,category:catMatch||catRaw||'Other Operating Expense',catWarn:!catMatch,vendor,desc,inv,due,amt,error};
+        return {entityRaw,entityMatch,category:catMatch||catRaw||'Other Operating Expense',catWarn:!catMatch,invNo,vendor,desc,inv,due,amt,error};
       });
       renderOpdPreview();
     };
