@@ -3474,6 +3474,7 @@ function outstandingRowHtml(o){
   return `<tr>
     <td>${pill(o.e)}</td>
     <td style="font-size:12.5px">${escH(o.vendor)}</td>
+    <td style="font-size:12px;color:var(--muted)">${escH(o.cat||'—')}</td>
     <td style="font-size:12.5px">${escH(o.desc)}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.inv}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.due}</td>
@@ -3482,7 +3483,15 @@ function outstandingRowHtml(o){
     <td>${canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="markOutstandingPaid(${o.id})">✓ Tandai Lunas</button>`:''}</td>
   </tr>`;
 }
-function openOutstanding(){
+let OPEX_CATS=null;
+async function ensureOpexCats(){
+  if(OPEX_CATS) return OPEX_CATS;
+  try{ OPEX_CATS=(await sbFetch('categories?select=name&kind=eq.opex&order=name')).map(r=>r.name); }
+  catch(e){ OPEX_CATS=['Other Operating Expense']; }
+  return OPEX_CATS;
+}
+async function openOutstanding(){
+  const cats=await ensureOpexCats();
   const open=outstandingOpen().slice().sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
   const tot=open.reduce((s,o)=>s+o.amt,0);
   const canEdit=MY_ROLE==='editor';
@@ -3492,6 +3501,7 @@ function openOutstanding(){
       <h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--blue-900);margin:0 0 10px">+ Tambah Outstanding</h4>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:8px">
         <select id="op-ent">${EIDS.map(id=>`<option value="${id}">${escH(ENT[id].name)}</option>`).join('')}</select>
+        <select id="op-cat">${cats.map(c=>`<option value="${escH(c)}">${escH(c)}</option>`).join('')}</select>
         <input id="op-vendor" type="text" placeholder="Nama Vendor">
         <input id="op-inv" type="date">
         <input id="op-due" type="date">
@@ -3503,15 +3513,16 @@ function openOutstanding(){
     </div>`;
   }
   h+=`<div class="table-scroll" style="max-height:380px"><table><thead><tr>`
-    +`<th>Entity</th><th>Vendor</th><th>Deskripsi</th><th>Tgl Invoice</th><th>Jatuh Tempo</th><th>Overdue</th><th class="num" style="text-align:right">Jumlah (IDR)</th><th></th>`
+    +`<th>Entity</th><th>Vendor</th><th>Kategori Biaya</th><th>Deskripsi</th><th>Tgl Invoice</th><th>Jatuh Tempo</th><th>Overdue</th><th class="num" style="text-align:right">Jumlah (IDR)</th><th></th>`
     +`</tr></thead><tbody id="opBody">`
-    +(open.length?open.map(outstandingRowHtml).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Tidak ada outstanding pada scope ini</td></tr>`)
+    +(open.length?open.map(outstandingRowHtml).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Tidak ada outstanding pada scope ini</td></tr>`)
     +`</tbody></table></div>`;
   showModal('Outstanding (Utang)',h);
 }
 async function submitOutstanding(){
   const err=document.getElementById('op-err'); err.textContent='';
   const entity=document.getElementById('op-ent').value;
+  const category=document.getElementById('op-cat').value;
   const vendor=document.getElementById('op-vendor').value.trim();
   const desc=document.getElementById('op-desc').value.trim();
   const inv=document.getElementById('op-inv').value;
@@ -3519,9 +3530,9 @@ async function submitOutstanding(){
   const amt=Number(document.getElementById('op-amt').value);
   if(!vendor||!desc||!inv||!due||!amt||amt<=0){ err.textContent='Lengkapi semua field.'; return; }
   try{
-    await adminAddBatch('outstanding_payables',[{entity_code:entity,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt}]);
+    await adminAddBatch('outstanding_payables',[{entity_code:entity,category,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt}]);
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
-    OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
+    OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
     renderKpiFin(agg());
     openOutstanding();
   }catch(e){ err.textContent='Gagal menyimpan: '+e.message; }
@@ -3748,7 +3759,7 @@ async function loadFromSupabase(){
     LOANS_APR:loans.filter(l=>l.period_code==='APR').map(mkLoan),
     LOANS_JUN:loans.filter(l=>l.period_code==='JUN').map(mkLoan),
     HIGHLIGHTS:hls.map(h=>({d:h.day_label,e:h.entity_code,desc:h.description,ty:h.flow_type,amt:+h.amount_idr})),
-    OUTSTANDING:(outs||[]).map(o=>({id:o.id,e:o.entity_code,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date})),
+    OUTSTANDING:(outs||[]).map(o=>({id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date})),
     TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
