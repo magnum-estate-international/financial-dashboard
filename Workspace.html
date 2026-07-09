@@ -2885,11 +2885,26 @@ function renderKpiFin(a){
       <div class="big" style="color:${pos?'#86efac':'#f87171'}">${pos?'+':'–'} ${fmt(Math.abs(a.fullNet))}</div>
       <div class="meta" style="color:rgba(255,255,255,.65)">Operating net + financing net · excludes internal inter-bank transfers</div>
     </div>
-    <div class="pcard">
+    ${outstandingCard()}`;
+}
+function outstandingOpen(){
+  const ids=new Set(scopeIds());
+  return OUTSTANDING.filter(o=>o.status==='open'&&ids.has(o.e));
+}
+function outstandingCard(){
+  const open=outstandingOpen();
+  const tot=open.reduce((s,o)=>s+o.amt,0);
+  const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
+  return `<div class="pcard clickable" onclick="openOutstanding()">
+      ${`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>`}
       <div class="lab">Outstanding (Utang)</div>
-      <div class="big" style="color:var(--muted)">—</div>
-      <div class="meta">Belum ada data — akan diinput melalui <b>Update data</b></div>
+      <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
+      <div class="meta">${open.length?`${open.length} invoice belum lunas${overdueN?`, <span style="color:var(--red)">${overdueN} sudah lewat jatuh tempo</span>`:''}`:'Belum ada data — klik untuk menambahkan'}</div>
     </div>`;
+}
+function daysOverdue(due){
+  const d=new Date(due+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
+  return Math.round((now-d)/86400000);
 }
 
 function renderRevBD(a){
@@ -3451,6 +3466,77 @@ function renderDataHealth(){
   }).join('');
 }
 
+// ─── OUTSTANDING (UTANG) MANAGEMENT ──────────────────────────────────────────
+function outstandingRowHtml(o){
+  const od=daysOverdue(o.due);
+  const odCell=od>0?`<span style="color:var(--red);font-weight:700">${od} hari</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">jatuh tempo hari ini</span>`:`<span style="color:var(--muted)">belum jatuh tempo</span>`);
+  const canEdit=MY_ROLE==='editor';
+  return `<tr>
+    <td>${pill(o.e)}</td>
+    <td style="font-size:12.5px">${escH(o.vendor)}</td>
+    <td style="font-size:12.5px">${escH(o.desc)}</td>
+    <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.inv}</td>
+    <td style="white-space:nowrap;color:var(--muted);font-size:12px">${o.due}</td>
+    <td style="font-size:12px">${odCell}</td>
+    <td class="num neg">${fmt(o.amt)}</td>
+    <td>${canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="markOutstandingPaid(${o.id})">✓ Tandai Lunas</button>`:''}</td>
+  </tr>`;
+}
+function openOutstanding(){
+  const open=outstandingOpen().slice().sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
+  const tot=open.reduce((s,o)=>s+o.amt,0);
+  const canEdit=MY_ROLE==='editor';
+  let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total outstanding pada scope ini: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${open.length} invoice)</div>`;
+  if(canEdit){
+    h+=`<div class="panel" style="padding:16px;margin-bottom:16px;background:var(--blue-50,#f3f5ff)">
+      <h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--blue-900);margin:0 0 10px">+ Tambah Outstanding</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:8px">
+        <select id="op-ent">${EIDS.map(id=>`<option value="${id}">${escH(ENT[id].name)}</option>`).join('')}</select>
+        <input id="op-vendor" type="text" placeholder="Nama Vendor">
+        <input id="op-inv" type="date">
+        <input id="op-due" type="date">
+        <input id="op-amt" type="number" min="1" placeholder="Jumlah (IDR)">
+      </div>
+      <input id="op-desc" type="text" placeholder="Deskripsi transaksi" style="width:100%;margin-bottom:8px">
+      <button class="btn" style="background:#5b67f1;color:#fff;border:0" onclick="submitOutstanding()">Simpan</button>
+      <span id="op-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>
+    </div>`;
+  }
+  h+=`<div class="table-scroll" style="max-height:380px"><table><thead><tr>`
+    +`<th>Entity</th><th>Vendor</th><th>Deskripsi</th><th>Tgl Invoice</th><th>Jatuh Tempo</th><th>Overdue</th><th class="num" style="text-align:right">Jumlah (IDR)</th><th></th>`
+    +`</tr></thead><tbody id="opBody">`
+    +(open.length?open.map(outstandingRowHtml).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Tidak ada outstanding pada scope ini</td></tr>`)
+    +`</tbody></table></div>`;
+  showModal('Outstanding (Utang)',h);
+}
+async function submitOutstanding(){
+  const err=document.getElementById('op-err'); err.textContent='';
+  const entity=document.getElementById('op-ent').value;
+  const vendor=document.getElementById('op-vendor').value.trim();
+  const desc=document.getElementById('op-desc').value.trim();
+  const inv=document.getElementById('op-inv').value;
+  const due=document.getElementById('op-due').value;
+  const amt=Number(document.getElementById('op-amt').value);
+  if(!vendor||!desc||!inv||!due||!amt||amt<=0){ err.textContent='Lengkapi semua field.'; return; }
+  try{
+    await adminAddBatch('outstanding_payables',[{entity_code:entity,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt}]);
+    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+    OUTSTANDING=fresh.map(o=>({id:o.id,e:o.entity_code,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date}));
+    renderKpiFin(agg());
+    openOutstanding();
+  }catch(e){ err.textContent='Gagal menyimpan: '+e.message; }
+}
+async function markOutstandingPaid(id){
+  try{
+    await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({status:'paid',paid_date:new Date().toISOString().slice(0,10)})});
+    const o=OUTSTANDING.find(x=>x.id===id); if(o) o.status='paid';
+    renderKpiFin(agg());
+    openOutstanding();
+  }catch(e){ alert('Gagal menandai lunas: '+e.message); }
+}
+
 // ─── BALANCE RECONCILIATION (saldo awal / saldo akhir vs reported movement) ──
 function balFor(id){
   const per=(typeof BAL!=='undefined'&&BAL[id])||{};
@@ -3635,13 +3721,14 @@ async function sbFetchAll(base){
   return out;
 }
 async function loadFromSupabase(){
-  const [ents,li,tots,loans,hls,txAll]=await Promise.all([
+  const [ents,li,tots,loans,hls,txAll,outs]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
     sbFetch('line_items?select=*&period_code=eq.MAY&limit=2000'),
     sbFetch('entity_period_totals?select=*&limit=2000'),
     sbFetch('loan_flows?select=*&order=id'),
     sbFetch('highlights?select=*&order=id'),
-    sbFetchAll('transactions?select=*&order=source,ord')
+    sbFetchAll('transactions?select=*&order=source,ord'),
+    sbFetch('outstanding_payables?select=*&order=due_date').catch(()=>[])
   ]);
   const fk={revenue:'rev',opex:'opex',financing_in:'finIn',financing_out:'finOut'};
   const E={};
@@ -3661,6 +3748,7 @@ async function loadFromSupabase(){
     LOANS_APR:loans.filter(l=>l.period_code==='APR').map(mkLoan),
     LOANS_JUN:loans.filter(l=>l.period_code==='JUN').map(mkLoan),
     HIGHLIGHTS:hls.map(h=>({d:h.day_label,e:h.entity_code,desc:h.description,ty:h.flow_type,amt:+h.amount_idr})),
+    OUTSTANDING:(outs||[]).map(o=>({id:o.id,e:o.entity_code,vendor:o.vendor_name,desc:o.description,inv:o.invoice_date,due:o.due_date,amt:+o.amount_idr,status:o.status,paidDate:o.paid_date})),
     TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
@@ -3689,10 +3777,12 @@ function applyScopeChrome(){
   }
 }
 let BAL={};
+let OUTSTANDING=[];
 async function runDashboard(){
   const D=await loadFromSupabase();
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
   HIGHLIGHTS=D.HIGHLIGHTS;TX=D.TX;TX_MULTI=D.TX_MULTI;TX_MS=D.TX_MS;TX_ICG_OPEX=D.TX_ICG_OPEX;
+  OUTSTANDING=D.OUTSTANDING;
   EIDS=Object.keys(ENT);
   if(!EIDS.length){ showNoAccess(); return; }
   LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
