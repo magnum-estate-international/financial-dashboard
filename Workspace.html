@@ -3588,9 +3588,12 @@ function openOutstandingEntity(id,tab){
   const num=(id2,ph)=>`<input id="${id2}" type="number" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" oninput="renderOutstandingEntityRows()">`;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstanding()">‹ Back to breakdown</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id].name} — Outstanding Payables</h4>`;
-  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap">
     <div style="display:flex;gap:8px">${tabBtn('open','Open')}${tabBtn('paid','Paid')}</div>
-    <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearOutstandingEntityFilters()">Clear all filters</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="opef-search" type="text" placeholder="🔍 Search invoice #, vendor, category, description…" style="padding:7px 10px;font-size:12.5px;border-radius:8px;border:1px solid #e2e8f0;width:260px;box-sizing:border-box" oninput="renderOutstandingEntityRows()">
+      <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearOutstandingEntityFilters()">Clear all filters</button>
+    </div>
   </div>`;
   h+=`<div class="table-scroll" style="max-height:440px"><table style="table-layout:fixed;width:100%">`
     +`<colgroup><col style="width:80px"><col style="width:110px"><col style="width:110px"><col><col style="width:95px"><col style="width:95px"><col style="width:115px"><col style="width:120px"><col style="width:90px"><col style="width:40px"></colgroup>`
@@ -3611,6 +3614,7 @@ function openOutstandingEntity(id,tab){
 }
 function clearOutstandingEntityFilters(){
   Object.values(OPE_FKEYS).flat().forEach(id=>{const el=document.getElementById(id); if(el) el.value=(el.tagName==='SELECT'?'All':'');});
+  const search=document.getElementById('opef-search'); if(search) search.value='';
   renderOutstandingEntityRows();
   document.querySelectorAll('.ope-filter-pop').forEach(p=>p.style.display='none');
 }
@@ -3635,7 +3639,9 @@ function renderOutstandingEntityRows(){
   const cat=g('opef-cat')||'All', status=g('opef-status')||'All';
   const invFrom=g('opef-inv-from'), invTo=g('opef-inv-to'), dueFrom=g('opef-due-from'), dueTo=g('opef-due-to');
   const amtMin=g('opef-amt-min'), amtMax=g('opef-amt-max');
+  const search=g('opef-search').toLowerCase().trim();
   const filtered=OPE_ROWS.filter(o=>{
+    if(search && !((o.invNo||'').toLowerCase().includes(search) || o.vendor.toLowerCase().includes(search) || (o.cat||'').toLowerCase().includes(search) || o.desc.toLowerCase().includes(search))) return false;
     if(invNo && !(o.invNo||'').toLowerCase().includes(invNo)) return false;
     if(vendor && !o.vendor.toLowerCase().includes(vendor)) return false;
     if(desc && !o.desc.toLowerCase().includes(desc)) return false;
