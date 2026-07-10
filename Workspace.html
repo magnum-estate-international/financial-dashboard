@@ -3531,7 +3531,7 @@ function outstandingRowHtml(o){
   return `<tr>
     <td style="font-size:12.5px;${wrap}">${escH(o.invNo||'—')}</td>
     <td style="font-size:12.5px;${wrap}">${escH(o.vendor)}</td>
-    <td style="font-size:12px;color:var(--muted);${wrap}">${OPE_SCOPE_TYPE==='entity'?escH(o.cat||'—'):pill(o.e)}</td>
+    <td style="font-size:12px;color:var(--muted);${wrap}">${OPE_SCOPE_TYPE==='entity'?escH(o.cat||'—'):`<span class="pill" style="background:${ENT[o.e].color}22;color:${ENT[o.e].color};white-space:normal;line-height:1.3">${escH(ENT[o.e].name)}</span>`}</td>
     <td style="font-size:12.5px;${wrap}">${escH(o.desc)}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px;${va}">${o.inv}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px;${va}">${o.due}</td>
@@ -3631,7 +3631,7 @@ function openOutstandingDetail(scopeType,value,tab){
     </div>
   </div>`;
   h+=`<div class="table-scroll" style="max-height:440px"><table style="table-layout:fixed;width:100%">`
-    +`<colgroup><col style="width:80px"><col style="width:110px"><col style="width:110px"><col><col style="width:95px"><col style="width:95px"><col style="width:115px"><col style="width:120px"><col style="width:90px"><col style="width:40px"></colgroup>`
+    +`<colgroup><col style="width:80px"><col style="width:110px"><col style="width:${scopeType==='category'?'150':'110'}px"><col><col style="width:95px"><col style="width:95px"><col style="width:115px"><col style="width:120px"><col style="width:90px"><col style="width:40px"></colgroup>`
     +`<thead><tr>`
     +thFilterable('Invoice #','invno',txt('opef-invno','Filter invoice #…'))
     +thFilterable('Vendor','vendor',txt('opef-vendor','Filter vendor…'))
