@@ -2911,7 +2911,7 @@ function outstandingCard(){
   const open=outstandingOpen();
   const tot=open.reduce((s,o)=>s+o.remaining,0);
   const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
-  return `<div class="pcard clickable" onclick="openOutstanding()">
+  return `<div class="pcard clickable" onclick="openOutstanding('category')">
       ${`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>`}
       <div class="lab">Outstanding Liability</div>
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
@@ -3541,7 +3541,7 @@ function outstandingRowHtml(o){
     <td style="white-space:nowrap;${va}">${actionCell}</td>
   </tr>`;
 }
-let OP_VIEW='entity';
+let OP_VIEW='category';
 function openOutstanding(view){
   view=OP_VIEW=view||OP_VIEW||'entity';
   const open=outstandingOpen();
