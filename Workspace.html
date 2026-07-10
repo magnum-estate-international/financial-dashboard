@@ -2919,6 +2919,18 @@ function daysOverdue(due){
   const d=new Date(due+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
   return Math.round((now-d)/86400000);
 }
+// Formats an overdue duration as calendar months+days once it passes 1 month
+// (e.g. "1 month 2 days overdue") instead of a raw day count, which gets hard
+// to read for long-overdue invoices (600+ days).
+function overdueLabel(due,days){
+  const d=new Date(due+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
+  let dd=now.getDate()-d.getDate(), mm=now.getMonth()-d.getMonth(), yy=now.getFullYear()-d.getFullYear();
+  if(dd<0){ mm--; dd+=new Date(now.getFullYear(),now.getMonth(),0).getDate(); }
+  if(mm<0){ yy--; mm+=12; }
+  const months=yy*12+mm;
+  if(months>=1) return `${months} month${months>1?'s':''}`+(dd>0?` ${dd} day${dd>1?'s':''}`:'')+' overdue';
+  return `${days} day${days>1?'s':''} overdue`;
+}
 
 function renderRevBD(a){
   const items=Object.entries(a.revBD).sort((x,y)=>y[1]-x[1]);
@@ -3496,7 +3508,7 @@ function outstandingRowHtml(o){
     if(canEdit) items.push(menuItem('↺ Undo last payment',`reopenOutstanding(${o.id},'${o.e}')`));
   } else {
     const od=daysOverdue(o.due);
-    statusCell=od>0?`<span style="color:var(--red);font-weight:700">${od} day${od>1?'s':''} overdue</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
+    statusCell=od>0?`<span style="color:var(--red);font-weight:700">${overdueLabel(o.due,od)}</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
   }
   if(canEdit){
     items.push(menuItem('✎ Edit',`openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')`));
