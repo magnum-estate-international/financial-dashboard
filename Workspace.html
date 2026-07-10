@@ -3505,7 +3505,7 @@ function outstandingRowHtml(o){
   let statusCell;
   const menuItem=(label,onclick,color)=>`<button type="button" onclick="${onclick}" style="display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;padding:8px 12px;font-size:12.5px;color:${color||'var(--ink)'};white-space:nowrap" onmouseover="this.style.background='#f3f4fa'" onmouseout="this.style.background='none'">${label}</button>`;
   const items=[];
-  items.push(menuItem('🧾 History',`openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')`));
+  if(canEdit) items.push(menuItem('🧾 History',`openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')`));
   if(o.status==='paid'){
     statusCell=`<span style="color:var(--green);font-weight:700">Paid on ${o.paidDate}</span>`;
     if(canEdit) items.push(menuItem('↺ Undo last payment',`reopenOutstanding(${o.id},'${o.e}')`));
@@ -3517,8 +3517,8 @@ function outstandingRowHtml(o){
     items.push(menuItem('✎ Edit',`openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')`));
     items.push(menuItem('🗑 Delete',`deleteOutstanding(${o.id},'${o.e}','${OPE_TAB}')`,'var(--red)'));
   }
-  const actionCell=`<button type="button" onclick="toggleOpeRowMenu(${o.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
-    +`<div id="ope-menu-${o.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>`;
+  const actionCell=items.length?(`<button type="button" onclick="toggleOpeRowMenu(${o.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+    +`<div id="ope-menu-${o.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>`):'';
   const amtCell=(o.status==='open'&&o.paidAmt>0)
     ? `<div>${fmt(o.remaining)}</div><div style="font-size:10px;color:var(--muted);font-weight:400">of ${fmt(o.amt)} — ${fmt(o.paidAmt)} paid</div>`
     : `${fmt(o.amt)}`;
