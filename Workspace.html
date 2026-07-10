@@ -5152,11 +5152,14 @@ async function renderEntryBody(){
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
       XLSX.writeFile(wb,'outstanding_payables_template.xlsx');
     };
+    // Normalizes dash variants (em/en dash, hyphen) and collapses whitespace so entity names
+    // typed with a plain "-" still match DB names that use "—" (and vice versa).
+    function normEntName(s){ return String(s).trim().toLowerCase().replace(/[‒-―‐‑]/g,'-').replace(/\s+/g,' '); }
     function findEntityByName(name){
       if(!name) return null;
-      const n=String(name).trim().toLowerCase();
-      let hit=EIDS.find(id=>eName(id).toLowerCase()===n);
-      if(!hit) hit=EIDS.find(id=>eName(id).toLowerCase().includes(n)||n.includes(eName(id).toLowerCase()));
+      const n=normEntName(name);
+      let hit=EIDS.find(id=>normEntName(eName(id))===n);
+      if(!hit) hit=EIDS.find(id=>normEntName(eName(id)).includes(n)||n.includes(normEntName(eName(id))));
       return hit||null;
     }
     // Unambiguous synonyms seen in real imported files that map cleanly to exactly one canonical
