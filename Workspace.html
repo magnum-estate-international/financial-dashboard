@@ -3479,18 +3479,23 @@ function outstandingPaid(){
 }
 function outstandingRowHtml(o){
   const canEdit=MY_ROLE==='editor';
-  let statusCell, actionCell;
-  const historyBtn=`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')">🧾 History</button>`;
-  const editBtn=canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')">✎ Edit</button>`:'';
-  const delBtn=canEdit?`<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;color:var(--red)" onclick="deleteOutstanding(${o.id},'${o.e}','${OPE_TAB}')">🗑 Delete</button>`:'';
+  let statusCell;
+  const menuItem=(label,onclick,color)=>`<button type="button" onclick="${onclick}" style="display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;padding:8px 12px;font-size:12.5px;color:${color||'var(--ink)'};white-space:nowrap" onmouseover="this.style.background='#f3f4fa'" onmouseout="this.style.background='none'">${label}</button>`;
+  const items=[];
+  items.push(menuItem('🧾 History',`openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')`));
   if(o.status==='paid'){
     statusCell=`<span style="color:var(--green);font-weight:700">Paid on ${o.paidDate}</span>`;
-    actionCell=historyBtn+(canEdit?` <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="reopenOutstanding(${o.id},'${o.e}')">↺ Undo last payment</button>`:'')+' '+editBtn+' '+delBtn;
+    if(canEdit) items.push(menuItem('↺ Undo last payment',`reopenOutstanding(${o.id},'${o.e}')`));
   } else {
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${od} day${od>1?'s':''} overdue</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
-    actionCell=(o.paidAmt>0?historyBtn+' ':'')+editBtn+' '+delBtn;
   }
+  if(canEdit){
+    items.push(menuItem('✎ Edit',`openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')`));
+    items.push(menuItem('🗑 Delete',`deleteOutstanding(${o.id},'${o.e}','${OPE_TAB}')`,'var(--red)'));
+  }
+  const actionCell=`<button type="button" onclick="toggleOpeRowMenu(${o.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+    +`<div id="ope-menu-${o.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>`;
   const amtCell=(o.status==='open'&&o.paidAmt>0)
     ? `<div>${fmt(o.remaining)}</div><div style="font-size:10px;color:var(--muted);font-weight:400">of ${fmt(o.amt)} — ${fmt(o.paidAmt)} paid</div>`
     : `${fmt(o.amt)}`;
@@ -3541,9 +3546,24 @@ function toggleOpeFilterPop(key,btnEl){
     pop.style.display='block';
   }
 }
+function toggleOpeRowMenu(id,btnEl){
+  const menu=document.getElementById('ope-menu-'+id);
+  const willOpen=menu.style.display!=='block';
+  document.querySelectorAll('.ope-row-menu').forEach(m=>m.style.display='none');
+  if(willOpen){
+    const r=btnEl.getBoundingClientRect();
+    menu.style.top=(r.bottom+4)+'px';
+    menu.style.left=Math.max(8,Math.min(r.right-170,window.innerWidth-180))+'px';
+    menu.style.display='block';
+  }
+}
 document.addEventListener('click',e=>{
-  if(e.target.closest('.ope-filter-pop')||e.target.closest('[id^="opef-btn-"]')) return;
-  document.querySelectorAll('.ope-filter-pop').forEach(p=>p.style.display='none');
+  if(!e.target.closest('.ope-filter-pop')&&!e.target.closest('[id^="opef-btn-"]')){
+    document.querySelectorAll('.ope-filter-pop').forEach(p=>p.style.display='none');
+  }
+  if(!e.target.closest('.ope-row-menu')&&!e.target.closest('[onclick^="toggleOpeRowMenu"]')){
+    document.querySelectorAll('.ope-row-menu').forEach(m=>m.style.display='none');
+  }
 });
 function clearOpeFilterGroup(key){
   (OPE_FKEYS[key]||[]).forEach(id=>{const el=document.getElementById(id); if(el) el.value=(el.tagName==='SELECT'?'All':'');});
@@ -3565,7 +3585,7 @@ function openOutstandingEntity(id,tab){
     <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearOutstandingEntityFilters()">Clear all filters</button>
   </div>`;
   h+=`<div class="table-scroll" style="max-height:440px"><table style="table-layout:fixed;width:100%">`
-    +`<colgroup><col style="width:80px"><col style="width:110px"><col style="width:110px"><col><col style="width:95px"><col style="width:95px"><col style="width:115px"><col style="width:120px"><col style="width:200px"></colgroup>`
+    +`<colgroup><col style="width:80px"><col style="width:110px"><col style="width:110px"><col><col style="width:95px"><col style="width:95px"><col style="width:115px"><col style="width:120px"><col style="width:40px"></colgroup>`
     +`<thead><tr>`
     +thFilterable('Invoice #','invno',txt('opef-invno','Filter invoice #…'))
     +thFilterable('Vendor','vendor',txt('opef-vendor','Filter vendor…'))
