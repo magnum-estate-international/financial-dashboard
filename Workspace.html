@@ -305,14 +305,17 @@ a{color:#4550d8}
 
 <div id="secHealthWrap" style="display:none">
   <div class="divlabel" id="secHealthLabel">🩺 Data Health — Itemization &amp; Reconciliation Check</div>
-  <div class="panel" style="margin-bottom:16px">
-    <div class="pn-sub" style="margin-bottom:10px">Compares each entity/month/category's official total against its itemized transactions. <b>❌ Tidak cocok</b> means itemized detail exceeds the total (a possible double-count — check first). <b>⚠️ Sebagian</b> means the total is correct but not all transactions have been itemized yet. Click a row to see the transactions behind it.</div>
-    <div id="healthSummary" style="margin-bottom:12px"></div>
-    <div class="table-scroll" style="max-height:420px"><table>
-      <thead><tr><th>Entity</th><th>Month</th><th>Category</th><th class="num" style="text-align:right">Official total</th><th class="num" style="text-align:right">Itemized</th><th class="num" style="text-align:right">Residual</th><th>Status</th></tr></thead>
-      <tbody id="healthBody"></tbody>
-    </table></div>
-  </div>
+  <div id="healthSummary" style="margin-bottom:10px"></div>
+  <details class="fold" id="healthDetails">
+    <summary><span><span class="chev">▸</span>&nbsp; Show details</span><span class="hint">click a row for transaction detail</span></summary>
+    <div class="fold-body">
+      <div class="pn-sub" style="margin-bottom:10px">Compares each entity/month/category's official total against its itemized transactions. <b>❌ Tidak cocok</b> means itemized detail exceeds the total (a possible double-count — check first). <b>⚠️ Sebagian</b> means the total is correct but not all transactions have been itemized yet. Click a row to see the transactions behind it.</div>
+      <div class="table-scroll" style="max-height:420px"><table>
+        <thead><tr><th>Entity</th><th>Month</th><th>Category</th><th class="num" style="text-align:right">Official total</th><th class="num" style="text-align:right">Itemized</th><th class="num" style="text-align:right">Residual</th><th>Status</th></tr></thead>
+        <tbody id="healthBody"></tbody>
+      </table></div>
+    </div>
+  </details>
 </div>
 
 <div class="divlabel" id="secRecoLabel">📌 Points of Attention — Recommendations for Management</div>
