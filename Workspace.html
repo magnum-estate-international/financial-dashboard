@@ -2920,7 +2920,7 @@ function daysOverdue(due){
   return Math.round((now-d)/86400000);
 }
 // Formats an overdue duration as calendar months+days once it passes 1 month
-// (e.g. "1 month 2 days overdue") instead of a raw day count, which gets hard
+// (e.g. "1 mo 2 days overdue") instead of a raw day count, which gets hard
 // to read for long-overdue invoices (600+ days).
 function overdueLabel(due,days){
   const d=new Date(due+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
@@ -2928,7 +2928,7 @@ function overdueLabel(due,days){
   if(dd<0){ mm--; dd+=new Date(now.getFullYear(),now.getMonth(),0).getDate(); }
   if(mm<0){ yy--; mm+=12; }
   const months=yy*12+mm;
-  if(months>=1) return `${months} month${months>1?'s':''}`+(dd>0?` ${dd} day${dd>1?'s':''}`:'')+' overdue';
+  if(months>=1) return `${months} mo${months>1?'s':''}`+(dd>0?` ${dd} day${dd>1?'s':''}`:'')+' overdue';
   return `${days} day${days>1?'s':''} overdue`;
 }
 
