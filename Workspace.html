@@ -2709,6 +2709,7 @@ function agg(){
   return a;
 }
 const pill = id => `<span class="pill" style="background:${ENT[id].color}22;color:${ENT[id].color}">${ENT[id].name}</span>`;
+const entName = id => (ENT[id]?ENT[id].name:id);
 const CATCOLORS=['#5b67f1','#f27a9d','#34a87c','#8d7bf0','#e09a3a','#4cc3e0','#f0a463','#7d6cf5','#e05b6d','#41b789','#3a4254','#c974d8','#5486e8','#f4b8cd','#3d9aa8','#a4aef7','#d8a44c','#6ac4a4','#b06ae0','#e8788a','#4a6fd8','#8fd0b8','#c9a227','#9a86e8'];
 
 function setScope(v){
@@ -3634,7 +3635,7 @@ function openOutstandingDetail(scopeType,value,tab){
     +`<thead><tr>`
     +thFilterable('Invoice #','invno',txt('opef-invno','Filter invoice #…'))
     +thFilterable('Vendor','vendor',txt('opef-vendor','Filter vendor…'))
-    +thFilterable(dimLabel,'cat',`<select id="opef-cat" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${dimVals.map(c=>`<option value="${escH(c)}">${escH(scopeType==='entity'?c:eName(c))}</option>`).join('')}</select>`)
+    +thFilterable(dimLabel,'cat',`<select id="opef-cat" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${dimVals.map(c=>`<option value="${escH(c)}">${escH(scopeType==='entity'?c:entName(c))}</option>`).join('')}</select>`)
     +thFilterable('Description','desc',txt('opef-desc','Filter description…'))
     +thFilterable('Invoice Date','inv',`${dt('opef-inv-from','From')}${dt('opef-inv-to','To')}`)
     +thFilterable('Due Date','due',`${dt('opef-due-from','From')}${dt('opef-due-to','To')}`)
@@ -3675,7 +3676,7 @@ function renderOutstandingEntityRows(){
   const amtMin=g('opef-amt-min'), amtMax=g('opef-amt-max');
   const search=g('opef-search').toLowerCase().trim();
   const filtered=OPE_ROWS.filter(o=>{
-    if(search && !((o.invNo||'').toLowerCase().includes(search) || o.vendor.toLowerCase().includes(search) || (o.cat||'').toLowerCase().includes(search) || o.desc.toLowerCase().includes(search) || eName(o.e).toLowerCase().includes(search))) return false;
+    if(search && !((o.invNo||'').toLowerCase().includes(search) || o.vendor.toLowerCase().includes(search) || (o.cat||'').toLowerCase().includes(search) || o.desc.toLowerCase().includes(search) || entName(o.e).toLowerCase().includes(search))) return false;
     if(invNo && !(o.invNo||'').toLowerCase().includes(invNo)) return false;
     if(vendor && !o.vendor.toLowerCase().includes(vendor)) return false;
     if(desc && !o.desc.toLowerCase().includes(desc)) return false;
