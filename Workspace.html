@@ -5188,7 +5188,7 @@ async function renderEntryBody(){
     };
     // Normalizes dash variants (em/en dash, hyphen) and collapses whitespace so entity names
     // typed with a plain "-" still match DB names that use "—" (and vice versa).
-    function normEntName(s){ return String(s).trim().toLowerCase().replace(/[‒-―‐‑]/g,'-').replace(/\s+/g,' '); }
+    function normEntName(s){ return String(s).trim().toLowerCase().replace(/[‒-―‐‑]/g,'-').replace(/\./g,'').replace(/\s+/g,' '); }
     function findEntityByName(name){
       if(!name) return null;
       const n=normEntName(name);
@@ -5206,7 +5206,7 @@ async function renderEntryBody(){
       'repairs and maintenance':'Repair & Maintenance','operational expenses':'Other Operating Expense',
       'equipment & installation':'Equipment, FF&E & Supplies','equipment and installation':'Equipment, FF&E & Supplies',
       'bpjs kesehatan':'BPJS','bpjs ketenagakerjaan':'BPJS','bpjs tk':'BPJS',
-      'notary':'Notary Fee','notary fee':'Notary Fee','deed':'Notary Fee','deed / legal fee':'Notary Fee','deed preparation':'Notary Fee',
+      'notary':'Notary Fee','notary fee':'Notary Fee','notary fees':'Notary Fee','deed':'Notary Fee','deed / legal fee':'Notary Fee','deed preparation':'Notary Fee',
       'business trip':'Travel & Business Trip','travel':'Travel & Business Trip','staff accomodation':'Staff Accommodation',
       'consulting fee':'Consulting Fee','consultant fee':'Consulting Fee','tax consultant fee':'Consulting Fee','consultant / accounting fee':'Consulting Fee',
       'cleaning services fee':'Cleaning Services Fee','cleaning service':'Cleaning Services Fee','cleaning services':'Cleaning Services Fee','cleaning':'Cleaning Services Fee',
