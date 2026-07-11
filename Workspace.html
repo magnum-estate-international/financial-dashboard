@@ -383,6 +383,9 @@ a{color:#4550d8}
 
 <div id="alertBox"></div>
 
+<div class="divlabel" id="secRatioLabel">📐 Financial Ratios</div>
+<div class="ratio-grid" id="ratioGrid"></div>
+
 <div class="divlabel" id="secOpLabel">📈 Operational Performance — May 2026 (excludes all loan, non-operational &amp; inter-bank flows)</div>
 <div class="kpi4" id="kpiOp"></div>
 
@@ -449,7 +452,7 @@ a{color:#4550d8}
 <div class="panel" style="margin-bottom:16px">
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Entity</th><th class="num">Revenue</th><th class="num">Operating Expense</th><th class="num">Operating Net</th><th class="num">Financing In</th><th class="num">Financing Out</th><th class="num">Net Cash (All Flows)</th></tr></thead>
+      <thead><tr><th>Entity</th><th class="num">Revenue</th><th class="num">Operating Expense</th><th class="num">Operating Net</th><th class="num">Financing In</th><th class="num">Financing Out</th><th class="num">Net Cash (All Flows)</th><th>Status</th></tr></thead>
       <tbody id="entTable"></tbody>
     </table>
   </div>
@@ -3011,6 +3014,28 @@ function renderExecSummary(a){
     </div>`;
   }).join('');
 }
+// Only ratios we can back with real figures already in this dashboard — no fabricated
+// balance-sheet ratios (Current/Quick Ratio, Debt-to-Equity, ROA, ROE need asset data we
+// don't track) and no Budget vs Actual (we don't track a budget at all).
+function renderFinRatios(a){
+  const el=document.getElementById('ratioGrid'); if(!el) return;
+  const opMargin=a.rev>0?(a.opNet/a.rev*100):null;
+  const coverage=a.opex>0?(a.rev/a.opex*100):null;
+  const open=outstandingOpen();
+  const liabTot=open.reduce((s,o)=>s+o.remaining,0);
+  const overdueTot=open.filter(o=>daysOverdue(o.due)>0).reduce((s,o)=>s+o.remaining,0);
+  const overdueRatio=liabTot>0?(overdueTot/liabTot*100):null;
+  const cards=[
+    {lab:'Operating Margin',v:opMargin,good:v=>v>=15,warn:v=>v>=0,sub:'net operating result ÷ revenue'},
+    {lab:'Revenue Coverage Ratio',v:coverage,good:v=>v>=100,warn:v=>v>=70,sub:'revenue ÷ operating expense'},
+    {lab:'Overdue Liability Ratio',v:overdueRatio,good:v=>v<=10,warn:v=>v<=35,invert:true,sub:'overdue ÷ total outstanding liability'},
+  ];
+  el.innerHTML=cards.map(c=>{
+    if(c.v==null) return `<div class="ratio-card"><div class="lab2">${c.lab}</div><div class="v2" style="color:var(--muted)">—</div><div class="sub2">No data in this scope</div></div>`;
+    const cls=c.good(c.v)?'pos':(c.warn(c.v)?'amb':'neg');
+    return `<div class="ratio-card"><div class="lab2">${c.lab}</div><div class="v2 ${cls}">${c.v.toFixed(1)}%</div><div class="sub2">${c.sub}</div></div>`;
+  }).join('');
+}
 
 function renderKpiFin(a){
   const pos=a.fullNet>=0;
@@ -3140,6 +3165,15 @@ function renderRevBD(a){
   document.getElementById('revBD').innerHTML=h;
 }
 
+// Status pill derived from each entity's real operating margin — not a fabricated score,
+// just a plain-language label for a number already shown in the row (net ÷ revenue).
+function entStatusPill(r,net){
+  if(r<=0) return net<0?`<span class="status-pill critical">Critical</span>`:`<span class="status-pill" style="background:#eef0f5;color:var(--muted)">No revenue</span>`;
+  const margin=net/r*100;
+  if(margin>=15) return `<span class="status-pill healthy">Healthy</span>`;
+  if(margin>=0) return `<span class="status-pill monitor">Monitor</span>`;
+  return `<span class="status-pill critical">Critical</span>`;
+}
 function renderEntTable(){
   const ids=grpIds();
   let h='',tr=0,to=0,tfi=0,tfo=0;
@@ -3153,7 +3187,8 @@ function renderEntTable(){
       <td class="num ${net>=0?'pos':'neg'}">${net>=0?'+':''} ${fmt(net)}</td>
       <td class="num">${fi>0?fmt(fi):'–'}</td>
       <td class="num">${fo>0?fmt(fo):'–'}</td>
-      <td class="num ${full>=0?'pos':'neg'}">${full>=0?'+':''} ${fmt(full)}</td></tr>`;
+      <td class="num ${full>=0?'pos':'neg'}">${full>=0?'+':''} ${fmt(full)}</td>
+      <td>${entStatusPill(r,net)}</td></tr>`;
   });
   const tn=tr-to,tf=tr+tfi-to-tfo;
   const lbl = GF==='all' ? 'TOTAL — ALL GROUPS' : 'TOTAL — '+GRPNAME[GF].toUpperCase();
@@ -3161,7 +3196,7 @@ function renderEntTable(){
     <td class="num pos"><strong>${fmt(tr)}</strong></td><td class="num neg"><strong>${fmt(to)}</strong></td>
     <td class="num ${tn>=0?'pos':'neg'}"><strong>${tn>=0?'+':''} ${fmt(tn)}</strong></td>
     <td class="num"><strong>${fmt(tfi)}</strong></td><td class="num"><strong>${fmt(tfo)}</strong></td>
-    <td class="num ${tf>=0?'pos':'neg'}"><strong>${tf>=0?'+':''} ${fmt(tf)}</strong></td></tr>`;
+    <td class="num ${tf>=0?'pos':'neg'}"><strong>${tf>=0?'+':''} ${fmt(tf)}</strong></td><td></td></tr>`;
   document.getElementById('entTable').innerHTML=h;
 }
 
@@ -4115,7 +4150,7 @@ function renderBalances(){
 
 function renderAll(){
   const a=agg();
-  renderBanner();renderExecSummary(a);renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderDataHealth();renderBalances();
+  renderBanner();renderExecSummary(a);renderFinRatios(a);renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderDataHealth();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
