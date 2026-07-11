@@ -211,6 +211,61 @@ footer::before{content:"";display:block;width:56px;height:4px;margin:0 auto 16px
 .pcard.bal.b-bad .bic{background:#fde3e9}
 .pcard.bal.b-none::before{background:linear-gradient(90deg,#c5cbdb,#9aa2b8)}
 .pcard.bal.b-none .bic{background:#eef0f5;filter:grayscale(.4);opacity:.75}
+/* ── App shell: sidebar + topbar (management-facing redesign) ───────────── */
+.appshell{display:flex;align-items:stretch;min-height:100vh}
+.sidebar{width:252px;flex:none;background:#fff;border-right:1px solid #eceef4;padding:20px 14px 24px;
+  position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;scrollbar-width:thin}
+.sidebar .brand2{display:flex;align-items:center;gap:11px;padding:4px 8px 18px;border-bottom:1px solid #eceef4;margin-bottom:14px}
+.sidebar .mark2{width:38px;height:38px;flex:none;border-radius:11px;background:linear-gradient(135deg,#c9a227,#e8c96a);
+  display:grid;place-items:center;font-weight:800;font-size:16px;color:#141b2d;box-shadow:0 6px 14px -6px rgba(201,162,39,.55)}
+.sidebar .brand2 .name{font-size:12.5px;font-weight:800;color:var(--blue-900);line-height:1.35;letter-spacing:-.1px}
+.sidebar .brand2 .name span{display:block;font-size:9px;color:var(--muted);letter-spacing:1.6px;font-weight:700;text-transform:uppercase;margin-top:2px}
+.sidebar-lab{font-size:10px;font-weight:700;color:#9aa2b8;text-transform:uppercase;letter-spacing:1.3px;margin:6px 0 8px;padding:0 10px}
+.navlist{list-style:none;display:flex;flex-direction:column;gap:1px;margin-bottom:18px}
+.navlist a{display:flex;align-items:center;gap:10px;padding:8.5px 10px;border-radius:10px;font-size:12.5px;font-weight:600;
+  color:var(--muted);text-decoration:none;transition:background .15s,color .15s}
+.navlist a .ic{width:16px;text-align:center;flex:none;font-size:13px}
+.navlist a:hover{background:var(--blue-50);color:#4550d8}
+.sidebar .fl{margin-bottom:12px}
+.sidebar .fl select{max-width:none;width:100%}
+.sidebar-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.sidebar-actions .btn{width:100%;justify-content:center}
+.main-area{flex:1;min-width:0}
+.topbar2{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 28px;
+  background:#fff;border-bottom:1px solid #eceef4;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+.topbar2 h1{font-size:18px;font-weight:800;color:var(--blue-900);letter-spacing:-.3px;line-height:1.3}
+.topbar2 .sub2{font-size:12px;color:var(--muted);margin-top:2px}
+.topbar2 .period-box{text-align:right}
+.topbar2 .period-box .lab3{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;font-weight:700}
+.topbar2 .period-box .v3{font-size:14px;font-weight:800;color:var(--blue-900);margin-top:2px}
+@media(max-width:980px){.appshell{flex-direction:column}.sidebar{width:auto;height:auto;position:static;
+  border-right:none;border-bottom:1px solid #eceef4}}
+/* ── Icon-circle KPI cards ────────────────────────────────────────────── */
+.kpi-card{background:#fff;border-radius:14px;border:1px solid #eceef4;box-shadow:var(--shadow-sm);padding:18px 19px;
+  transition:box-shadow .2s,transform .2s}
+.kpi-card.clickable:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.kpi-card .icircle{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font-size:16px;margin-bottom:11px}
+.icircle.c-blue{background:#e3e6fd;color:#4550d8}.icircle.c-orange{background:#fde8d6;color:#c9670f}
+.icircle.c-green{background:#ddf3e9;color:#1f8a61}.icircle.c-purple{background:#ece3fd;color:#7440d8}
+.icircle.c-red{background:#fde3e9;color:#c73e57}
+.kpi-card .lab2{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700}
+.kpi-card .v2{font-size:21px;font-weight:800;color:var(--blue-900);margin-top:5px;letter-spacing:-.4px;
+  font-variant-numeric:lining-nums tabular-nums}
+.kpi-card .trend{font-size:11px;margin-top:7px;font-weight:700;display:flex;align-items:center;gap:4px}
+.kpi-card .trend.up{color:var(--green)}.kpi-card .trend.down{color:var(--red)}.kpi-card .trend.flat{color:var(--muted)}
+.kpi-card .trend .tsub{color:var(--muted);font-weight:500}
+/* ── Financial ratio mini-cards ───────────────────────────────────────── */
+.ratio-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:15px}
+.ratio-card{background:#fff;border-radius:14px;border:1px solid #eceef4;box-shadow:var(--shadow-sm);padding:16px 18px}
+.ratio-card .lab2{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700}
+.ratio-card .v2{font-size:22px;font-weight:800;margin-top:6px;letter-spacing:-.4px}
+.ratio-card .sub2{font-size:11px;color:var(--muted);margin-top:5px}
+@media(max-width:900px){.ratio-grid{grid-template-columns:1fr}}
+/* ── Status pill (entity performance) ─────────────────────────────────── */
+.status-pill{display:inline-block;padding:3px 11px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:.3px}
+.status-pill.healthy{background:#ddf3e9;color:#1f8a61}
+.status-pill.monitor{background:#fdeed6;color:#a86a1a}
+.status-pill.critical{background:#fde3e9;color:#c73e57}
 .exec-strip{display:flex;background:linear-gradient(115deg,#10162a 0%,#141b2d 55%,#1b2440 100%);border-radius:18px;
   box-shadow:var(--shadow);margin-bottom:22px;overflow:hidden;position:relative}
 .exec-strip::before{content:"";position:absolute;inset:0;pointer-events:none;
@@ -238,26 +293,25 @@ a{color:#4550d8}
 <meta property="og:title" content="Group Consolidated Financial Dashboard · May 2026 · 17 Entities" data-id="th-modified" ><meta name="description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:url" content="https://salmon-emmie-62.tiiny.site/" data-id="th-modified" ><meta property="og:type" content="website" data-id="th-modified" ></head>
 <body>
 
-<header class="hero">
-  <div class="wrap">
-    <div class="brand">
-      <div class="mark">GRP</div>
-      <div>
-        <h1>Group Consolidated Financial Dashboard</h1>
-        <div class="sub">ICG · MEI · BBU · Sky Stars · KSO TUS · PT SUP · Umalas Lounge</div>
-      </div>
-    </div>
-    <div class="hero-meta">
-      <div class="period">April – 22 June 2026 (YTD)</div>
-      <div id="heroScope">Consolidated · 17 Entities · 4 Groups + 3 Standalone</div>
-    </div>
+<div class="appshell">
+<aside class="sidebar">
+  <div class="brand2">
+    <div class="mark2">M</div>
+    <div class="name">MAGNUM ESTATE<span>Group Financial Dashboard</span></div>
   </div>
-</header>
-
-<div class="toolbar">
+  <div class="sidebar-lab">Navigate</div>
+  <ul class="navlist">
+    <li><a href="#execStrip">💼&nbsp;<span class="ic"></span> Executive Summary</a></li>
+    <li><a href="#secOpLabel">📈&nbsp;<span class="ic"></span> Financial Overview</a></li>
+    <li><a href="#secRecoLabel">📌&nbsp;<span class="ic"></span> Alerts &amp; Recommendations</a></li>
+    <li><a href="#secLiabTopLabel">🏢&nbsp;<span class="ic"></span> Liabilities &amp; Vendors</a></li>
+    <li><a href="#secBalLabel">🏦&nbsp;<span class="ic"></span> Cash &amp; Banking</a></li>
+    <li><a href="#secEntTable">🏗️&nbsp;<span class="ic"></span> Entity Performance</a></li>
+  </ul>
+  <div class="sidebar-lab">Filters</div>
   <div class="fl">
     <label for="monthSel">Period — Month</label>
-    <select id="monthSel" onchange="setMonth(this.value)" style="max-width:210px">
+    <select id="monthSel" onchange="setMonth(this.value)">
       <option value="APR">April 2026</option>
       <option value="MAY">May 2026</option>
       <option value="JUN">June 2026</option>
@@ -267,7 +321,7 @@ a{color:#4550d8}
   </div>
   <div class="fl">
     <label for="scopeSel">View — Group / Entity</label>
-    <select id="scopeSel" onchange="setScope(this.value)" style="max-width:480px">
+    <select id="scopeSel" onchange="setScope(this.value)">
       <option value="all">🌐 All Groups — Consolidated (17 Entities)</option>
       <optgroup label="PT INDONESIA CAPITAL GROUP &amp; SUBS">
         <option value="g:icg">▸ ICG Group — Consolidated (6 entities)</option>
@@ -305,14 +359,27 @@ a{color:#4550d8}
       </optgroup>
     </select>
   </div>
-  <div class="spacer"></div>
-  <button class="btn btn-ghost" onclick="window.print()">🖶 Print / PDF</button>
-  <button class="btn btn-ghost" onclick="exportCSV()">⇩ Export Summary CSV</button>
+  <div class="sidebar-actions">
+    <button class="btn btn-ghost" onclick="window.print()">🖶 Print / PDF</button>
+    <button class="btn btn-ghost" onclick="exportCSV()">⇩ Export Summary CSV</button>
+  </div>
+</aside>
+<main class="main-area">
+
+<div class="topbar2">
+  <div>
+    <h1>Group Consolidated Financial Dashboard</h1>
+    <div class="sub2" id="heroScope">Consolidated · 17 Entities · 4 Groups + 3 Standalone</div>
+  </div>
+  <div class="period-box">
+    <div class="lab3">Period</div>
+    <div class="v3" id="topbarPeriod">April – 22 June 2026 (YTD)</div>
+  </div>
 </div>
 
 <div class="wrap">
 
-<div class="exec-strip" id="execStrip"></div>
+<div class="kpi4 kpi5" id="execStrip"></div>
 
 <div id="alertBox"></div>
 
@@ -378,7 +445,7 @@ a{color:#4550d8}
   </div>
 </div>
 
-<div class="section-title"><h2>Entity Performance Summary</h2><span class="hint">Click a row to filter</span></div>
+<div class="section-title" id="secEntTable"><h2>Entity Performance Summary</h2><span class="hint">Click a row to filter</span></div>
 <div class="panel" style="margin-bottom:16px">
   <div class="table-scroll">
     <table>
@@ -460,6 +527,9 @@ a{color:#4550d8}
   Consolidated Management Dashboard · May 2026 · 4 Groups + 3 Standalone Entities · Sources: ICG bank report (5 entities) + Magnum/SSV cash flow report (4 entities) + PT SUP cash flow report (3 entities) + ICS dashboard (Mandiri, Permata, Danamon &amp; BCA) + BBU dashboard + Umalas Lounge dashboard (BB Bank &amp; BB Tunai) + KSO Umalas Signature report (Bank Danamon IN/OUT) · Prepared June 2026<br>
   <em>Operating results exclude all inter-company loans, affiliate loans, receivables, shareholder &amp; licensing payments, and inter-bank transfers.</em>
 </footer>
+</div>
+
+</main>
 </div>
 
 <div class="overlay" id="overlay">
@@ -2818,7 +2888,7 @@ function openCustomRange(){
 
 // ─── RENDERERS ───────────────────────────────────────────────────────────────
 function renderBanner(){
-  document.querySelector('.hero-meta .period').textContent=MONTHS[MONTH];
+  const perEl=document.getElementById('topbarPeriod'); if(perEl) perEl.textContent=MONTHS[MONTH];
   const moLbl=MONTHS[MONTH];
   const opL=document.getElementById('secOpLabel'); if(opL) opL.innerHTML=`📈 Operational Performance — ${moLbl} (excludes all loan, non-operational &amp; inter-bank flows)`;
   const fnL=document.getElementById('secFinLabel'); if(fnL) fnL.innerHTML=`🔄 Loan, Financing &amp; Non-Operational Activity — ${moLbl}`;
@@ -2889,29 +2959,55 @@ function renderKpiOp(a){
       <div class="meta">Revenue covers ${cover.toFixed(1)}% of operating costs${cover<100?'; the remainder is funded by loan flows':''}</div>
     </div>`;
 }
-// Slim always-visible headline strip — the 3 numbers a manager wants before anything else:
-// are we profitable, is cash actually moving in the right direction, and what do we still owe.
+// Month-over-month % change for a metric, using only real per-month data — returns null
+// (no trend shown) rather than guessing when there's no real prior-month figure to compare,
+// e.g. when the active period is the YTD quarter rather than a single month.
+function prevMonthOf(mo){ const order=['APR','MAY','JUN']; const i=order.indexOf(mo); return i>0?order[i-1]:null; }
+function scopeSumMonth(mo,key){
+  let any=false,s=0;
+  scopeIds().forEach(id=>{ const m=effMonth(id,mo); if(m){ any=true; s+=m[key]; } });
+  return any?s:null;
+}
+function momTrend(curVal,prevValFn){
+  if(MONTH!=='APR'&&MONTH!=='MAY'&&MONTH!=='JUN') return null;
+  const prevMo=prevMonthOf(MONTH); if(!prevMo) return null;
+  const prevVal=prevValFn(prevMo);
+  if(prevVal==null||prevVal===0) return null;
+  const pct=(curVal-prevVal)/Math.abs(prevVal)*100;
+  return {pct,prevMo};
+}
+// Headline KPI row — the numbers a manager wants before anything else. Icon-circle card style;
+// only real, already-computed figures (no budget/ratio data we don't actually have).
 function renderExecSummary(a){
   const el=document.getElementById('execStrip'); if(!el) return;
-  const netCash=a.opNet+a.finIn-a.finOut;
   const open=outstandingOpen();
   const liabTot=open.reduce((s,o)=>s+o.remaining,0);
   const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
-  const items=[
-    {lab:'Net Operating Result',v:a.opNet,onclick:"openDetail('opnet')",
-      sub:`${MONTHS[MONTH]||MONTH} · revenue ${fmtB(a.rev)} vs opex ${fmtB(a.opex)}`},
-    {lab:'Net Cash Movement',v:netCash,onclick:null,
-      sub:'operating + financing in − financing out'},
-    {lab:'Outstanding Liability',v:liabTot,neg:liabTot>0,onclick:"openOutstanding('category')",
-      sub:`${open.length} unpaid invoice${open.length===1?'':'s'}${overdueN?`, <b>${overdueN} overdue</b>`:''}`},
+  let cashPos=0,cashN=0;
+  scopeIds().forEach(id=>{ const b=balFor(id); if(b.close!=null){ cashPos+=b.close; cashN++; } });
+  const trendHtml=(val,prevValFn)=>{
+    const t=momTrend(val,prevValFn); if(!t) return '';
+    const up=t.pct>=0;
+    return `<div class="trend ${up?'up':'down'}">${up?'▲':'▼'} ${Math.abs(t.pct).toFixed(1)}% <span class="tsub">vs ${MONTHS[t.prevMo]}</span></div>`;
+  };
+  const cards=[
+    {ic:'💰',cls:'c-blue',lab:'Revenue',v:a.rev,onclick:"openDetail('rev')",trend:trendHtml(a.rev,mo=>scopeSumMonth(mo,'rev'))},
+    {ic:'📉',cls:'c-orange',lab:'Operating Expense',v:a.opex,onclick:"openDetail('opex')",trend:trendHtml(a.opex,mo=>scopeSumMonth(mo,'opex'))},
+    {ic:'📈',cls:'c-green',lab:'Net Operating Result',v:a.opNet,onclick:"openDetail('opnet')",signed:true,
+      trend:trendHtml(a.opNet,mo=>{const r=scopeSumMonth(mo,'rev'),o=scopeSumMonth(mo,'opex');return(r==null||o==null)?null:(r-o);})},
+    {ic:'🏦',cls:'c-purple',lab:'Cash Position',v:cashPos,onclick:null,
+      sub:cashN?`${cashN} of ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'} reporting`:'No balance data in this scope'},
+    {ic:'🧾',cls:'c-red',lab:'Outstanding Liability',v:liabTot,onclick:"openOutstanding('category')",
+      sub:`${open.length} unpaid invoice${open.length===1?'':'s'}${overdueN?`, <b style="color:var(--red)">${overdueN} overdue</b>`:''}`},
   ];
-  el.innerHTML=items.map(it=>{
-    const cls=it.neg!==undefined?(it.neg?'neg':''):(it.v>=0?'pos':'neg');
-    const sign=it.v>=0?'+':'–';
-    return `<div class="item${it.onclick?' clickable':''}"${it.onclick?` onclick="${it.onclick}"`:''}>
-      <div class="lab">${it.lab}</div>
-      <div class="v ${cls}">${it.neg===undefined?sign+' ':''}IDR ${fmtB(Math.abs(it.v))}</div>
-      <div class="sub">${it.sub}</div>
+  el.innerHTML=cards.map(c=>{
+    const sign=c.signed?(c.v>=0?'+ ':'– '):'';
+    const cls=c.signed?(c.v>=0?'pos':'neg'):'';
+    return `<div class="kpi-card${c.onclick?' clickable':''}"${c.onclick?` onclick="${c.onclick}"`:''}>
+      <div class="icircle ${c.cls}">${c.ic}</div>
+      <div class="lab2">${c.lab}</div>
+      <div class="v2 ${cls}">${sign}IDR ${fmtB(Math.abs(c.v))}</div>
+      ${c.trend||(c.sub?`<div class="trend flat">${c.sub}</div>`:'')}
     </div>`;
   }).join('');
 }
