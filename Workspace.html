@@ -323,7 +323,7 @@ a{color:#4550d8}
 <div id="recoGrid" class="reco-grid"></div>
 
 <div class="panel" style="margin-bottom:16px" id="secLiabTopLabel">
-  <h2>Outstanding Liability — Top 15 Vendors</h2>
+  <h2>Outstanding Liability — Top 10 Vendors</h2>
   <div class="pn-sub" id="liabTopSub"></div>
   <div class="bd" id="liabTopVendor"></div>
 </div>
@@ -2942,8 +2942,8 @@ function renderLiabTopVendor(){
   const grand=open.reduce((s,o)=>s+o.remaining,0);
   if(sub) sub.textContent=rows.length?`${rows.length} vendor${rows.length===1?'':'s'} with outstanding liability in this scope · click a vendor for invoice detail`:'No outstanding liabilities in this scope';
   if(!rows.length){ el.innerHTML=`<p style="color:var(--muted);font-size:12.5px">No outstanding liabilities in this scope.</p>`; return; }
-  const top=rows.slice(0,15);
-  const rest=rows.slice(15);
+  const top=rows.slice(0,10);
+  const rest=rows.slice(10);
   const restTot=rest.reduce((s,[,v])=>s+v.tot,0);
   const restN=rest.reduce((s,[,v])=>s+v.n,0);
   let h=`<div class="bd-total"><span class="lab">Total Outstanding Liability</span><span class="v neg">${fmt(grand)}</span></div>`;
