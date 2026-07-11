@@ -211,6 +211,23 @@ footer::before{content:"";display:block;width:56px;height:4px;margin:0 auto 16px
 .pcard.bal.b-bad .bic{background:#fde3e9}
 .pcard.bal.b-none::before{background:linear-gradient(90deg,#c5cbdb,#9aa2b8)}
 .pcard.bal.b-none .bic{background:#eef0f5;filter:grayscale(.4);opacity:.75}
+.exec-strip{display:flex;background:linear-gradient(115deg,#10162a 0%,#141b2d 55%,#1b2440 100%);border-radius:18px;
+  box-shadow:var(--shadow);margin-bottom:22px;overflow:hidden;position:relative}
+.exec-strip::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(circle,rgba(122,138,248,.28) 1.1px,transparent 1.2px);background-size:14px 14px;
+  -webkit-mask-image:radial-gradient(560px 220px at 92% 0%,#000 15%,transparent 70%);
+          mask-image:radial-gradient(560px 220px at 92% 0%,#000 15%,transparent 70%)}
+.exec-strip .item{flex:1;min-width:150px;padding:20px 24px;position:relative;z-index:1;cursor:default}
+.exec-strip .item.clickable{cursor:pointer;transition:background .15s}
+.exec-strip .item.clickable:hover{background:rgba(255,255,255,.05)}
+.exec-strip .item+.item{border-left:1px solid rgba(255,255,255,.12)}
+.exec-strip .item .lab{font-size:10px;text-transform:uppercase;letter-spacing:1.4px;font-weight:700;color:#8e97ad}
+.exec-strip .item .v{font-size:25px;font-weight:800;letter-spacing:-.6px;color:#fff;margin-top:8px;
+  font-variant-numeric:lining-nums tabular-nums;line-height:1.1}
+.exec-strip .item .v.pos{color:#5fe3b3}.exec-strip .item .v.neg{color:#f7a8bc}
+.exec-strip .item .sub{font-size:11px;color:#8e97ad;margin-top:6px;line-height:1.5}
+.exec-strip .item .sub b{color:#f7a8bc;font-weight:700}
+@media(max-width:900px){.exec-strip{flex-wrap:wrap}.exec-strip .item{min-width:50%;border-left:none!important;border-bottom:1px solid rgba(255,255,255,.12)}}
 a{color:#4550d8}
 :focus-visible{outline:2px solid #5b67f1;outline-offset:2px}
 @media(max-width:980px){.kpi4,.kpi5,.cols-eq{grid-template-columns:1fr}.wrap{padding:0 14px 40px}.toolbar{position:static}}
@@ -295,6 +312,8 @@ a{color:#4550d8}
 
 <div class="wrap">
 
+<div class="exec-strip" id="execStrip"></div>
+
 <div id="alertBox"></div>
 
 <div class="divlabel" id="secOpLabel">📈 Operational Performance — May 2026 (excludes all loan, non-operational &amp; inter-bank flows)</div>
@@ -329,14 +348,16 @@ a{color:#4550d8}
 
 <div class="divlabel" id="secBalLabel">🏦 Balance Reconciliation — Opening / Closing Balance</div>
 <div class="kpi4" id="balKpis"></div>
-<div class="panel" style="margin-bottom:16px">
-  <h2>Balance check</h2>
-  <div class="pn-sub" id="balSub">Opening balance + net movement (per the report) should equal the reported closing balance. A difference means the report is incomplete or the balance needs review.</div>
-  <div class="table-scroll" style="max-height:360px"><table>
-    <thead><tr><th>Entity</th><th class="num" style="text-align:right">Opening balance</th><th class="num" style="text-align:right">Net movement</th><th class="num" style="text-align:right">Expected closing</th><th class="num" style="text-align:right">Closing (reported)</th><th class="num" style="text-align:right">Difference</th><th>Status</th></tr></thead>
-    <tbody id="balBody"></tbody>
-  </table></div>
-</div>
+<details class="fold">
+  <summary><span><span class="chev">▸</span>&nbsp; Balance check</span><span class="hint">opening + net movement vs reported closing</span></summary>
+  <div class="fold-body">
+    <div class="pn-sub" id="balSub" style="margin-top:10px">Opening balance + net movement (per the report) should equal the reported closing balance. A difference means the report is incomplete or the balance needs review.</div>
+    <div class="table-scroll" style="max-height:360px"><table>
+      <thead><tr><th>Entity</th><th class="num" style="text-align:right">Opening balance</th><th class="num" style="text-align:right">Net movement</th><th class="num" style="text-align:right">Expected closing</th><th class="num" style="text-align:right">Closing (reported)</th><th class="num" style="text-align:right">Difference</th><th>Status</th></tr></thead>
+      <tbody id="balBody"></tbody>
+    </table></div>
+  </div>
+</details>
 
 <div class="panel" style="margin-bottom:16px">
   <h2>Revenue vs Operating Expense by Entity</h2>
@@ -367,28 +388,32 @@ a{color:#4550d8}
   </div>
 </div>
 
-<div class="section-title"><h2>Operating Expense Categories</h2><span class="hint">Click a row for per-entity detail</span></div>
-<div class="panel" style="margin-bottom:16px">
-  <div class="table-scroll">
-    <table>
-      <thead><tr><th>Category</th><th class="num">Total (IDR)</th><th class="num">% of OpEx</th></tr></thead>
-      <tbody id="catTable"></tbody>
-    </table>
+<details class="fold">
+  <summary><span><span class="chev">▸</span>&nbsp; Operating Expense Categories</span><span class="hint">click a row for per-entity detail</span></summary>
+  <div class="fold-body">
+    <div class="table-scroll" style="margin-top:10px">
+      <table>
+        <thead><tr><th>Category</th><th class="num">Total (IDR)</th><th class="num">% of OpEx</th></tr></thead>
+        <tbody id="catTable"></tbody>
+      </table>
+    </div>
   </div>
-</div>
+</details>
 
-<div class="section-title"><h2>Inter-Company &amp; Affiliate Loan Flows — May 2026</h2></div>
-<div class="panel" style="margin-bottom:16px">
-  <div class="pn-sub" style="margin-bottom:12px">Cash actually moved during May (new loans given, receivables disbursed, and loan repayments). These flows are excluded from operating results above.</div>
-  <div class="table-scroll">
-    <table>
-      <thead><tr><th>From (paid by)</th><th>To (received by)</th><th>Type</th><th class="num">Amount (IDR)</th></tr></thead>
-      <tbody id="loanTable"></tbody>
-    </table>
+<details class="fold" id="secLoanFold">
+  <summary><span><span class="chev">▸</span>&nbsp; Inter-Company &amp; Affiliate Loan Flows</span><span class="hint" id="loanFoldHint">non-operational</span></summary>
+  <div class="fold-body">
+    <div class="pn-sub" style="margin-top:10px;margin-bottom:12px">Cash actually moved during the period (new loans given, receivables disbursed, and loan repayments). These flows are excluded from operating results above.</div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>From (paid by)</th><th>To (received by)</th><th>Type</th><th class="num">Amount (IDR)</th></tr></thead>
+        <tbody id="loanTable"></tbody>
+      </table>
+    </div>
   </div>
-</div>
+</details>
 
-<details class="fold" open>
+<details class="fold">
   <summary><span><span class="chev">▸</span>&nbsp; Key Transactions of the Month</span><span class="hint">largest movements</span></summary>
   <div class="fold-body">
     <div class="table-scroll" style="margin-top:10px">
@@ -2864,6 +2889,32 @@ function renderKpiOp(a){
       <div class="meta">Revenue covers ${cover.toFixed(1)}% of operating costs${cover<100?'; the remainder is funded by loan flows':''}</div>
     </div>`;
 }
+// Slim always-visible headline strip — the 3 numbers a manager wants before anything else:
+// are we profitable, is cash actually moving in the right direction, and what do we still owe.
+function renderExecSummary(a){
+  const el=document.getElementById('execStrip'); if(!el) return;
+  const netCash=a.opNet+a.finIn-a.finOut;
+  const open=outstandingOpen();
+  const liabTot=open.reduce((s,o)=>s+o.remaining,0);
+  const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
+  const items=[
+    {lab:'Net Operating Result',v:a.opNet,onclick:"openDetail('opnet')",
+      sub:`${MONTHS[MONTH]||MONTH} · revenue ${fmtB(a.rev)} vs opex ${fmtB(a.opex)}`},
+    {lab:'Net Cash Movement',v:netCash,onclick:null,
+      sub:'operating + financing in − financing out'},
+    {lab:'Outstanding Liability',v:liabTot,neg:liabTot>0,onclick:"openOutstanding('category')",
+      sub:`${open.length} unpaid invoice${open.length===1?'':'s'}${overdueN?`, <b>${overdueN} overdue</b>`:''}`},
+  ];
+  el.innerHTML=items.map(it=>{
+    const cls=it.neg!==undefined?(it.neg?'neg':''):(it.v>=0?'pos':'neg');
+    const sign=it.v>=0?'+':'–';
+    return `<div class="item${it.onclick?' clickable':''}"${it.onclick?` onclick="${it.onclick}"`:''}>
+      <div class="lab">${it.lab}</div>
+      <div class="v ${cls}">${it.neg===undefined?sign+' ':''}IDR ${fmtB(Math.abs(it.v))}</div>
+      <div class="sub">${it.sub}</div>
+    </div>`;
+  }).join('');
+}
 
 function renderKpiFin(a){
   const pos=a.fullNet>=0;
@@ -3968,7 +4019,7 @@ function renderBalances(){
 
 function renderAll(){
   const a=agg();
-  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderDataHealth();renderBalances();
+  renderBanner();renderExecSummary(a);renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderDataHealth();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
