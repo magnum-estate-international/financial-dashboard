@@ -321,6 +321,12 @@ a{color:#4550d8}
 <div class="divlabel" id="secRecoLabel">📌 Points of Attention — Recommendations for Management</div>
 <div id="recoGrid" class="reco-grid"></div>
 
+<div class="divlabel" id="secLiabTopLabel">📊 Outstanding Liability — Top 15 Vendors</div>
+<div class="panel" style="margin-bottom:16px">
+  <div class="pn-sub" id="liabTopSub"></div>
+  <div id="liabTopVendor"></div>
+</div>
+
 <div class="divlabel" id="secBalLabel">🏦 Balance Reconciliation — Opening / Closing Balance</div>
 <div class="kpi4" id="balKpis"></div>
 <div class="panel" style="margin-bottom:16px">
@@ -2920,6 +2926,35 @@ function outstandingCard(){
       <div class="meta">${open.length?`${open.length} unpaid invoice${open.length>1?'s':''}${overdueN?`, <span style="color:var(--red)">${overdueN} overdue</span>`:''}`:'No outstanding liabilities — click to add one'}</div>
     </div>`;
 }
+function renderLiabTopVendor(){
+  const el=document.getElementById('liabTopVendor'); if(!el) return;
+  const sub=document.getElementById('liabTopSub');
+  const open=outstandingOpen();
+  const byVendor={};
+  open.forEach(o=>{ const k=o.vendor||'—'; const g=byVendor[k]=byVendor[k]||{tot:0,n:0}; g.tot+=o.remaining; g.n++; });
+  const rows=Object.entries(byVendor).sort((a,b)=>b[1].tot-a[1].tot);
+  const grand=open.reduce((s,o)=>s+o.remaining,0);
+  if(sub) sub.textContent=rows.length?`${rows.length} vendor${rows.length===1?'':'s'} with outstanding liability in this scope · click a vendor for invoice detail`:'No outstanding liabilities in this scope';
+  if(!rows.length){ el.innerHTML=`<p style="color:var(--muted);font-size:12.5px">No outstanding liabilities in this scope.</p>`; return; }
+  const top=rows.slice(0,15);
+  const rest=rows.slice(15);
+  const restTot=rest.reduce((s,[,v])=>s+v.tot,0);
+  const restN=rest.reduce((s,[,v])=>s+v.n,0);
+  let h=`<div class="bd-total"><span class="lab">Total Outstanding Liability</span><span class="v neg">${fmt(grand)}</span></div>`;
+  top.forEach(([vendor,v],i)=>{
+    const p=grand>0?(v.tot/grand*100):0;
+    h+=`<div class="bd-row" style="cursor:pointer" onclick="openOutstandingVendor('${encodeURIComponent(vendor)}')"><span class="bl">${escH(vendor)} <span style="color:var(--blue-300);font-weight:700">›</span> <span style="color:var(--muted);font-weight:400">(${v.n})</span></span>
+      <span class="bv neg">${fmt(v.tot)}<span class="bp">${p.toFixed(1)}%</span></span>
+      <div class="bd-bar"><span style="width:${Math.max(p,1.5)}%;background:${CATCOLORS[i%CATCOLORS.length]}"></span></div></div>`;
+  });
+  if(rest.length){
+    const p=grand>0?(restTot/grand*100):0;
+    h+=`<div class="bd-row"><span class="bl" style="color:var(--muted)">${rest.length} other vendor${rest.length===1?'':'s'} (${restN})</span>
+      <span class="bv" style="color:var(--muted)">${fmt(restTot)}<span class="bp">${p.toFixed(1)}%</span></span>
+      <div class="bd-bar"><span style="width:${Math.max(p,1.5)}%;background:#c5cbdb"></span></div></div>`;
+  }
+  el.innerHTML=h;
+}
 function daysOverdue(due){
   const d=new Date(due+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
   return Math.round((now-d)/86400000);
@@ -3607,23 +3642,24 @@ function clearOpeFilterGroup(key){
 }
 function openOutstandingEntity(id,tab){ openOutstandingDetail('entity',id,tab); }
 function openOutstandingCategory(cat,tab){ openOutstandingDetail('category',decodeURIComponent(cat),tab); }
+function openOutstandingVendor(vendor,tab){ openOutstandingDetail('vendor',decodeURIComponent(vendor),tab); }
 function openOutstandingDetail(scopeType,value,tab){
   OPE_ID=value; OPE_SCOPE_TYPE=scopeType; OPE_TAB=tab=tab||'open';
   OPE_ROWS=(tab==='paid'?outstandingPaid():outstandingOpen())
-    .filter(o=>scopeType==='entity'?o.e===value:(o.cat||'—')===value)
+    .filter(o=>scopeType==='entity'?o.e===value:scopeType==='category'?(o.cat||'—')===value:o.vendor===value)
     .sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
   const dimVals=scopeType==='entity'
     ?['All',...new Set(OPE_ROWS.map(o=>o.cat||'—'))]
     :['All',...new Set(OPE_ROWS.map(o=>o.e))];
   const dimLabel=scopeType==='entity'?'Cost Category':'Entity';
   const title=scopeType==='entity'?ENT[value].name:escH(value);
-  const backOnclick=`openOutstanding('${scopeType}')`;
-  const detailOnclick=(t)=>scopeType==='entity'?`openOutstandingEntity('${value}','${t}')`:`openOutstandingCategory('${encodeURIComponent(value)}','${t}')`;
+  const backOnclick=scopeType==='vendor'?'closeModal()':`openOutstanding('${scopeType}')`;
+  const detailOnclick=(t)=>scopeType==='entity'?`openOutstandingEntity('${value}','${t}')`:scopeType==='category'?`openOutstandingCategory('${encodeURIComponent(value)}','${t}')`:`openOutstandingVendor('${encodeURIComponent(value)}','${t}')`;
   const tabBtn=(t,label)=>`<button class="btn ${tab===t?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${tab===t?';background:#5b67f1;color:#fff;border:0':''}" onclick="${detailOnclick(t)}">${label}</button>`;
   const txt=(id2,ph)=>`<input id="${id2}" type="text" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box" oninput="renderOutstandingEntityRows()">`;
   const dt=(id2,ph)=>`<input id="${id2}" type="date" aria-label="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" onchange="renderOutstandingEntityRows()">`;
   const num=(id2,ph)=>`<input id="${id2}" type="number" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" oninput="renderOutstandingEntityRows()">`;
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backOnclick}">‹ Back to breakdown</button>`;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backOnclick}">${scopeType==='vendor'?'‹ Close':'‹ Back to breakdown'}</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${title} — Outstanding Liability</h4>`;
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap">
     <div style="display:flex;gap:8px">${tabBtn('open','Open')}${tabBtn('paid','Paid')}</div>
@@ -3932,7 +3968,7 @@ function renderBalances(){
 
 function renderAll(){
   const a=agg();
-  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderDataHealth();renderBalances();
+  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderDataHealth();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
