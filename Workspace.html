@@ -4885,9 +4885,10 @@ async function renderEntryBody(){
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer">💼 Add an Outstanding Liability (unpaid invoice)</summary>'
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks unpaid invoices per PT — separate from the monthly figures above. Mark it paid once the payment shows up in a bank statement (recorded normally via the file upload above).</div>'
-      +'<div style="display:flex;gap:6px;margin-bottom:12px">'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="opd-tab-one" type="button" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
       +'<button id="opd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
+      +'<button id="opd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;margin-left:auto">⬇ Export current data (.xlsx)</button>'
       +'</div>'
       +'<div id="opd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
@@ -5230,6 +5231,16 @@ async function renderEntryBody(){
     };
     if(tabOne) tabOne.onclick=()=>setTab('one');
     if(tabBulk) tabBulk.onclick=()=>setTab('bulk');
+    const expBtn=document.getElementById('opd-export');
+    if(expBtn) expBtn.onclick=()=>{
+      const rows=[['Entity','Invoice #','Vendor','Category','Frequency','Invoice Date','Due Date','Amount','Paid Amount','Status','Paid Date','Description','Document Link']];
+      OUTSTANDING.slice().sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0).forEach(o=>{
+        rows.push([eName(o.e),o.invNo||'',o.vendor,o.cat||'',o.freq||'OTP',o.inv,o.due,o.amt,o.paidAmt||0,o.status,o.paidDate||'',o.desc,o.docUrl||'']);
+      });
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
+      XLSX.writeFile(wb,'outstanding_payables_export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    };
     const opexCats2=cats.filter(c=>c.kind==='opex');
     const tplBtn=document.getElementById('opd-template');
     if(tplBtn) tplBtn.onclick=()=>{
