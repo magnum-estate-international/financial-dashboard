@@ -3723,11 +3723,26 @@ function openOutstandingEntity(id,tab){ openOutstandingDetail('entity',id,tab); 
 function openOutstandingCategory(cat,tab){ openOutstandingDetail('category',decodeURIComponent(cat),tab); }
 function openOutstandingVendor(vendor,tab){ openOutstandingDetail('vendor',decodeURIComponent(vendor),tab); }
 function openOutstandingFrequency(freq,tab){ openOutstandingDetail('frequency',decodeURIComponent(freq),tab); }
-function openOutstandingDetail(scopeType,value,tab){
-  OPE_ID=value; OPE_SCOPE_TYPE=scopeType; OPE_TAB=tab=tab||'open';
-  OPE_ROWS=(tab==='paid'?outstandingPaid():outstandingOpen())
+function computeOpeRows(scopeType,value,tab){
+  return (tab==='paid'?outstandingPaid():outstandingOpen())
     .filter(o=>scopeType==='entity'?o.e===value:scopeType==='category'?(o.cat||'—')===value:scopeType==='frequency'?(o.freq||'OTP')===value:o.vendor===value)
     .sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0);
+}
+// Row-level actions (Edit/Delete/Undo payment) call this instead of re-opening the whole modal —
+// re-opening rebuilds the entire table and resets its scroll position back to the top, which is
+// disorienting when you're working through a long list one row at a time. Only falls back to a
+// full reopen when the scope/tab actually needs to change (entity reassigned, or paid<->open flip).
+function refreshOutstandingRowsInPlace(entity,tab){
+  if(OPE_SCOPE_TYPE==='entity' && OPE_ID===entity && OPE_TAB===tab){
+    OPE_ROWS=computeOpeRows(OPE_SCOPE_TYPE,OPE_ID,OPE_TAB);
+    renderOutstandingEntityRows();
+  } else {
+    openOutstandingEntity(entity,tab);
+  }
+}
+function openOutstandingDetail(scopeType,value,tab){
+  OPE_ID=value; OPE_SCOPE_TYPE=scopeType; OPE_TAB=tab=tab||'open';
+  OPE_ROWS=computeOpeRows(scopeType,value,tab);
   const dimVals=scopeType==='entity'
     ?['All',...new Set(OPE_ROWS.map(o=>o.cat||'—'))]
     :['All',...new Set(OPE_ROWS.map(o=>o.e))];
@@ -3875,7 +3890,7 @@ async function saveOutstandingEdit(id,entityId,tab){
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
     renderKpiFin(agg());
-    openOutstandingEntity(entity,tab);
+    refreshOutstandingRowsInPlace(entity,tab);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
 async function deleteOutstanding(id,entityId,tab){
@@ -3887,7 +3902,7 @@ async function deleteOutstanding(id,entityId,tab){
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
     renderKpiFin(agg());
-    openOutstandingEntity(entityId,tab);
+    refreshOutstandingRowsInPlace(entityId,tab);
   }catch(e){ alert('Failed to delete: '+e.message); }
 }
 async function reopenOutstanding(id,entityId){
@@ -3899,7 +3914,7 @@ async function reopenOutstanding(id,entityId){
     OUTSTANDING=fresh.map(mkOutstanding);
     renderKpiFin(agg());
     const o=OUTSTANDING.find(x=>x.id===id);
-    openOutstandingEntity(entityId,(o&&o.status==='paid')?'paid':'open');
+    refreshOutstandingRowsInPlace(entityId,(o&&o.status==='paid')?'paid':'open');
   }catch(e){ alert('Failed to undo: '+e.message); }
 }
 async function openOutstandingHistory(id,entityId,tab){
