@@ -3747,7 +3747,12 @@ function scrollOpeRowIntoView(id){
 // Only falls back to a full reopen when the scope/tab actually needs to change (entity
 // reassigned, or paid<->open flip) — those are real view changes, not just a data refresh.
 function refreshOutstandingRowsInPlace(entity,tab,focusId){
-  if(OPE_SCOPE_TYPE==='entity' && OPE_ID===entity && OPE_TAB===tab){
+  // The in-place path only makes sense if the row-list table is what's actually on screen right
+  // now (true for Delete/Undo, triggered straight from the list's own row menu). Save is called
+  // from the separate Edit-form modal, which has already navigated away from the list — #opeBody
+  // doesn't exist in that modal's markup, so without this check renderOutstandingEntityRows()
+  // would silently no-op and leave the user stuck looking at the stale Edit form forever.
+  if(OPE_SCOPE_TYPE==='entity' && OPE_ID===entity && OPE_TAB===tab && document.getElementById('opeBody')){
     OPE_ROWS=computeOpeRows(OPE_SCOPE_TYPE,OPE_ID,OPE_TAB);
     renderOutstandingEntityRows();
   } else {
