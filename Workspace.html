@@ -2932,7 +2932,7 @@ function mkOutstanding(o){
   return {id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,invNo:o.invoice_number,inv:o.invoice_date,due:o.due_date,
     amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date,docUrl:o.document_url,freq:o.frequency||'OTP'};
 }
-const FREQ_LABEL={OTP:'One Time Payment',REC:'Monthly Payment'};
+const FREQ_LABEL={OTP:'One Time Payment',REC:'Monthly Payment',PRG:'By Progress'};
 // Only render a value as a clickable link if it's a plain http(s) URL — guards against a
 // javascript:/data: URI (or anything else) being pasted into an editor-supplied link field.
 function safeDocUrl(u){ return u && /^https?:\/\//i.test(u) ? u : null; }
@@ -3638,7 +3638,8 @@ function outstandingRowHtml(o){
     : `<span style="font-size:11.5px;color:var(--muted)">—</span>`;
   const wrap='word-break:break-word;overflow-wrap:break-word;vertical-align:top';
   const va='vertical-align:top';
-  const freqCell=`<span title="${escH(FREQ_LABEL[o.freq]||o.freq)}" style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;padding:3px 7px;border-radius:20px;${o.freq==='REC'?'background:#e3e6fd;color:#4550d8':'background:#eef0f5;color:#4b5568'}">${escH(o.freq)}</span>`;
+  const FREQ_BADGE={REC:'background:#e3e6fd;color:#4550d8',PRG:'background:#fdf0d5;color:#a8681f'};
+  const freqCell=`<span title="${escH(FREQ_LABEL[o.freq]||o.freq)}" style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;padding:3px 7px;border-radius:20px;${FREQ_BADGE[o.freq]||'background:#eef0f5;color:#4b5568'}">${escH(o.freq)}</span>`;
   return `<tr>
     <td style="font-size:12.5px;${wrap}">${escH(o.invNo||'—')}</td>
     <td style="font-size:12.5px;${wrap}">${escH(o.vendor)}</td>
@@ -3753,7 +3754,7 @@ function openOutstandingDetail(scopeType,value,tab){
     +thFilterable('Invoice #','invno',txt('opef-invno','Filter invoice #…'))
     +thFilterable('Vendor','vendor',txt('opef-vendor','Filter vendor…'))
     +thFilterable(dimLabel,'cat',`<select id="opef-cat" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${dimVals.map(c=>`<option value="${escH(c)}">${escH(scopeType==='entity'?c:entName(c))}</option>`).join('')}</select>`)
-    +thFilterable('Frequency','freq',`<select id="opef-freq" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${['All','OTP','REC'].map(o=>`<option value="${o}">${o==='All'?'All':o+' — '+FREQ_LABEL[o]}</option>`).join('')}</select>`)
+    +thFilterable('Frequency','freq',`<select id="opef-freq" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${['All','OTP','REC','PRG'].map(o=>`<option value="${o}">${o==='All'?'All':o+' — '+FREQ_LABEL[o]}</option>`).join('')}</select>`)
     +thFilterable('Description','desc',txt('opef-desc','Filter description…'))
     +thFilterable('Invoice Date','inv',`${dt('opef-inv-from','From')}${dt('opef-inv-to','To')}`)
     +thFilterable('Due Date','due',`${dt('opef-due-from','From')}${dt('opef-due-to','To')}`)
@@ -3838,7 +3839,7 @@ async function openOutstandingEdit(id,entityId,tab){
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
     +opeField('Entity',`<select id="ope-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===o.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
     +opeField('Cost category',`<select id="ope-cat" style="width:100%;padding:8px 10px">${cats.map(c=>`<option value="${escH(c)}"${c===o.cat?' selected':''}>${escH(c)}</option>`).join('')}</select>`)
-    +opeField('Frequency',`<select id="ope-freq" style="width:100%;padding:8px 10px">${['OTP','REC'].map(f=>`<option value="${f}"${f===o.freq?' selected':''}>${f} — ${FREQ_LABEL[f]}</option>`).join('')}</select>`)
+    +opeField('Frequency',`<select id="ope-freq" style="width:100%;padding:8px 10px">${['OTP','REC','PRG'].map(f=>`<option value="${f}"${f===o.freq?' selected':''}>${f} — ${FREQ_LABEL[f]}</option>`).join('')}</select>`)
     +opeField('Invoice #',`<input id="ope-invno" value="${escH(o.invNo||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +opeField('Vendor',`<input id="ope-vendor" value="${escH(o.vendor)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +opeField('Invoice date',`<input id="ope-inv" type="date" value="${o.inv}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
@@ -4969,7 +4970,7 @@ async function renderEntryBody(){
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<select id="opd-cat" style="'+inp+'">'+opexCats.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
-      +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option></select>'
+      +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option><option value="PRG">PRG — By Progress</option></select>'
       +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
       +'<input id="opd-vendor" placeholder="Vendor name" style="'+inp+'">'
       +'<input id="opd-inv" type="date" aria-label="Invoice date" style="'+inp+'">'
@@ -4982,7 +4983,7 @@ async function renderEntryBody(){
       +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div>'
       +'<div id="opd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment) or REC (monthly payment); defaults to OTP if left blank or unrecognized.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment), REC (monthly payment), or PRG (paid by project progress/milestone); defaults to OTP if left blank or unrecognized.</div>'
       +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px">💡 <b>Bulk-editing existing data</b> (e.g. correcting Frequency for many rows at once): click "⬇ Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
       +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px">⬇ Download template (.xlsx)</button>'
       +'<div><label for="opd-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Choose Excel/CSV file</label>'
@@ -5365,6 +5366,7 @@ async function renderEntryBody(){
       const s=String(v||'').trim().toLowerCase();
       if(!s) return 'OTP';
       if(/^rec|month/.test(s)) return 'REC';
+      if(/^prg|progress/.test(s)) return 'PRG';
       if(/^otp|one.?time/.test(s)) return 'OTP';
       return 'OTP';
     }
