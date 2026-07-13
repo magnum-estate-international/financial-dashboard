@@ -4888,7 +4888,8 @@ async function renderEntryBody(){
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="opd-tab-one" type="button" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
       +'<button id="opd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
-      +'<button id="opd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;margin-left:auto">⬇ Export current data (.xlsx)</button>'
+      +'<select id="opd-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<button id="opd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Export current data (.xlsx)</button>'
       +'</div>'
       +'<div id="opd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
@@ -5233,13 +5234,15 @@ async function renderEntryBody(){
     if(tabBulk) tabBulk.onclick=()=>setTab('bulk');
     const expBtn=document.getElementById('opd-export');
     if(expBtn) expBtn.onclick=()=>{
+      const entSel=document.getElementById('opd-export-ent').value;
       const rows=[['Entity','Invoice #','Vendor','Category','Frequency','Invoice Date','Due Date','Amount','Paid Amount','Status','Paid Date','Description','Document Link']];
-      OUTSTANDING.slice().sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0).forEach(o=>{
+      OUTSTANDING.filter(o=>entSel==='all'||o.e===entSel).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0).forEach(o=>{
         rows.push([eName(o.e),o.invNo||'',o.vendor,o.cat||'',o.freq||'OTP',o.inv,o.due,o.amt,o.paidAmt||0,o.status,o.paidDate||'',o.desc,o.docUrl||'']);
       });
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
-      XLSX.writeFile(wb,'outstanding_payables_export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+      const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
+      XLSX.writeFile(wb,'outstanding_payables_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
     };
     const opexCats2=cats.filter(c=>c.kind==='opex');
     const tplBtn=document.getElementById('opd-template');
