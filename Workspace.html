@@ -110,6 +110,17 @@ select:focus-visible{outline:none;border-color:#5b67f1;box-shadow:0 0 0 3px rgba
 .bd-row .bp{font-size:10.5px;color:var(--muted);font-weight:500;margin-left:5px}
 .bd-bar{grid-column:1/-1;height:6px;border-radius:4px;background:#edeff5;overflow:hidden}
 .bd-bar span{display:block;height:100%;border-radius:4px}
+.prio-list{display:flex;flex-direction:column;gap:10px}
+.prio-row{display:flex;gap:10px;align-items:flex-start;padding-bottom:10px;border-bottom:1px solid #f0f1f6}
+.prio-row:last-child{border-bottom:0;padding-bottom:0}
+.prio-rank{flex:none;width:22px;height:22px;border-radius:50%;background:#eef0f5;color:var(--muted);font-size:11px;font-weight:800;display:grid;place-items:center;margin-top:1px}
+.prio-body{flex:1;min-width:0}
+.prio-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.prio-vendor{font-size:12.5px;font-weight:700;color:var(--blue-900);cursor:pointer}
+.prio-amt{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--red)}
+.prio-reason{font-size:11px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.prio-tag{display:inline-flex;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:2px 7px;border-radius:20px;color:#fff}
+.prio-tag.crit{background:#c73e57}.prio-tag.warn{background:#d98a24}.prio-tag.rec{background:#4550d8}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;
   padding:10px;border-bottom:1px solid #e6e8f0;background:var(--card)}
@@ -322,10 +333,17 @@ a{color:#4550d8}
 <div class="divlabel" id="secRecoLabel">📌 Management Alert</div>
 <div id="recoGrid" class="reco-grid"></div>
 
-<div class="panel" style="margin-bottom:16px" id="secLiabTopLabel">
-  <h2>Outstanding Liability — Top 10 Vendors</h2>
-  <div class="pn-sub" id="liabTopSub"></div>
-  <div class="bd" id="liabTopVendor"></div>
+<div class="grid cols-eq" style="margin-bottom:16px">
+  <div class="panel" id="secLiabTopLabel">
+    <h2>Outstanding Liability — Top 10 Vendors</h2>
+    <div class="pn-sub" id="liabTopSub"></div>
+    <div class="bd" id="liabTopVendor"></div>
+  </div>
+  <div class="panel" id="secLiabPriorityLabel">
+    <h2>Payment Priority Recommendations</h2>
+    <div class="pn-sub" id="liabPrioritySub"></div>
+    <div id="liabPriority"></div>
+  </div>
 </div>
 
 <div class="divlabel" id="secBalLabel">🏦 Balance Reconciliation — Opening / Closing Balance</div>
@@ -2962,6 +2980,54 @@ function renderLiabTopVendor(){
   }
   el.innerHTML=h;
 }
+// Automatic payment-priority recommendation: ranks unpaid invoices by urgency so management
+// can see who to pay first without manually scanning every row. Not a black-box score — every
+// row shows the plain-language reason (days overdue / due soon / recurring) behind its ranking.
+function liabPriorityList(){
+  const open=outstandingOpen();
+  const scored=[];
+  open.forEach(o=>{
+    const d=daysOverdue(o.due);
+    let tier=null,label=null;
+    if(d>=30){ tier='crit'; label=`${d} days overdue`; }
+    else if(d>0){ tier='warn'; label=`${d} day${d===1?'':'s'} overdue`; }
+    else if(d===0){ tier='warn'; label='Due today'; }
+    else if(d>=-7){ tier='warn'; label=`Due in ${-d} day${(-d)===1?'':'s'}`; }
+    else if(o.freq==='REC' && d>=-30){ tier='rec'; label=`Recurring — due in ${-d} days`; }
+    if(!tier) return;
+    const score=d+(o.freq==='REC'?3:0);
+    scored.push({o,tier,label,score});
+  });
+  scored.sort((a,b)=>b.score-a.score);
+  return scored;
+}
+function renderLiabPriority(){
+  const el=document.getElementById('liabPriority'); if(!el) return;
+  const sub=document.getElementById('liabPrioritySub');
+  const scored=liabPriorityList();
+  if(!scored.length){
+    if(sub) sub.textContent='No outstanding liabilities in this scope';
+    el.innerHTML=`<p style="color:var(--muted);font-size:12.5px">Nothing flagged — no overdue or soon-due invoices in this scope.</p>`;
+    return;
+  }
+  const TAG_LABEL={crit:'Critical',warn:'Urgent',rec:'Recurring'};
+  const top=scored.slice(0,8);
+  const topTot=top.reduce((s,r)=>s+r.o.remaining,0);
+  if(sub) sub.textContent=`${scored.length} invoice${scored.length===1?'':'s'} flagged for priority payment (IDR ${fmt(topTot)}${scored.length>top.length?` of top ${top.length} shown`:''}) · click a vendor for invoice detail`;
+  el.innerHTML=`<div class="prio-list">${top.map((r,i)=>{
+    const o=r.o;
+    return `<div class="prio-row">
+      <div class="prio-rank">${i+1}</div>
+      <div class="prio-body">
+        <div class="prio-top">
+          <span class="prio-vendor" onclick="openOutstandingVendor('${encodeURIComponent(o.vendor)}')">${escH(o.vendor)} ›</span>
+          <span class="prio-amt">${fmt(o.remaining)}</span>
+        </div>
+        <div class="prio-reason"><span class="prio-tag ${r.tier}">${TAG_LABEL[r.tier]}</span>${r.label} · ${escH(entName(o.e))}</div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
 function daysOverdue(due){
   const d=new Date(due+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
   return Math.round((now-d)/86400000);
@@ -3981,7 +4047,7 @@ function renderBalances(){
 
 function renderAll(){
   const a=agg();
-  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderDataHealth();renderBalances();
+  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderDataHealth();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
