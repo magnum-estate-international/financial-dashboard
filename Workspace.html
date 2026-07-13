@@ -4465,6 +4465,10 @@ async function adminAddBatch(path, arr){
   const r=await authedFetch(SB_URL+'/rest/v1/'+path,{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(arr)});
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
 }
+async function adminUpdateOne(path, id, fields){
+  const r=await authedFetch(SB_URL+'/rest/v1/'+path+'?id=eq.'+id,{method:'PATCH',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(fields)});
+  if(!r.ok) throw new Error('ID '+id+': '+((await r.text())||('HTTP '+r.status)));
+}
 function buildAccessEditor(container, groups, entsByGroup, initGroups, initEnts){
   const gset=new Set(initGroups||[]), eset=new Set(initEnts||[]);
   let html='<div style="border:1px solid #e2e8f0;border-radius:12px;padding:8px 12px;max-height:240px;overflow:auto;font-size:13px;background:#fbfcfe">';
@@ -4979,6 +4983,7 @@ async function renderEntryBody(){
       +'</div>'
       +'<div id="opd-bulk" style="display:none">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment) or REC (monthly payment); defaults to OTP if left blank or unrecognized.</div>'
+      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px">💡 <b>Bulk-editing existing data</b> (e.g. correcting Frequency for many rows at once): click "⬇ Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
       +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px">⬇ Download template (.xlsx)</button>'
       +'<div><label for="opd-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Choose Excel/CSV file</label>'
       +'<input id="opd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
@@ -5305,9 +5310,9 @@ async function renderEntryBody(){
     const expBtn=document.getElementById('opd-export');
     if(expBtn) expBtn.onclick=()=>{
       const entSel=document.getElementById('opd-export-ent').value;
-      const rows=[['Entity','Invoice #','Vendor','Category','Frequency','Invoice Date','Due Date','Amount','Paid Amount','Status','Paid Date','Description','Document Link']];
+      const rows=[['ID','Entity','Invoice #','Vendor','Category','Frequency','Invoice Date','Due Date','Amount','Paid Amount','Status','Paid Date','Description','Document Link']];
       OUTSTANDING.filter(o=>entSel==='all'||o.e===entSel).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0).forEach(o=>{
-        rows.push([eName(o.e),o.invNo||'',o.vendor,o.cat||'',o.freq||'OTP',o.inv,o.due,o.amt,o.paidAmt||0,o.status,o.paidDate||'',o.desc,o.docUrl||'']);
+        rows.push([o.id,eName(o.e),o.invNo||'',o.vendor,o.cat||'',o.freq||'OTP',o.inv,o.due,o.amt,o.paidAmt||0,o.status,o.paidDate||'',o.desc,o.docUrl||'']);
       });
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
@@ -5390,9 +5395,10 @@ async function renderEntryBody(){
       const el=document.getElementById('opd-preview'); if(!el) return;
       if(!OPD_ROWS.length){ el.innerHTML=''; return; }
       const valid=OPD_ROWS.filter(r=>!r.error);
-      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Frequency</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Frequency</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
       OPD_ROWS.forEach((r,i)=>{
         h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+          +'<td style="font-size:11px;font-weight:700;color:'+(r.id?'#4550d8':'#2b7a4b')+'">'+(r.id?('Update #'+r.id):'New')+'</td>'
           +'<td style="font-size:12px">'+escH(r.entityMatch?eName(r.entityMatch):(r.entityRaw||'—'))+'</td>'
           +'<td style="font-size:12px">'+escH(r.invNo||'—')+'</td>'
           +'<td style="font-size:12px">'+escH(r.vendor||'—')+'</td>'
@@ -5405,7 +5411,8 @@ async function renderEntryBody(){
           +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
       });
       h+='</tbody></table></div>';
-      h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+OPD_ROWS.length+' row(s) ready to import'+(OPD_ROWS.length>valid.length?' — fix the flagged rows in your file and re-upload to include them':'')+'.</div>';
+      const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length;
+      h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+OPD_ROWS.length+' row(s) ready ('+toInsertN+' new, '+toUpdateN+' update)'+(OPD_ROWS.length>valid.length?' — fix the flagged rows in your file and re-upload to include them':'')+'.</div>';
       h+='<button id="opd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' outstanding '+(valid.length===1?'liability':'liabilities')+'</button>';
       h+='<div id="opd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
       el.innerHTML=h;
@@ -5413,13 +5420,15 @@ async function renderEntryBody(){
       if(impBtn) impBtn.onclick=async()=>{
         impBtn.disabled=true; impBtn.textContent='Importing…';
         try{
-          const payload=valid.map(r=>({entity_code:r.entityMatch,category:r.category,frequency:r.freq,invoice_number:r.invNo||null,vendor_name:r.vendor,description:r.desc,document_url:r.docUrl||null,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt}));
-          await adminAddBatch('outstanding_payables',payload);
+          const fieldsOf=r=>({entity_code:r.entityMatch,category:r.category,frequency:r.freq,invoice_number:r.invNo||null,vendor_name:r.vendor,description:r.desc,document_url:r.docUrl||null,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt});
+          const toInsert=valid.filter(r=>!r.id), toUpdate=valid.filter(r=>r.id);
+          if(toInsert.length) await adminAddBatch('outstanding_payables',toInsert.map(fieldsOf));
+          if(toUpdate.length) await Promise.all(toUpdate.map(r=>adminUpdateOne('outstanding_payables',r.id,fieldsOf(r))));
           const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
           OUTSTANDING=fresh.map(mkOutstanding);
           renderKpiFin(agg());
           document.getElementById('opd-import-msg').style.color='#2b7a4b';
-          document.getElementById('opd-import-msg').textContent='✓ Imported '+payload.length+' outstanding '+(payload.length===1?'liability':'liabilities')+'.';
+          document.getElementById('opd-import-msg').textContent='✓ Added '+toInsert.length+' new, updated '+toUpdate.length+' existing.';
           impBtn.textContent='Imported ✓';
         }catch(e){
           document.getElementById('opd-import-msg').style.color='#b3261e';
@@ -5444,11 +5453,14 @@ async function renderEntryBody(){
       if(!rows.length){ OPD_ROWS=[]; renderOpdPreview(); return; }
       const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
       const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
-      const kEnt=col(['entity','pt']), kInvNo=col(['invoice #','invoice no','invoice number']), kVendor=col(['vendor','vendor name']), kCat=col(['category','cost category']),
+      const kId=col(['id','row id','payable id']), kEnt=col(['entity','pt']), kInvNo=col(['invoice #','invoice no','invoice number']), kVendor=col(['vendor','vendor name']), kCat=col(['category','cost category']),
         kFreq=col(['frequency','freq','payment frequency']),
         kInv=col(['invoice date','invoice']), kDue=col(['due date','due']), kAmt=col(['amount','amount (idr)','amount idr']),
         kDesc=col(['description','transaction description']), kDocUrl=col(['document link','document url','doc link','doc url']);
       OPD_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+        const idRaw=kId!=null?String(r[kId]||'').trim():'';
+        const id=idRaw?Number(idRaw):null;
+        const existing=id!=null&&!isNaN(id)?OUTSTANDING.find(x=>x.id===id):null;
         const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByName(entityRaw);
         const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategory(catRaw);
         const freq=normalizeFreq(kFreq!=null?r[kFreq]:'');
@@ -5459,14 +5471,17 @@ async function renderEntryBody(){
         const inv=kInv!=null?parseFlexDate(r[kInv]):null, due=kDue!=null?parseFlexDate(r[kDue]):null;
         const amt=kAmt!=null?Number(r[kAmt]):NaN;
         let error=null;
-        if(!entityMatch) error='Entity not recognized';
+        if(idRaw && (id==null||isNaN(id))) error='Invalid ID';
+        else if(idRaw && !existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
+        else if(!entityMatch) error='Entity not recognized';
         else if(!catMatch) error='Category not recognized — must match one of the existing cost categories exactly';
         else if(!vendor) error='Missing vendor';
         else if(!desc) error='Missing description';
         else if(!inv) error='Invalid invoice date';
         else if(!due) error='Invalid due date';
         else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
-        return {entityRaw,entityMatch,category:catMatch||catRaw,freq,invNo,vendor,desc,docUrl,inv,due,amt,error};
+        else if(existing && amt<existing.paidAmt) error='Amount can\'t be less than the '+fmtIDR(existing.paidAmt)+' already recorded as paid for this ID';
+        return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,freq,invNo,vendor,desc,docUrl,inv,due,amt,error};
       });
       renderOpdPreview();
     };
