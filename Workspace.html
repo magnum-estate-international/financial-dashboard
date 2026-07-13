@@ -2912,8 +2912,9 @@ function renderKpiFin(a){
 function mkOutstanding(o){
   const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
   return {id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,invNo:o.invoice_number,inv:o.invoice_date,due:o.due_date,
-    amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date,docUrl:o.document_url};
+    amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date,docUrl:o.document_url,freq:o.frequency||'OTP'};
 }
+const FREQ_LABEL={OTP:'One Time Payment',REC:'Monthly Payment'};
 // Only render a value as a clickable link if it's a plain http(s) URL — guards against a
 // javascript:/data: URI (or anything else) being pasted into an editor-supplied link field.
 function safeDocUrl(u){ return u && /^https?:\/\//i.test(u) ? u : null; }
@@ -3571,10 +3572,12 @@ function outstandingRowHtml(o){
     : `<span style="font-size:11.5px;color:var(--muted)">—</span>`;
   const wrap='word-break:break-word;overflow-wrap:break-word;vertical-align:top';
   const va='vertical-align:top';
+  const freqCell=`<span title="${escH(FREQ_LABEL[o.freq]||o.freq)}" style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;padding:3px 7px;border-radius:20px;${o.freq==='REC'?'background:#e3e6fd;color:#4550d8':'background:#eef0f5;color:#4b5568'}">${escH(o.freq)}</span>`;
   return `<tr>
     <td style="font-size:12.5px;${wrap}">${escH(o.invNo||'—')}</td>
     <td style="font-size:12.5px;${wrap}">${escH(o.vendor)}</td>
     <td style="font-size:12px;color:var(--muted);${wrap}">${OPE_SCOPE_TYPE==='entity'?escH(o.cat||'—'):`<span class="pill" style="background:${ENT[o.e].color}22;color:${ENT[o.e].color};white-space:normal;line-height:1.3">${escH(ENT[o.e].name)}</span>`}</td>
+    <td style="${va}">${freqCell}</td>
     <td style="font-size:12.5px;${wrap}">${escH(o.desc)}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px;${va}">${o.inv}</td>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px;${va}">${o.due}</td>
@@ -3603,7 +3606,7 @@ function openOutstanding(view){
   showModal('Outstanding Liability',h);
 }
 let OPE_ID=null, OPE_TAB='open', OPE_ROWS=[], OPE_SCOPE_TYPE='entity';
-const OPE_FKEYS={invno:['opef-invno'],vendor:['opef-vendor'],cat:['opef-cat'],desc:['opef-desc'],inv:['opef-inv-from','opef-inv-to'],due:['opef-due-from','opef-due-to'],status:['opef-status'],amt:['opef-amt-min','opef-amt-max']};
+const OPE_FKEYS={invno:['opef-invno'],vendor:['opef-vendor'],cat:['opef-cat'],freq:['opef-freq'],desc:['opef-desc'],inv:['opef-inv-from','opef-inv-to'],due:['opef-due-from','opef-due-to'],status:['opef-status'],amt:['opef-amt-min','opef-amt-max']};
 function thFilterable(label,key,controlsHtml){
   return `<th><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="opef-btn-${key}" onclick="toggleOpeFilterPop('${key}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
     +`<div id="opef-pop-${key}" class="ope-filter-pop" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:10px;z-index:100001;min-width:170px">`
@@ -3675,11 +3678,12 @@ function openOutstandingDetail(scopeType,value,tab){
     </div>
   </div>`;
   h+=`<div class="table-scroll" style="max-height:440px"><table style="table-layout:fixed;width:100%">`
-    +`<colgroup><col style="width:80px"><col style="width:110px"><col style="width:${scopeType==='category'?'150':'110'}px"><col><col style="width:95px"><col style="width:95px"><col style="width:115px"><col style="width:120px"><col style="width:90px"><col style="width:40px"></colgroup>`
+    +`<colgroup><col style="width:80px"><col style="width:110px"><col style="width:${scopeType==='category'?'150':'110'}px"><col style="width:75px"><col><col style="width:95px"><col style="width:95px"><col style="width:115px"><col style="width:120px"><col style="width:90px"><col style="width:40px"></colgroup>`
     +`<thead><tr>`
     +thFilterable('Invoice #','invno',txt('opef-invno','Filter invoice #…'))
     +thFilterable('Vendor','vendor',txt('opef-vendor','Filter vendor…'))
     +thFilterable(dimLabel,'cat',`<select id="opef-cat" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${dimVals.map(c=>`<option value="${escH(c)}">${escH(scopeType==='entity'?c:entName(c))}</option>`).join('')}</select>`)
+    +thFilterable('Frequency','freq',`<select id="opef-freq" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${['All','OTP','REC'].map(o=>`<option value="${o}">${o==='All'?'All':o+' — '+FREQ_LABEL[o]}</option>`).join('')}</select>`)
     +thFilterable('Description','desc',txt('opef-desc','Filter description…'))
     +thFilterable('Invoice Date','inv',`${dt('opef-inv-from','From')}${dt('opef-inv-to','To')}`)
     +thFilterable('Due Date','due',`${dt('opef-due-from','From')}${dt('opef-due-to','To')}`)
@@ -3700,7 +3704,7 @@ function clearOutstandingEntityFilters(){
 function updateOpeFilterIndicators(){
   const g=id=>{const el=document.getElementById(id); return el?el.value:'';};
   const active={
-    invno:!!g('opef-invno'), vendor:!!g('opef-vendor'), cat:g('opef-cat')&&g('opef-cat')!=='All', desc:!!g('opef-desc'),
+    invno:!!g('opef-invno'), vendor:!!g('opef-vendor'), cat:g('opef-cat')&&g('opef-cat')!=='All', freq:g('opef-freq')&&g('opef-freq')!=='All', desc:!!g('opef-desc'),
     inv:!!g('opef-inv-from')||!!g('opef-inv-to'), due:!!g('opef-due-from')||!!g('opef-due-to'),
     status:g('opef-status')&&g('opef-status')!=='All', amt:!!g('opef-amt-min')||!!g('opef-amt-max'),
   };
@@ -3715,7 +3719,7 @@ function renderOutstandingEntityRows(){
   const g=id=>{const el=document.getElementById(id); return el?el.value:'';};
   const invNo=g('opef-invno').toLowerCase();
   const vendor=g('opef-vendor').toLowerCase(), desc=g('opef-desc').toLowerCase();
-  const cat=g('opef-cat')||'All', status=g('opef-status')||'All';
+  const cat=g('opef-cat')||'All', status=g('opef-status')||'All', freq=g('opef-freq')||'All';
   const invFrom=g('opef-inv-from'), invTo=g('opef-inv-to'), dueFrom=g('opef-due-from'), dueTo=g('opef-due-to');
   const amtMin=g('opef-amt-min'), amtMax=g('opef-amt-max');
   const search=g('opef-search').toLowerCase().trim();
@@ -3725,6 +3729,7 @@ function renderOutstandingEntityRows(){
     if(vendor && !o.vendor.toLowerCase().includes(vendor)) return false;
     if(desc && !o.desc.toLowerCase().includes(desc)) return false;
     if(cat!=='All' && (OPE_SCOPE_TYPE==='entity'?(o.cat||'—'):o.e)!==cat) return false;
+    if(freq!=='All' && o.freq!==freq) return false;
     if(OPE_TAB==='open' && status!=='All'){
       const od=daysOverdue(o.due);
       const lbl=od>0?'Overdue':(od===0?'Due today':'Not yet due');
@@ -3739,8 +3744,8 @@ function renderOutstandingEntityRows(){
     return true;
   });
   const tot=filtered.reduce((s,o)=>s+(OPE_TAB==='open'?o.remaining:o.amt),0);
-  body.innerHTML=(filtered.length?filtered.map(outstandingRowHtml).join(''):`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">No ${OPE_TAB} payables match these filters</td></tr>`)
-    +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="7"><strong>TOTAL${filtered.length!==OPE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td><td></td></tr>`;
+  body.innerHTML=(filtered.length?filtered.map(outstandingRowHtml).join(''):`<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px">No ${OPE_TAB} payables match these filters</td></tr>`)
+    +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="8"><strong>TOTAL${filtered.length!==OPE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td><td></td></tr>`;
   updateOpeFilterIndicators();
 }
 let OPEX_CATS_G=null;
@@ -3763,6 +3768,7 @@ async function openOutstandingEdit(id,entityId,tab){
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
     +opeField('Entity',`<select id="ope-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===o.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
     +opeField('Cost category',`<select id="ope-cat" style="width:100%;padding:8px 10px">${cats.map(c=>`<option value="${escH(c)}"${c===o.cat?' selected':''}>${escH(c)}</option>`).join('')}</select>`)
+    +opeField('Frequency',`<select id="ope-freq" style="width:100%;padding:8px 10px">${['OTP','REC'].map(f=>`<option value="${f}"${f===o.freq?' selected':''}>${f} — ${FREQ_LABEL[f]}</option>`).join('')}</select>`)
     +opeField('Invoice #',`<input id="ope-invno" value="${escH(o.invNo||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +opeField('Vendor',`<input id="ope-vendor" value="${escH(o.vendor)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +opeField('Invoice date',`<input id="ope-inv" type="date" value="${o.inv}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
@@ -3780,6 +3786,7 @@ async function saveOutstandingEdit(id,entityId,tab){
   const o=OUTSTANDING.find(x=>x.id===id);
   const entity=document.getElementById('ope-ent').value;
   const category=document.getElementById('ope-cat').value;
+  const frequency=document.getElementById('ope-freq').value;
   const invNo=document.getElementById('ope-invno').value.trim();
   const vendor=document.getElementById('ope-vendor').value.trim();
   const desc=document.getElementById('ope-desc').value.trim();
@@ -3793,7 +3800,7 @@ async function saveOutstandingEdit(id,entityId,tab){
   try{
     await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({entity_code:entity,category,invoice_number:invNo||null,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt,document_url:docUrl||null})});
+      body:JSON.stringify({entity_code:entity,category,frequency,invoice_number:invNo||null,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt,document_url:docUrl||null})});
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
     renderKpiFin(agg());
@@ -4886,6 +4893,7 @@ async function renderEntryBody(){
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<select id="opd-cat" style="'+inp+'">'+opexCats.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
+      +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option></select>'
       +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
       +'<input id="opd-vendor" placeholder="Vendor name" style="'+inp+'">'
       +'<input id="opd-inv" type="date" aria-label="Invoice date" style="'+inp+'">'
@@ -4898,7 +4906,7 @@ async function renderEntryBody(){
       +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div>'
       +'<div id="opd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment) or REC (monthly payment); defaults to OTP if left blank or unrecognized.</div>'
       +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px">⬇ Download template (.xlsx)</button>'
       +'<div><label for="opd-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Choose Excel/CSV file</label>'
       +'<input id="opd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
@@ -5188,6 +5196,7 @@ async function renderEntryBody(){
     const msg=document.getElementById('opd-msg'); setMsg('opd-msg','');
     const entity=document.getElementById('opd-ent').value;
     const category=document.getElementById('opd-cat').value;
+    const frequency=document.getElementById('opd-freq').value;
     const invNo=document.getElementById('opd-invno').value.trim();
     const vendor=document.getElementById('opd-vendor').value.trim();
     const desc=document.getElementById('opd-desc').value.trim();
@@ -5199,7 +5208,7 @@ async function renderEntryBody(){
     if(docUrl && !safeDocUrl(docUrl)) return setMsg('opd-msg','Document link must start with http:// or https://');
     opdSend.disabled=true; opdSend.textContent='Saving…';
     try{
-      await adminAddBatch('outstanding_payables',[{entity_code:entity,category,invoice_number:invNo||null,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt,document_url:docUrl||null}]);
+      await adminAddBatch('outstanding_payables',[{entity_code:entity,category,frequency,invoice_number:invNo||null,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt,document_url:docUrl||null}]);
       const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
       OUTSTANDING=fresh.map(mkOutstanding);
       renderKpiFin(agg());
@@ -5224,8 +5233,8 @@ async function renderEntryBody(){
     const opexCats2=cats.filter(c=>c.kind==='opex');
     const tplBtn=document.getElementById('opd-template');
     if(tplBtn) tplBtn.onclick=()=>{
-      const rows=[['Entity','Invoice #','Vendor','Category','Invoice Date','Due Date','Amount','Description','Document Link'],
-        [eName(EIDS[0]),'INV-0001','Sample Vendor',opexCats2[0]?opexCats2[0].name:'Other Operating Expense','2026-07-01','2026-07-31',1000000,'Sample transaction description','https://drive.google.com/…']];
+      const rows=[['Entity','Invoice #','Vendor','Category','Frequency','Invoice Date','Due Date','Amount','Description','Document Link'],
+        [eName(EIDS[0]),'INV-0001','Sample Vendor',opexCats2[0]?opexCats2[0].name:'Other Operating Expense','OTP','2026-07-01','2026-07-31',1000000,'Sample transaction description','https://drive.google.com/…']];
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
       XLSX.writeFile(wb,'outstanding_payables_template.xlsx');
@@ -5261,6 +5270,15 @@ async function renderEntryBody(){
       'land':'Land','land installment':'Land','land purchase':'Land',
       'commission':'Commission','sales commission':'Commission','agent commission':'Commission','sales comission':'Commission','agent comission':'Commission',
     };
+    // Defaults to OTP for blank/unrecognized values — Frequency is a soft classification aid,
+    // not something worth hard-blocking an import over (unlike Entity/Category matches).
+    function normalizeFreq(v){
+      const s=String(v||'').trim().toLowerCase();
+      if(!s) return 'OTP';
+      if(/^rec|month/.test(s)) return 'REC';
+      if(/^otp|one.?time/.test(s)) return 'OTP';
+      return 'OTP';
+    }
     function findCategory(name){
       if(!name) return null;
       const n=String(name).trim().toLowerCase();
@@ -5288,13 +5306,14 @@ async function renderEntryBody(){
       const el=document.getElementById('opd-preview'); if(!el) return;
       if(!OPD_ROWS.length){ el.innerHTML=''; return; }
       const valid=OPD_ROWS.filter(r=>!r.error);
-      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Frequency</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
       OPD_ROWS.forEach((r,i)=>{
         h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
           +'<td style="font-size:12px">'+escH(r.entityMatch?eName(r.entityMatch):(r.entityRaw||'—'))+'</td>'
           +'<td style="font-size:12px">'+escH(r.invNo||'—')+'</td>'
           +'<td style="font-size:12px">'+escH(r.vendor||'—')+'</td>'
           +'<td style="font-size:12px">'+escH(r.category||'—')+'</td>'
+          +'<td style="font-size:12px">'+escH(r.freq||'OTP')+'</td>'
           +'<td style="font-size:12px;white-space:nowrap">'+(r.inv||'—')+'</td>'
           +'<td style="font-size:12px;white-space:nowrap">'+(r.due||'—')+'</td>'
           +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
@@ -5310,7 +5329,7 @@ async function renderEntryBody(){
       if(impBtn) impBtn.onclick=async()=>{
         impBtn.disabled=true; impBtn.textContent='Importing…';
         try{
-          const payload=valid.map(r=>({entity_code:r.entityMatch,category:r.category,invoice_number:r.invNo||null,vendor_name:r.vendor,description:r.desc,document_url:r.docUrl||null,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt}));
+          const payload=valid.map(r=>({entity_code:r.entityMatch,category:r.category,frequency:r.freq,invoice_number:r.invNo||null,vendor_name:r.vendor,description:r.desc,document_url:r.docUrl||null,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt}));
           await adminAddBatch('outstanding_payables',payload);
           const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
           OUTSTANDING=fresh.map(mkOutstanding);
@@ -5342,11 +5361,13 @@ async function renderEntryBody(){
       const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
       const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
       const kEnt=col(['entity','pt']), kInvNo=col(['invoice #','invoice no','invoice number']), kVendor=col(['vendor','vendor name']), kCat=col(['category','cost category']),
+        kFreq=col(['frequency','freq','payment frequency']),
         kInv=col(['invoice date','invoice']), kDue=col(['due date','due']), kAmt=col(['amount','amount (idr)','amount idr']),
         kDesc=col(['description','transaction description']), kDocUrl=col(['document link','document url','doc link','doc url']);
       OPD_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
         const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByName(entityRaw);
         const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategory(catRaw);
+        const freq=normalizeFreq(kFreq!=null?r[kFreq]:'');
         const invNo=kInvNo!=null?String(r[kInvNo]||'').trim():'';
         const vendor=kVendor!=null?String(r[kVendor]||'').trim():'';
         const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
@@ -5361,7 +5382,7 @@ async function renderEntryBody(){
         else if(!inv) error='Invalid invoice date';
         else if(!due) error='Invalid due date';
         else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
-        return {entityRaw,entityMatch,category:catMatch||catRaw,invNo,vendor,desc,docUrl,inv,due,amt,error};
+        return {entityRaw,entityMatch,category:catMatch||catRaw,freq,invNo,vendor,desc,docUrl,inv,due,amt,error};
       });
       renderOpdPreview();
     };
