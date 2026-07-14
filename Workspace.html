@@ -2965,7 +2965,7 @@ function renderKpiFin(a){
       ${hint('var(--blue-300)')}
       <div class="lab">Net Financing</div>
       <div class="big ${a.finIn+a.capDep-a.finOut>=0?'pos':'neg'}">${a.finIn+a.capDep-a.finOut>=0?'+':'–'} ${fmt(Math.abs(a.finIn+a.capDep-a.finOut))}</div>
-      <div class="meta">In ${fmt(a.finIn+a.capDep)}<br>Out ${fmt(a.finOut)}</div>
+      <div class="meta">Financing inflows &amp; outflows, net</div>
     </div>
     <div class="pcard dark clickable" onclick="openDetail('fullnet')">
       ${hint('rgba(255,255,255,.65)')}
