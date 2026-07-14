@@ -3446,16 +3446,12 @@ function openBDItem(type,encKey){
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:16px 0 8px">Transaction Detail${tx.length?` (${tx.length})`:''}</h4>`;
   if(tx.length||hasResidual){
     let s=0;
-    h+=`<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Date</th><th>Entity</th><th>Description</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
-    tx.forEach(x=>{s+=x.amt;
-      const neg=x.amt<0;
-      const sign = x.contra ? '–' : (isRev?'+':'–');
-      const amtCls = x.contra ? 'amb' : cls;
-      const tagHtml = x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '';
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td>${pill(x.e)}</td><td style="font-size:12.5px">${x.desc}${tagHtml}</td><td class="num ${amtCls}">${sign} ${fmt(Math.abs(x.amt))}</td></tr>`;});
-    Object.entries(residual).forEach(([id,r])=>{s+=r;
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[MONTH]||MONTH}</td><td>${pill(id)}</td><td style="font-size:12.5px;color:var(--muted)">Konsolidasi dari total kategori laporan bank (rincian per-transaksi belum dimuat) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">ringkasan</span></td><td class="num ${cls}">${isRev?'+':'–'} ${fmt(Math.abs(r))}</td></tr>`;});
-    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong>${fmt(s)}</strong></td></tr></tbody></table></div>`;
+    const backCallBD=`openBDItem('${type}','${encKey}')`;
+    h+=txSearchBoxHtml('bditem-search');
+    h+=`<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Date</th><th>Entity</th><th>Category</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+    tx.forEach(x=>{s+=x.amt; h+=txRowHtml(x,type,cls,isRev,true,backCallBD);});
+    Object.entries(residual).forEach(([id,r])=>{s+=r; h+=residualRowHtml(pill(id),r,cls,isRev,true);});
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong>${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
     if(hasResidual) h+=`<p style="color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:8px"><b>Summary</b> rows represent entities whose figures are consolidated from bank-report category totals, so the TOTAL here matches the <b>By Entity</b> TOTAL above.</p>`;
   } else {
     h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals — their largest transactions appear under <b>"Key Transactions of the Month"</b>.</p>`;
@@ -3481,26 +3477,99 @@ function openCatEntity(type,encKey,id){
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openBDItem('${type}','${encKey}')">‹ Back to breakdown</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">${ENT[id].name} — ${key}${lbl?` <span style="font-weight:400;color:var(--muted);font-size:11px">(${lbl})</span>`:''}</h4>`;
   let s=0;
+  const backCallCE=`openCatEntity('${type}','${encKey}','${id}')`;
   if(tx.length){
-    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
-    tx.forEach(x=>{s+=x.amt;
-      const sign = x.contra ? '–' : (isRev?'+':'–');
-      const amtCls = x.contra ? 'amb' : cls;
-      const tagHtml = x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '';
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}${tagHtml}</td><td class="num ${amtCls}">${sign} ${fmt(Math.abs(x.amt))}</td></tr>`;});
+    h+=txSearchBoxHtml('ce-search');
+    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+    tx.forEach(x=>{s+=x.amt; h+=txRowHtml(x,type,cls,isRev,false,backCallCE);});
   } else {
     h+=`<table><tbody>`;
   }
   const residual=val-s;
   if(Math.abs(residual)>0.5){
-    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[MONTH]||MONTH}</td><td style="font-size:12.5px;color:var(--muted)">Consolidated from the bank-report category total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td><td class="num ${cls}">${isRev?'+':'–'} ${fmt(Math.abs(residual))}</td></tr>`;
+    h+=residualRowHtml(null,residual,cls,isRev,false);
   }
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?2:1}"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(val)}</strong></td></tr></tbody></table>`;
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(val)}</strong></td><td></td></tr></tbody></table>`;
   if(tx.length) h+=`</div>`;
   if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this entity in scope.</p>`;
   showModal(`${ENT[id].name} — ${key}`,h);
 }
 function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
+// Renders one transaction (or residual/summary) row for the OpEx/Revenue drill-down tables,
+// with a Category column and an Edit action — mirrors the look of the Outstanding Liability
+// table. Edit is only offered for genuine transaction rows (x.id set); residual "not itemized"
+// summary rows have no underlying database row to edit. Edit only ever touches description/
+// category (raw_label) — never amount or date, since those feed entity_period_totals directly
+// and editing them here would desync the Data Health reconciliation check.
+function txRowHtml(x,type,cls,isRev,showEntity,backCall){
+  const canEdit=MY_ROLE==='editor';
+  const sign = x.contra ? '–' : (isRev?'+':'–');
+  const amtCls = x.contra ? 'amb' : cls;
+  const tagHtml = x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '';
+  const entCell = showEntity ? `<td>${pill(x.e)}</td>` : '';
+  const editCell = (canEdit && x.id!=null)
+    ? `<td style="white-space:nowrap"><button type="button" onclick="openTxEdit(${x.id},${JSON.stringify(backCall)})" title="Edit" style="border:0;background:none;cursor:pointer;padding:4px 6px;color:var(--blue-300)">${ICON.edit()}</button></td>`
+    : `<td></td>`;
+  return `<tr data-tx-search="${escH((x.desc+' '+(x.k||'')).toLowerCase())}">
+    <td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td>
+    ${entCell}
+    <td style="font-size:12px;color:var(--muted)">${escH(x.k||'—')}</td>
+    <td style="font-size:12.5px">${escH(x.desc)}${tagHtml}</td>
+    <td class="num ${amtCls}">${sign} ${fmt(Math.abs(x.amt))}</td>
+    ${editCell}
+  </tr>`;
+}
+function residualRowHtml(label,amt,cls,isRev,showEntity){
+  const entCell = showEntity ? `<td>${label}</td>` : '';
+  return `<tr data-tx-search="">
+    <td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[MONTH]||MONTH}</td>
+    ${entCell}
+    <td style="font-size:12px;color:var(--muted)">—</td>
+    <td style="font-size:12.5px;color:var(--muted)">Consolidated from the bank-report category total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td>
+    <td class="num ${cls}">${isRev?'+':'–'} ${fmt(Math.abs(amt))}</td>
+    <td></td>
+  </tr>`;
+}
+function txSearchBoxHtml(inputId){
+  return `<input id="${inputId}" type="text" placeholder="🔍 Search description or category…" style="padding:7px 10px;font-size:12.5px;border-radius:8px;border:1px solid #e2e8f0;width:260px;box-sizing:border-box;margin-bottom:10px" oninput="filterTxRows('${inputId}')">`;
+}
+function filterTxRows(inputId){
+  const input=document.getElementById(inputId); if(!input) return;
+  const q=input.value.toLowerCase().trim();
+  const table=input.nextElementSibling; if(!table) return;
+  table.querySelectorAll('tr[data-tx-search]').forEach(tr=>{
+    tr.style.display=(!q||tr.dataset.txSearch.includes(q))?'':'none';
+  });
+}
+async function openTxEdit(id,backCall){
+  const x=TX.find(t=>t.id===id);
+  if(!x) return;
+  const kind=x.type==='rev'?'revenue':'opex';
+  const catOpts=await ensureCatsByKind(kind);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Edit Transaction</h4>`;
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · ${x.d} · <b style="color:var(--ink)">${fmt(Math.abs(x.amt))}</b><br>Amount and date can't be changed here (they feed the monthly totals shown across the dashboard) — use a correction entry via Update Data for that instead.</div>`
+    +opeField('Description',`<input id="txe-desc" value="${escH(x.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +opeField('Category',`<input id="txe-cat" value="${escH(x.k||'')}" list="txe-cat-dl" style="width:100%;padding:8px 10px;box-sizing:border-box"><datalist id="txe-cat-dl">${catOpts.map(c=>`<option value="${escH(c)}">`).join('')}</datalist>`)
+    +`<button class="btn" style="background:#5b67f1;color:#fff;border:0;margin-top:12px" onclick="saveTxEdit(${id},${JSON.stringify(backCall)})">Save changes</button>`
+    +`<span id="txe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Transaction',h,true);
+}
+async function saveTxEdit(id,backCall){
+  const err=document.getElementById('txe-err'); err.textContent='';
+  const desc=document.getElementById('txe-desc').value.trim();
+  const cat=document.getElementById('txe-cat').value.trim();
+  if(!desc||!cat) return void(err.textContent='Description and Category are required.');
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({description:desc,raw_label:cat})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const x=TX.find(t=>t.id===id);
+    if(x){ x.desc=desc; x.k=cat; }
+    eval(backCall);
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
 
 // ─── EXPORT ──────────────────────────────────────────────────────────────────
 function exportCSV(){
@@ -3919,6 +3988,13 @@ async function ensureOpexCatsG(){
   catch(e){ OPEX_CATS_G=['Other Operating Expense']; }
   return OPEX_CATS_G;
 }
+const CATS_BY_KIND_G={};
+async function ensureCatsByKind(kind){
+  if(CATS_BY_KIND_G[kind]) return CATS_BY_KIND_G[kind];
+  try{ CATS_BY_KIND_G[kind]=(await sbFetch('categories?select=name&kind=eq.'+kind+'&order=name')).map(r=>r.name); }
+  catch(e){ CATS_BY_KIND_G[kind]=[]; }
+  return CATS_BY_KIND_G[kind];
+}
 function opeField(label,html){
   return `<div><label style="display:block;font-size:10px;font-weight:700;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px">${label}</label>${html}</div>`;
 }
@@ -4305,7 +4381,7 @@ async function loadFromSupabase(){
   tots.forEach(t=>{(M[t.entity_code]=M[t.entity_code]||{})[t.period_code]={rev:+t.revenue,opex:+t.opex,finIn:+t.financing_in,finOut:+t.financing_out};});
   Object.keys(M).forEach(id=>{const ks=Object.keys(M[id]); if(ks.length===1&&ks[0]==='MAY') delete M[id];});
   const mkLoan=r=>({f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr});
-  const mkTx=r=>{const o={mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,k:r.raw_label,amt:+r.amount_idr}; if(r.contra)o.contra=1; return o;};
+  const mkTx=r=>{const o={id:r.id,mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,k:r.raw_label,amt:+r.amount_idr}; if(r.contra)o.contra=1; return o;};
   const bs={TX:[],TX_MULTI:[],TX_MS:[],TX_ICG_OPEX:[]};
   txAll.forEach(r=>{(bs[r.source]=bs[r.source]||[]).push(mkTx(r));});
   // TX must include every source bucket (not just the four original ones) — a fixed allow-list here
