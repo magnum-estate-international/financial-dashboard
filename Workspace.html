@@ -665,6 +665,7 @@ const CANON={
   'Staff Accommodation':'Staff Accommodation','Accommodation (TUS)':'Staff Accommodation','Accommodation':'Staff Accommodation',
   'Travel & Business Trip':'Travel & Business Trip','Business Trip':'Travel & Business Trip','Travel':'Travel & Business Trip',
   'Petty Cash / Advance':'Petty Cash & Advances','Petty Cash':'Petty Cash & Advances','Petty Cash (net of returns)':'Petty Cash & Advances',
+  'Entertainment':'Entertainment & Meeting','Meeting':'Entertainment & Meeting','Entertainment Meeting':'Entertainment & Meeting',
   
   'Refunds & Deposits Returned':'Refunds & Deposits Returned','Refund & Deposit':'Refunds & Deposits Returned','Security Deposit Refund':'Refunds & Deposits Returned',
   'Laundry & Linen':'Laundry & Linen','Laundry':'Laundry & Linen',
@@ -5648,6 +5649,9 @@ async function renderEntryBody(){
       'land':'Land','land installment':'Land','land purchase':'Land',
       'commission':'Commission','sales commission':'Commission','agent commission':'Commission','sales comission':'Commission','agent comission':'Commission',
       'supply':'Supplies','supplies':'Supplies','general supplies':'Supplies','office supplies':'Supplies','grocery supplies':'Supplies',
+      'entertainment':'Entertainment & Meeting','meeting':'Entertainment & Meeting','meetings':'Entertainment & Meeting',
+      'entertainment meeting':'Entertainment & Meeting','entertainment & meeting':'Entertainment & Meeting',
+      'business entertainment':'Entertainment & Meeting','client entertainment':'Entertainment & Meeting',
     };
     // Defaults to OTP for blank/unrecognized values — Frequency is a soft classification aid,
     // not something worth hard-blocking an import over (unlike Entity/Category matches).
