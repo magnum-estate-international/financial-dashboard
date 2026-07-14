@@ -3652,6 +3652,7 @@ function outstandingRowHtml(o){
   } else {
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${overdueLabel(o.due,od)}</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
+    if(canEdit) items.push(menuItem('💵 Mark Paid',`openMarkPaidQuick(${o.id},'${o.e}','${OPE_TAB}')`));
   }
   if(canEdit){
     items.push(menuItem('✎ Edit',`openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')`));
@@ -3955,6 +3956,43 @@ async function deleteOutstanding(id,entityId,tab){
     renderKpiFin(agg());
     refreshOutstandingRowsInPlace(entityId,tab);
   }catch(e){ alert('Failed to delete: '+e.message); }
+}
+// Quick "Mark Paid" from the row menu — a lighter-weight companion to the full Record-a-Payment
+// picker in the Update Data panel, scoped to just this one invoice. Supports partial payments the
+// same way (amount defaults to the full remaining balance but is editable down).
+async function openMarkPaidQuick(id,entityId,tab){
+  const o=OUTSTANDING.find(x=>x.id===id);
+  if(!o) return;
+  const today=new Date().toISOString().slice(0,10);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstandingEntity('${entityId}','${tab}')">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 4px">Mark as Paid</h4>`;
+  h+=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(o.vendor)} — ${escH(o.desc)}<br>Remaining: <b style="color:var(--ink)">${fmt(o.remaining)}</b> of ${fmt(o.amt)}</div>`;
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">`
+    +opeField('Payment amount (IDR)',`<input id="mpq-amt" type="number" value="${o.remaining}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +opeField('Payment date',`<input id="mpq-date" type="date" value="${today}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +`</div>`
+    +opeField('Note (optional)',`<input id="mpq-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button class="btn" style="background:#5b67f1;color:#fff;border:0" onclick="doMarkPaidQuick(${id},'${entityId}','${tab}')">Save payment</button>`
+    +`<span id="mpq-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Mark as Paid',h,true);
+}
+async function doMarkPaidQuick(id,entityId,tab){
+  const err=document.getElementById('mpq-err'); err.textContent='';
+  const o=OUTSTANDING.find(x=>x.id===id);
+  const amt=Number(document.getElementById('mpq-amt').value);
+  const date=document.getElementById('mpq-date').value;
+  const note=(document.getElementById('mpq-note').value||'').trim()||null;
+  if(!amt||amt<=0) return void(err.textContent='Enter a valid payment amount.');
+  if(!date) return void(err.textContent='Pick a payment date.');
+  if(o&&amt>o.remaining+0.5) return void(err.textContent='Payment exceeds the remaining balance of '+fmt(o.remaining)+'.');
+  try{
+    await adminAddBatch('outstanding_payments',[{outstanding_id:id,amount_idr:amt,paid_date:date,note}]);
+    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+    OUTSTANDING=fresh.map(mkOutstanding);
+    renderKpiFin(agg());
+    const updated=OUTSTANDING.find(x=>x.id===id);
+    refreshOutstandingRowsInPlace(entityId,(updated&&updated.status==='paid')?'paid':tab,id);
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
 async function reopenOutstanding(id,entityId){
   try{
