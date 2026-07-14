@@ -3932,9 +3932,10 @@ async function saveOutstandingEdit(id,entityId,tab){
   if(o&&amt<o.paidAmt) return void(err.textContent='Amount can\'t be less than the '+fmt(o.paidAmt)+' already paid — undo a payment first if you need to reduce it below that.');
   if(docUrl && !safeDocUrl(docUrl)) return void(err.textContent='Document link must start with http:// or https://');
   try{
-    await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
+    const r=await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
       body:JSON.stringify({entity_code:entity,category,frequency,invoice_number:invNo||null,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt,document_url:docUrl||null})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
     renderKpiFin(agg());
@@ -3946,9 +3947,11 @@ async function deleteOutstanding(id,entityId,tab){
   const warn=o&&o.paidAmt>0?' This invoice has '+fmt(o.paidAmt)+' in recorded payments — deleting it also deletes that payment history.':'';
   if(!confirm('Delete this outstanding liability?'+warn+' This cannot be undone.')) return;
   try{
-    await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'DELETE'});
+    const r=await authedFetch(SB_URL+'/rest/v1/outstanding_payables?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
+    if(OUTSTANDING.some(x=>x.id===id)) throw new Error('Row still exists after delete — you may not have permission to delete this entry (only its original creator or an admin can).');
     renderKpiFin(agg());
     refreshOutstandingRowsInPlace(entityId,tab);
   }catch(e){ alert('Failed to delete: '+e.message); }
@@ -3957,7 +3960,8 @@ async function reopenOutstanding(id,entityId){
   try{
     const pays=await sbFetch('outstanding_payments?select=id&outstanding_id=eq.'+id+'&order=paid_date.desc,id.desc&limit=1');
     if(!pays.length){ alert('No payment record found to undo.'); return; }
-    await authedFetch(SB_URL+'/rest/v1/outstanding_payments?id=eq.'+pays[0].id,{method:'DELETE'});
+    const r=await authedFetch(SB_URL+'/rest/v1/outstanding_payments?id=eq.'+pays[0].id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
     renderKpiFin(agg());
