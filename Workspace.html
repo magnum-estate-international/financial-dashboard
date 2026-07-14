@@ -54,6 +54,9 @@ header .wrap{display:flex;align-items:center;justify-content:space-between;gap:2
 .navlist a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;font-size:12.5px;font-weight:600;
   color:var(--blue-700);text-decoration:none;transition:background .15s,color .15s}
 .navlist a:hover{background:var(--blue-50);color:#4550d8}
+.navic{width:16px;height:16px;flex:none}
+.svgic{width:15px;height:15px;vertical-align:-3px;flex:none}
+.ic-lg{width:22px;height:22px;flex:none}
 .sidebar .fl{margin-bottom:8px}
 .sidebar .fl select{max-width:none;width:100%}
 .sidebar-actions{display:flex;flex-direction:column;gap:8px;margin-top:10px}
@@ -259,12 +262,12 @@ a{color:#4550d8}
   <div class="brand3"><div class="mark3">GRP</div><div class="name">Magnum Group<span>Financial Dashboard</span></div></div>
   <div class="sidebar-lab">Navigate</div>
   <ul class="navlist">
-    <li><a href="#secOpLabel">📈 Operational Performance</a></li>
-    <li><a href="#secFinLabel">🔄 Financing Activity</a></li>
-    <li><a href="#secRecoLabel">📌 Management Alert</a></li>
-    <li><a href="#secLiabTopLabel">🧾 Liability &amp; Priority</a></li>
-    <li><a href="#secBalLabel">🏦 Balance Reconciliation</a></li>
-    <li><a href="#secEntTable">🏗️ Entity Performance</a></li>
+    <li><a href="#secOpLabel"><svg class="navic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg> Operational Performance</a></li>
+    <li><a href="#secFinLabel"><svg class="navic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Financing Activity</a></li>
+    <li><a href="#secRecoLabel"><svg class="navic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Management Alert</a></li>
+    <li><a href="#secLiabTopLabel"><svg class="navic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Liability &amp; Priority</a></li>
+    <li><a href="#secBalLabel"><svg class="navic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 21 7 3 7"/></svg> Balance Reconciliation</a></li>
+    <li><a href="#secEntTable"><svg class="navic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> Entity Performance</a></li>
   </ul>
   <div class="sidebar-lab">Filters</div>
   <div class="fl">
@@ -318,8 +321,8 @@ a{color:#4550d8}
     </select>
   </div>
   <div class="sidebar-actions">
-    <button class="btn btn-ghost" onclick="window.print()">🖶 Print / PDF</button>
-    <button class="btn btn-ghost" onclick="exportCSV()">⇩ Export Summary CSV</button>
+    <button class="btn btn-ghost" onclick="window.print()"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / PDF</button>
+    <button class="btn btn-ghost" onclick="exportCSV()"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Summary CSV</button>
   </div>
 </aside>
 <main class="main-area">
@@ -344,14 +347,14 @@ a{color:#4550d8}
 
 <div id="alertBox"></div>
 
-<div class="divlabel" id="secOpLabel">📈 Operational Performance — May 2026</div>
+<div class="divlabel" id="secOpLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg> Operational Performance — May 2026</div>
 <div class="kpi4" id="kpiOp"></div>
 
-<div class="divlabel" id="secFinLabel">🔄 Financing Activity — May 2026</div>
+<div class="divlabel" id="secFinLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Financing Activity — May 2026</div>
 <div class="kpi4" id="kpiFin"></div>
 
 <div id="secHealthWrap" style="display:none">
-  <div class="divlabel" id="secHealthLabel">🩺 Data Health — Itemization &amp; Reconciliation Check</div>
+  <div class="divlabel" id="secHealthLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Data Health — Itemization &amp; Reconciliation Check</div>
   <div id="healthSummary" style="margin-bottom:10px"></div>
   <details class="fold" id="healthDetails">
     <summary><span><span class="chev">▸</span>&nbsp; Show details</span><span class="hint">click a row for transaction detail</span></summary>
@@ -365,7 +368,7 @@ a{color:#4550d8}
   </details>
 </div>
 
-<div class="divlabel" id="secRecoLabel">📌 Management Alert</div>
+<div class="divlabel" id="secRecoLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Management Alert</div>
 <div id="recoGrid" class="reco-grid"></div>
 
 <div class="grid cols-eq" style="margin-bottom:16px">
@@ -381,7 +384,7 @@ a{color:#4550d8}
   </div>
 </div>
 
-<div class="divlabel" id="secBalLabel">🏦 Balance Reconciliation — Opening / Closing Balance</div>
+<div class="divlabel" id="secBalLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 21 7 3 7"/></svg> Balance Reconciliation — Opening / Closing Balance</div>
 <div class="kpi4" id="balKpis"></div>
 <details class="fold">
   <summary><span><span class="chev">▸</span>&nbsp; Balance check</span><span class="hint">opening + net movement vs reported closing</span></summary>
@@ -2854,11 +2857,37 @@ function openCustomRange(){
 }
 
 // ─── RENDERERS ───────────────────────────────────────────────────────────────
+// Reusable inline SVG icons (Feather-style, stroke=currentColor) — used instead of emoji
+// throughout the dashboard chrome for a more professional look. `s` = icon size in px.
+const svgOpen=(s)=>`<svg class="svgic" style="width:${s}px;height:${s}px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`;
+const ICON={
+  trend:(s=15)=>svgOpen(s)+`<polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>`,
+  trendDown:(s=15)=>svgOpen(s)+`<polyline points="3 7 9 13 13 9 21 17"/><polyline points="14 17 21 17 21 10"/></svg>`,
+  refresh:(s=15)=>svgOpen(s)+`<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+  bell:(s=15)=>svgOpen(s)+`<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+  file:(s=15)=>svgOpen(s)+`<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  bank:(s=15)=>svgOpen(s)+`<line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 21 7 3 7"/></svg>`,
+  bars:(s=15)=>svgOpen(s)+`<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+  pulse:(s=15)=>svgOpen(s)+`<path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`,
+  briefcase:(s=15)=>svgOpen(s)+`<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
+  info:(s=18)=>svgOpen(s)+`<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  warn:(s=18)=>svgOpen(s)+`<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  check:(s=18)=>svgOpen(s)+`<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+  history:(s=14)=>svgOpen(s)+`<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>`,
+  edit:(s=14)=>svgOpen(s)+`<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
+  trash:(s=14)=>svgOpen(s)+`<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  dollar:(s=14)=>svgOpen(s)+`<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+  undo:(s=14)=>svgOpen(s)+`<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
+  doc:(s=13)=>svgOpen(s)+`<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  printer:(s=14)=>svgOpen(s)+`<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>`,
+  download:(s=14)=>svgOpen(s)+`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  clip:(s=14)=>svgOpen(s)+`<path d="M21.44 11.05 12.25 20.24a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95L9.41 17.41a1.5 1.5 0 0 1-2.12-2.12l8.49-8.49"/></svg>`,
+};
 function renderBanner(){
   document.querySelector('.hero-meta .period').textContent=MONTHS[MONTH];
   const moLbl=MONTHS[MONTH];
-  const opL=document.getElementById('secOpLabel'); if(opL) opL.innerHTML=`📈 Operational Performance — ${moLbl}`;
-  const fnL=document.getElementById('secFinLabel'); if(fnL) fnL.innerHTML=`🔄 Financing Activity — ${moLbl}`;
+  const opL=document.getElementById('secOpLabel'); if(opL) opL.innerHTML=`${ICON.trend()} Operational Performance — ${moLbl}`;
+  const fnL=document.getElementById('secFinLabel'); if(fnL) fnL.innerHTML=`${ICON.refresh()} Financing Activity — ${moLbl}`;
   const n=scopeIds().length;
   document.getElementById('heroScope').textContent = EF!=='all' ? ENT[EF].name : (GF==='all'?`Consolidated · ${n} Entities`:GRPNAME[GF]);
 }
@@ -2869,17 +2898,17 @@ function renderAlert(a){
     const nets=EIDS.map(id=>({id,n:sum(ENT[id].rev)-sum(ENT[id].opex)}));
     const best=nets.slice().sort((x,y)=>y.n-x.n)[0];
     const worst=nets.slice().sort((x,y)=>x.n-y.n)[0];
-    el.innerHTML=`<div class="alert info"><div class="ic">💡</div><div>
+    el.innerHTML=`<div class="alert info"><div class="ic">${ICON.info(20)}</div><div>
       <strong>Consolidated Operating Result: ${a.opNet>=0?'+':'–'}IDR ${fmtB(Math.abs(a.opNet))}</strong>
       Best: <em>${ENT[best.id].name}</em> (+${fmtB(best.n)}) · Weakest: <em>${ENT[worst.id].name}</em> (–${fmtB(Math.abs(worst.n))})
     </div></div>`;
   } else if(a.opNet<0){
-    el.innerHTML=`<div class="alert deficit"><div class="ic">⚠️</div><div>
+    el.innerHTML=`<div class="alert deficit"><div class="ic">${ICON.warn(20)}</div><div>
       <strong>Operating Deficit: IDR ${fmtB(Math.abs(a.opNet))}</strong>
       Revenue ${fmtB(a.rev)} vs Opex ${fmtB(a.opex)}${a.finIn>0?` · gap covered by financing (${fmtB(a.finIn)})`:''}
     </div></div>`;
   } else {
-    el.innerHTML=`<div class="alert info"><div class="ic">✅</div><div>
+    el.innerHTML=`<div class="alert info"><div class="ic">${ICON.check(20)}</div><div>
       <strong>Operating Surplus: IDR ${fmtB(a.opNet)}</strong>
       Revenue ${fmtB(a.rev)} vs Opex ${fmtB(a.opex)}${a.finOut>0?` · ${fmtB(a.finOut)} also moved through financing`:''}
     </div></div>`;
@@ -3495,7 +3524,7 @@ const RECO_TAGS={crit:'Critical',warn:'Attention',info:'Review',good:'On track'}
 function renderRecos(a){
   const el=document.getElementById('recoGrid'); if(!el) return;
   const lbl=document.getElementById('secRecoLabel');
-  if(lbl) lbl.textContent='📌 Management Alert ('+(MONTHS[MONTH]||MONTH)+')';
+  if(lbl) lbl.innerHTML=ICON.bell()+' Management Alert ('+(MONTHS[MONTH]||MONTH)+')';
   const ids=scopeIds();
   const R=[];
   const cov=a.opex>0 ? (a.rev/a.opex*100) : null;
@@ -3643,20 +3672,20 @@ function outstandingPaid(){
 function outstandingRowHtml(o){
   const canEdit=MY_ROLE==='editor';
   let statusCell;
-  const menuItem=(label,onclick,color)=>`<button type="button" onclick="${onclick}" style="display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;padding:8px 12px;font-size:12.5px;color:${color||'var(--ink)'};white-space:nowrap" onmouseover="this.style.background='#f3f4fa'" onmouseout="this.style.background='none'">${label}</button>`;
+  const menuItem=(label,onclick,color)=>`<button type="button" onclick="${onclick}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;cursor:pointer;padding:8px 12px;font-size:12.5px;color:${color||'var(--ink)'};white-space:nowrap" onmouseover="this.style.background='#f3f4fa'" onmouseout="this.style.background='none'">${label}</button>`;
   const items=[];
-  if(canEdit) items.push(menuItem('🧾 History',`openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')`));
+  if(canEdit) items.push(menuItem(ICON.history()+' History',`openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')`));
   if(o.status==='paid'){
     statusCell=`<span style="color:var(--green);font-weight:700">Paid on ${o.paidDate}</span>`;
-    if(canEdit) items.push(menuItem('↺ Undo last payment',`reopenOutstanding(${o.id},'${o.e}')`));
+    if(canEdit) items.push(menuItem(ICON.undo()+' Undo last payment',`reopenOutstanding(${o.id},'${o.e}')`));
   } else {
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${overdueLabel(o.due,od)}</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
-    if(canEdit) items.push(menuItem('💵 Mark Paid',`openMarkPaidQuick(${o.id},'${o.e}','${OPE_TAB}')`));
+    if(canEdit) items.push(menuItem(ICON.dollar()+' Mark Paid',`openMarkPaidQuick(${o.id},'${o.e}','${OPE_TAB}')`));
   }
   if(canEdit){
-    items.push(menuItem('✎ Edit',`openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')`));
-    items.push(menuItem('🗑 Delete',`deleteOutstanding(${o.id},'${o.e}','${OPE_TAB}')`,'var(--red)'));
+    items.push(menuItem(ICON.edit()+' Edit',`openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')`));
+    items.push(menuItem(ICON.trash()+' Delete',`deleteOutstanding(${o.id},'${o.e}','${OPE_TAB}')`,'var(--red)'));
   }
   const actionCell=items.length?(`<button type="button" onclick="toggleOpeRowMenu(${o.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
     +`<div id="ope-menu-${o.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>`):'';
@@ -3665,7 +3694,7 @@ function outstandingRowHtml(o){
     : `${fmt(o.amt)}`;
   const safeUrl=safeDocUrl(o.docUrl);
   const docCell=safeUrl
-    ? `<a href="${escH(safeUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;font-weight:700;color:#5b67f1;text-decoration:none">📄 View</a>`
+    ? `<a href="${escH(safeUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#5b67f1;text-decoration:none">${ICON.doc()} View</a>`
     : `<span style="font-size:11.5px;color:var(--muted)">—</span>`;
   const wrap='word-break:break-word;overflow-wrap:break-word;vertical-align:top';
   const va='vertical-align:top';
@@ -4088,7 +4117,7 @@ function balFor(id){
 function renderBalances(){
   const tb=document.getElementById('balBody'); if(!tb) return;
   const lbl=document.getElementById('secBalLabel');
-  if(lbl) lbl.textContent='🏦 Balance Reconciliation — Opening / Closing Balance ('+(MONTHS[MONTH]||MONTH)+')';
+  if(lbl) lbl.innerHTML=ICON.bank()+' Balance Reconciliation — Opening / Closing Balance ('+(MONTHS[MONTH]||MONTH)+')';
   const ids=scopeIds();
   // headline balance cards for the selected scope + period
   const kp=document.getElementById('balKpis');
@@ -4104,16 +4133,16 @@ function renderBalances(){
     const ok=diff!=null&&Math.abs(diff)<=1;
     const cov=(n)=>n===ids.length?'all '+ids.length+' PTs in scope':n+' of '+ids.length+' PTs (the rest not filled in yet)';
     kp.innerHTML=
-      '<div class="pcard bal '+(nOpen?'b-open':'b-none')+'"><div class="bic">🏦</div><div class="lab">Opening Balance — '+escH(MONTHS[MONTH]||MONTH)+'</div>'
+      '<div class="pcard bal '+(nOpen?'b-open':'b-none')+'"><div class="bic">'+ICON.bank(20)+'</div><div class="lab">Opening Balance — '+escH(MONTHS[MONTH]||MONTH)+'</div>'
         +'<div class="big">'+(nOpen?fmt(sOpen):'—')+'</div>'
-        +'<div class="meta">'+(nOpen?'Total opening balance · '+cov(nOpen):'No opening balance yet — add it via ✎ Update data')+'</div></div>'
-      +'<div class="pcard bal '+(nOpen?'b-move':'b-none')+'"><div class="bic">'+(sMoveOpen>=0?'📈':'📉')+'</div><div class="lab">Net Movement (per report)</div>'
+        +'<div class="meta">'+(nOpen?'Total opening balance · '+cov(nOpen):'No opening balance yet — add it via Update data')+'</div></div>'
+      +'<div class="pcard bal '+(nOpen?'b-move':'b-none')+'"><div class="bic">'+(sMoveOpen>=0?ICON.trend(20):ICON.trendDown(20))+'</div><div class="lab">Net Movement (per report)</div>'
         +'<div class="big '+(sMoveOpen>=0?'pos':'neg')+'">'+(nOpen?((sMoveOpen>=0?'+':'−')+fmt(Math.abs(sMoveOpen))):'—')+'</div>'
         +'<div class="meta">Revenue − expenses + financing in − out'+(nOpen?' · PTs with an opening balance':'')+'</div></div>'
-      +'<div class="pcard bal '+(nClose?'b-close':'b-none')+'"><div class="bic">🧾</div><div class="lab">Closing Balance (reported)</div>'
+      +'<div class="pcard bal '+(nClose?'b-close':'b-none')+'"><div class="bic">'+ICON.file(20)+'</div><div class="lab">Closing Balance (reported)</div>'
         +'<div class="big">'+(nClose?fmt(sClose):'—')+'</div>'
-        +'<div class="meta">'+(nClose?'Total closing balance · '+cov(nClose):'No closing balance yet — add it via ✎ Update data')+'</div></div>'
-      +'<div class="pcard bal '+(diff==null?'b-none':(ok?'b-ok':'b-bad'))+'"><div class="bic">'+(diff==null?'⏳':(ok?'✅':'⚠️'))+'</div><div class="lab">Difference vs Expected</div>'
+        +'<div class="meta">'+(nClose?'Total closing balance · '+cov(nClose):'No closing balance yet — add it via Update data')+'</div></div>'
+      +'<div class="pcard bal '+(diff==null?'b-none':(ok?'b-ok':'b-bad'))+'"><div class="bic">'+(diff==null?ICON.history(20):(ok?ICON.check(20):ICON.warn(20)))+'</div><div class="lab">Difference vs Expected</div>'
         +'<div class="big '+(diff==null?'':(ok?'pos':'neg'))+'">'+(diff==null?'—':(ok?'0 ✓':((diff>=0?'+':'−')+fmt(Math.abs(diff)))))+'</div>'
         +'<div class="meta">'+(diff==null?'Needs both opening & closing balances to check':(ok?'The report matches the bank balance':'Expected closing '+fmt(expected)+' — check for unrecorded transactions'))+'</div></div>';
   }
@@ -4139,7 +4168,7 @@ function renderBalances(){
       +'<td style="'+td+'">'+(diff==null?chipNone:(ok?chipOK:chipDiff))+'</td></tr>';
   });
   if(!rows){
-    tb.innerHTML='<tr><td colspan="7" style="padding:14px 10px;color:#333b4d;font-size:12.5px">No balances for this period yet — enter the <b>opening</b> and <b>closing balance</b> via <b>✎ Update data</b> (pick the PT &amp; month) and the dashboard will automatically check whether the report reconciles.</td></tr>';
+    tb.innerHTML='<tr><td colspan="7" style="padding:14px 10px;color:#333b4d;font-size:12.5px">No balances for this period yet — enter the <b>opening</b> and <b>closing balance</b> via <b>Update data</b> (pick the PT &amp; month) and the dashboard will automatically check whether the report reconciles.</td></tr>';
     return;
   }
   if(tHave>1){
@@ -4429,7 +4458,7 @@ function showUserBar(){
   const pill='border:1px solid rgba(255,255,255,.22);border-radius:999px;background:rgba(255,255,255,.09);color:#e6e9f5;font-size:12px;font-weight:600;padding:8px 15px;cursor:pointer;font-family:inherit;white-space:nowrap';
   b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;max-width:1280px;margin:0 auto 16px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
   b.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;margin-right:8px;min-width:0"><span style="width:27px;height:27px;flex:none;border-radius:50%;background:linear-gradient(135deg,#5b67f1,#8d7bf0);color:#fff;font-weight:700;font-size:12px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
-    +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">✎ Update data</button>':'')
+    +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">Update data</button>':'')
     +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">⚙ Manage access</button>':'')
     +'<button id="mag-history-open" style="'+pill+'">🕘 History</button>'
     +'<button id="mag-signout" style="'+pill+'">Sign out</button>';
@@ -4541,7 +4570,7 @@ async function refreshPendingBadge(){
     const r=await authedFetch(SB_URL+'/rest/v1/entry_submissions?select=id&status=eq.pending',{headers:{'Prefer':'count=exact','Range':'0-0','Range-Unit':'items'}});
     const n=parseInt((r.headers.get('content-range')||'/0').split('/')[1],10)||0;
     const eb=document.getElementById('mag-entry-open');
-    if(eb) eb.textContent = n>0 ? ('✎ Update data ('+n+' pending)') : '✎ Update data';
+    if(eb) eb.textContent = n>0 ? ('Update data ('+n+' pending)') : 'Update data';
   }catch(e){}
 }
 /* ── Admin panel (visible to admins only) ─────────────────────────────── */
@@ -5011,7 +5040,7 @@ async function renderEntryBody(){
       pending.forEach(s=>{
         h+='<tr><td style="'+td+';word-break:break-word">'+escH(s.email)+'<div style="color:#3a4254;font-size:11px;white-space:nowrap">'+new Date(s.created_at).toISOString().slice(0,10)+'</div></td>'
           +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+(s.entry_date?' · '+escH(s.entry_date)+(s.entry_date_end?' → '+escH(s.entry_date_end):''):'')+'</div></td>'
-          +'<td style="'+td+'"><b>'+(s.flow==='docs'?'📎 Documents':escH(FLOW_LBL[s.flow]||s.flow))+'</b> — '+escH(s.label)+'<div style="color:#3a4254;font-size:11px">'+escH(s.category)+(s.note?' · '+escH(s.note):'')+'</div>'+attChips(s)+'</td>'
+          +'<td style="'+td+'"><b>'+(s.flow==='docs'?'Documents':escH(FLOW_LBL[s.flow]||s.flow))+'</b> — '+escH(s.label)+'<div style="color:#3a4254;font-size:11px">'+escH(s.category)+(s.note?' · '+escH(s.note):'')+'</div>'+attChips(s)+'</td>'
           +'<td style="'+td+';text-align:right;white-space:nowrap;font-weight:600">'+fmtIDR(s.amount_idr)+'</td>'
           +'<td style="'+td+';text-align:right;min-width:120px"><button class="ap" data-id="'+s.id+'" style="border:0;background:#2b7a4b;color:#fff;border-radius:12px;padding:5px 11px;font-size:12px;cursor:pointer;margin:2px">Approve</button>'
           +'<button class="rj" data-id="'+s.id+'" style="border:1px solid #f6c8d2;background:#fff;color:#b3261e;border-radius:12px;padding:4px 10px;font-size:12px;cursor:pointer;margin:2px">Reject</button></td></tr>';
@@ -5027,7 +5056,7 @@ async function renderEntryBody(){
     +'<select id="en-ent" style="'+inp+';width:100%">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
     +'<div id="en-entnote" style="font-size:11px;color:#4550d8;font-weight:600;margin-top:3px;min-height:1px"></div></div>'
     +'<div style="border:1px dashed #c8cdf9;background:#f7f8fd;border-radius:14px;padding:12px 14px;margin-bottom:10px">'
-      +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px">📎 Documents <span style="font-weight:500;color:#3a4254">— bank recap, bank statement, payment vouchers (PDF/photo/Excel, max 10 MB each)</span></div>'
+      +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px;display:flex;align-items:center;gap:6px">'+ICON.clip()+'Documents <span style="font-weight:500;color:#3a4254">— bank recap, bank statement, payment vouchers (PDF/photo/Excel, max 10 MB each)</span></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
       +'<select id="en-dtype" style="'+inp+';flex:0 1 auto"><option value="rekap_bank">Bank recap</option><option value="rekening_koran">Bank statement (rekening koran)</option><option value="voucher">Payment voucher</option><option value="other">Other document</option></select>'
       +'<label for="en-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Add files</label>'
@@ -5062,14 +5091,14 @@ async function renderEntryBody(){
   // ── Outstanding payables (unpaid invoices) — separate from the monthly figures above ──
   {
     const opexCats=cats.filter(c=>c.kind==='opex');
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer">💼 Add an Outstanding Liability (unpaid invoice)</summary>'
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Add an Outstanding Liability (unpaid invoice)</summary>'
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks unpaid invoices per PT — separate from the monthly figures above. Mark it paid once the payment shows up in a bank statement (recorded normally via the file upload above).</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="opd-tab-one" type="button" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
       +'<button id="opd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
       +'<select id="opd-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<button id="opd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Export current data (.xlsx)</button>'
+      +'<button id="opd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
       +'</div>'
       +'<div id="opd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
@@ -5089,9 +5118,9 @@ async function renderEntryBody(){
       +'</div>'
       +'<div id="opd-bulk" style="display:none">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment), REC (monthly payment), or PRG (paid by project progress/milestone); defaults to OTP if left blank or unrecognized.</div>'
-      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px">💡 <b>Bulk-editing existing data</b> (e.g. correcting Frequency for many rows at once): click "⬇ Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
-      +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px">⬇ Download template (.xlsx)</button>'
-      +'<div><label for="opd-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Choose Excel/CSV file</label>'
+      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b> (e.g. correcting Frequency for many rows at once): click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
+      +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<div><label for="opd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
       +'<input id="opd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
       +'<span id="opd-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
       +'<div id="opd-preview" style="margin-top:12px"></div>'
@@ -5117,7 +5146,7 @@ async function renderEntryBody(){
       h+='<tr><td style="'+td+';white-space:nowrap;color:#2e3547;font-size:12px">'+new Date(s.created_at).toISOString().slice(0,10)+'</td>'
         +(IS_ADMIN?'<td style="'+td+';word-break:break-word">'+escH(s.email)+'</td>':'')
         +'<td style="'+td+'">'+escH(eName(s.entity_code))+'<div style="color:#3a4254;font-size:11px">'+escH(perName[s.period_code]||s.period_label||s.period_code)+(s.entry_date?' · '+escH(s.entry_date)+(s.entry_date_end?' → '+escH(s.entry_date_end):''):'')+'</div></td>'
-        +'<td style="'+td+'">'+(s.flow==='docs'?'📎 Documents':escH(FLOW_LBL[s.flow]||s.flow))+' — '+escH(s.label)
+        +'<td style="'+td+'">'+(s.flow==='docs'?'Documents':escH(FLOW_LBL[s.flow]||s.flow))+' — '+escH(s.label)
         +(s.status==='rejected'&&s.review_note?'<div style="color:#b3261e;font-size:11px">Reason: '+escH(s.review_note)+'</div>':'')+attChips(s)+'</td>'
         +'<td style="'+td+';text-align:right;white-space:nowrap">'+(s.flow==='docs'?'—':fmtIDR(s.amount_idr))+'</td>'
         +'<td style="'+td+';white-space:nowrap">'+chip(s.status)
