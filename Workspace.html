@@ -3060,6 +3060,27 @@ function liabPriorityList(){
   scored.sort((a,b)=>b.score-a.score);
   return scored;
 }
+const PRIO_TAG_LABEL={crit:'Critical',warn:'Urgent',rec:'Recurring'};
+function prioRowHtml(r,i){
+  const o=r.o;
+  return `<div class="prio-row">
+    <div class="prio-rank">${i+1}</div>
+    <div class="prio-body">
+      <div class="prio-top">
+        <span class="prio-vendor" onclick="openOutstandingVendor('${encodeURIComponent(o.vendor)}')">${escH(o.vendor)} ›</span>
+        <span class="prio-amt">${fmt(o.remaining)}</span>
+      </div>
+      <div class="prio-reason"><span class="prio-tag ${r.tier}">${PRIO_TAG_LABEL[r.tier]}</span>${r.label} · ${escH(entName(o.e))}</div>
+    </div>
+  </div>`;
+}
+function openAllPriority(){
+  const scored=liabPriorityList();
+  const tot=scored.reduce((s,r)=>s+r.o.remaining,0);
+  let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:14px">${scored.length} invoice${scored.length===1?'':'s'} flagged for priority payment · total IDR ${fmt(tot)} · click a vendor for invoice detail</div>`;
+  h+=`<div class="prio-list">${scored.map((r,i)=>prioRowHtml(r,i)).join('')}</div>`;
+  showModal('Payment Priority Recommendations',h,true);
+}
 function renderLiabPriority(){
   const el=document.getElementById('liabPriority'); if(!el) return;
   const sub=document.getElementById('liabPrioritySub');
@@ -3069,23 +3090,11 @@ function renderLiabPriority(){
     el.innerHTML=`<p style="color:var(--muted);font-size:12.5px">Nothing flagged — no overdue or soon-due invoices in this scope.</p>`;
     return;
   }
-  const TAG_LABEL={crit:'Critical',warn:'Urgent',rec:'Recurring'};
-  const top=scored.slice(0,8);
+  const top=scored.slice(0,5);
   const topTot=top.reduce((s,r)=>s+r.o.remaining,0);
   if(sub) sub.textContent=`${scored.length} invoice${scored.length===1?'':'s'} flagged for priority payment (IDR ${fmt(topTot)}${scored.length>top.length?` of top ${top.length} shown`:''}) · click a vendor for invoice detail`;
-  el.innerHTML=`<div class="prio-list">${top.map((r,i)=>{
-    const o=r.o;
-    return `<div class="prio-row">
-      <div class="prio-rank">${i+1}</div>
-      <div class="prio-body">
-        <div class="prio-top">
-          <span class="prio-vendor" onclick="openOutstandingVendor('${encodeURIComponent(o.vendor)}')">${escH(o.vendor)} ›</span>
-          <span class="prio-amt">${fmt(o.remaining)}</span>
-        </div>
-        <div class="prio-reason"><span class="prio-tag ${r.tier}">${TAG_LABEL[r.tier]}</span>${r.label} · ${escH(entName(o.e))}</div>
-      </div>
-    </div>`;
-  }).join('')}</div>`;
+  el.innerHTML=`<div class="prio-list">${top.map((r,i)=>prioRowHtml(r,i)).join('')}</div>`
+    +(scored.length>top.length?`<button type="button" onclick="openAllPriority()" style="width:100%;margin-top:12px;border:1px solid #e2e5f0;background:#f7f8fc;color:#3a4254;border-radius:10px;font-size:12.5px;font-weight:700;padding:8px;cursor:pointer">View all ${scored.length} →</button>`:'');
 }
 function daysOverdue(due){
   const d=new Date(due+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
