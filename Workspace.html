@@ -2953,7 +2953,7 @@ function renderKpiFin(a){
       ${hint('var(--blue-300)')}
       <div class="lab">Financing Inflows</div>
       <div class="big pos">${fmt(a.finIn)}</div>
-      <div class="meta">Loans received + repayments${a.capDep>0?` <span style="color:#8a5a1e">· excl. capital deposit</span>`:''}</div>
+      <div class="meta">Loans received + repayments</div>
     </div>
     <div class="pcard blue-hl clickable" onclick="openDetail('finout')">
       ${hint('var(--blue-300)')}
@@ -2965,7 +2965,7 @@ function renderKpiFin(a){
       ${hint('var(--blue-300)')}
       <div class="lab">Net Financing</div>
       <div class="big ${a.finIn+a.capDep-a.finOut>=0?'pos':'neg'}">${a.finIn+a.capDep-a.finOut>=0?'+':'–'} ${fmt(Math.abs(a.finIn+a.capDep-a.finOut))}</div>
-      <div class="meta">In ${fmt(a.finIn+a.capDep)}${a.capDep>0?` <span style="color:#8a5a1e">(incl. capital ${fmt(a.capDep)})</span>`:''}<br>Out ${fmt(a.finOut)}</div>
+      <div class="meta">In ${fmt(a.finIn+a.capDep)}<br>Out ${fmt(a.finOut)}</div>
     </div>
     <div class="pcard dark clickable" onclick="openDetail('fullnet')">
       ${hint('rgba(255,255,255,.65)')}
@@ -3372,7 +3372,11 @@ function openDetail(kind){
   const a=agg();
   if(kind==='rev') showModal('Operating Revenue — Breakdown',bdTableHtml(a.revBD,a.rev,'pos'));
   else if(kind==='opex') showModal('Operating Expenses — Breakdown',bdTableHtml(a.opexBD,a.opex,'neg'));
-  else if(kind==='finin') showModal('Financing Inflows — Detail',finTableHtml('finIn'));
+  else if(kind==='finin'){
+    let h=finTableHtml('finIn');
+    if(a.capDep>0) h+=`<p style="color:var(--muted);font-size:12px;margin-top:10px;line-height:1.7">Excludes the <b>Shareholder Capital Deposit</b> (${fmt(a.capDep)}) — that's tracked as its own financing category to avoid double-counting, but is still included in Net Financing &amp; Net Cash Movement as an inflow.</p>`;
+    showModal('Financing Inflows — Detail',h);
+  }
   else if(kind==='capdep'){
     const list=activeMonths().flatMap(mo=>(LOANS_BY_MONTH[mo]||[])).filter(l=>l.ty==='Capital deposit');
     const byP={}, byPEnt={}; list.forEach(l=>{byP[l.f]=(byP[l.f]||0)+l.amt; byPEnt[l.f]=l.t;});
