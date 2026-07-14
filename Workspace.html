@@ -344,10 +344,10 @@ a{color:#4550d8}
 
 <div id="alertBox"></div>
 
-<div class="divlabel" id="secOpLabel">📈 Operational Performance — May 2026 (excludes all loan, non-operational &amp; inter-bank flows)</div>
+<div class="divlabel" id="secOpLabel">📈 Operational Performance — May 2026</div>
 <div class="kpi4" id="kpiOp"></div>
 
-<div class="divlabel" id="secFinLabel">🔄 Loan, Financing &amp; Non-Operational Activity — May 2026</div>
+<div class="divlabel" id="secFinLabel">🔄 Financing Activity — May 2026</div>
 <div class="kpi4" id="kpiFin"></div>
 
 <div id="secHealthWrap" style="display:none">
@@ -2857,8 +2857,8 @@ function openCustomRange(){
 function renderBanner(){
   document.querySelector('.hero-meta .period').textContent=MONTHS[MONTH];
   const moLbl=MONTHS[MONTH];
-  const opL=document.getElementById('secOpLabel'); if(opL) opL.innerHTML=`📈 Operational Performance — ${moLbl} (excludes all loan, non-operational &amp; inter-bank flows)`;
-  const fnL=document.getElementById('secFinLabel'); if(fnL) fnL.innerHTML=`🔄 Loan, Financing &amp; Non-Operational Activity — ${moLbl}`;
+  const opL=document.getElementById('secOpLabel'); if(opL) opL.innerHTML=`📈 Operational Performance — ${moLbl}`;
+  const fnL=document.getElementById('secFinLabel'); if(fnL) fnL.innerHTML=`🔄 Financing Activity — ${moLbl}`;
   const n=scopeIds().length;
   document.getElementById('heroScope').textContent = EF!=='all' ? ENT[EF].name : (GF==='all'?`Consolidated · ${n} Entities`:GRPNAME[GF]);
 }
@@ -2867,28 +2867,21 @@ function renderAlert(a){
   const el=document.getElementById('alertBox');
   if(GF==='all'&&EF==='all'&&MONTH==='MAY'){
     const nets=EIDS.map(id=>({id,n:sum(ENT[id].rev)-sum(ENT[id].opex)}));
-    const best=nets.slice().sort((x,y)=>y.n-x.n).slice(0,2);
-    const worst=nets.slice().sort((x,y)=>x.n-y.n).slice(0,2);
+    const best=nets.slice().sort((x,y)=>y.n-x.n)[0];
+    const worst=nets.slice().sort((x,y)=>x.n-y.n)[0];
     el.innerHTML=`<div class="alert info"><div class="ic">💡</div><div>
-      <strong>Consolidated Operating Result: ${a.opNet>=0?'+':'–'}IDR ${fmtB(Math.abs(a.opNet))} across ${EIDS.length} entities (4 groups + 3 standalone)</strong>
-      Operating revenue of IDR ${fmt(a.rev)} against operating expenses of IDR ${fmt(a.opex)} in May 2026.
-      Largest operating surpluses: <em>${ENT[best[0].id].name}</em> (+${fmtB(best[0].n)}) and
-      <em>${ENT[best[1].id].name}</em> (+${fmtB(best[1].n)}).
-      Largest operating deficits: <em>${ENT[worst[0].id].name}</em> (–${fmtB(Math.abs(worst[0].n))}) and
-      <em>${ENT[worst[1].id].name}</em> (–${fmtB(Math.abs(worst[1].n))}) —
-      deficits are funded through the inter-company loan circulation shown below.
+      <strong>Consolidated Operating Result: ${a.opNet>=0?'+':'–'}IDR ${fmtB(Math.abs(a.opNet))}</strong>
+      Best: <em>${ENT[best.id].name}</em> (+${fmtB(best.n)}) · Weakest: <em>${ENT[worst.id].name}</em> (–${fmtB(Math.abs(worst.n))})
     </div></div>`;
   } else if(a.opNet<0){
     el.innerHTML=`<div class="alert deficit"><div class="ic">⚠️</div><div>
-      <strong>Operating Deficit: IDR ${fmt(Math.abs(a.opNet))}</strong>
-      Revenue IDR ${fmt(a.rev)} vs operating expenses IDR ${fmt(a.opex)}.
-      ${a.finIn>0?`Financing inflows of <b>IDR ${fmt(a.finIn)}</b> covered the gap.`:''}
+      <strong>Operating Deficit: IDR ${fmtB(Math.abs(a.opNet))}</strong>
+      Revenue ${fmtB(a.rev)} vs Opex ${fmtB(a.opex)}${a.finIn>0?` · gap covered by financing (${fmtB(a.finIn)})`:''}
     </div></div>`;
   } else {
     el.innerHTML=`<div class="alert info"><div class="ic">✅</div><div>
-      <strong>Operating Surplus: IDR ${fmt(a.opNet)}</strong>
-      Revenue IDR ${fmt(a.rev)} vs operating expenses IDR ${fmt(a.opex)}.
-      ${a.finOut>0?`Note: this scope also disbursed/repaid <b>IDR ${fmt(a.finOut)}</b> in loan & non-operational flows.`:''}
+      <strong>Operating Surplus: IDR ${fmtB(a.opNet)}</strong>
+      Revenue ${fmtB(a.rev)} vs Opex ${fmtB(a.opex)}${a.finOut>0?` · ${fmtB(a.finOut)} also moved through financing`:''}
     </div></div>`;
   }
 }
@@ -2911,7 +2904,7 @@ function renderKpiOp(a){
       ${hint('var(--blue-300)')}
       <div class="lab">Operating Revenue</div>
       <div class="big pos">${fmt(a.rev)}</div>
-      <div class="meta">Guest, rental, F&amp;B, unit-sale, profit-sharing, client-progress &amp; service income — no loan inflows counted</div>
+      <div class="meta">Excludes loan inflows</div>
     </div>
     <div class="pcard red-hl clickable" onclick="openDetail('opex')">
       ${hint('var(--blue-300)')}
@@ -2923,7 +2916,7 @@ function renderKpiOp(a){
       ${hint('var(--blue-300)')}
       <div class="lab">Revenue Coverage Ratio</div>
       <div class="big amb">${cover.toFixed(1)}%</div>
-      <div class="meta">Revenue covers ${cover.toFixed(1)}% of operating costs${cover<100?'; the remainder is funded by loan flows':''}</div>
+      <div class="meta">${cover<100?'Gap funded by financing':'Fully self-funded'}</div>
     </div>`;
 }
 function renderKpiFin(a){
@@ -2936,19 +2929,19 @@ function renderKpiFin(a){
       ${hint('var(--sand)')}
       <div class="lab">Shareholder Capital Deposit</div>
       <div class="big" style="color:#8a5a1e">${fmt(a.capDep)}</div>
-      <div class="meta">Shareholder capital deposits (Stanislav Sadovnikov &amp; Igor Maksimov) — tracked as a separate financing category</div>
+      <div class="meta">Stanislav Sadovnikov &amp; Igor Maksimov</div>
     </div>`:''}
     <div class="pcard blue-hl clickable" onclick="openDetail('finin')">
       ${hint('var(--blue-300)')}
       <div class="lab">Financing Inflows</div>
       <div class="big pos">${fmt(a.finIn)}</div>
-      <div class="meta">New loans received + loan repayments collected${a.capDep>0?` <span style="color:#8a5a1e">· excl. capital deposit (shown separately)</span>`:''}</div>
+      <div class="meta">Loans received + repayments${a.capDep>0?` <span style="color:#8a5a1e">· excl. capital deposit</span>`:''}</div>
     </div>
     <div class="pcard blue-hl clickable" onclick="openDetail('finout')">
       ${hint('var(--blue-300)')}
       <div class="lab">Financing &amp; Non-Op Outflows</div>
       <div class="big neg">${fmt(a.finOut)}</div>
-      <div class="meta">New loans given + repayments made + receivables, shareholder &amp; licensing payments</div>
+      <div class="meta">Loans, repayments &amp; shareholder outflows</div>
     </div>
     <div class="pcard blue-hl clickable" onclick="openDetail('netfin')">
       ${hint('var(--blue-300)')}
@@ -2960,7 +2953,7 @@ function renderKpiFin(a){
       ${hint('rgba(255,255,255,.65)')}
       <div class="lab">Net Cash Movement (All Flows)</div>
       <div class="big" style="color:${pos?'#86efac':'#f87171'}">${pos?'+':'–'} ${fmt(Math.abs(a.fullNet))}</div>
-      <div class="meta" style="color:rgba(255,255,255,.65)">Operating net + financing net · excludes internal inter-bank transfers</div>
+      <div class="meta" style="color:rgba(255,255,255,.65)">Excludes inter-bank transfers</div>
     </div>
     ${outstandingCard()}`;
 }
