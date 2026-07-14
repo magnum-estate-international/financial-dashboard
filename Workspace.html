@@ -3565,7 +3565,12 @@ async function openTxEdit(id,backCall){
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Edit Transaction</h4>`;
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Amount adjusts this entity's itemized total for ${MONTHS[MONTH]||MONTH} without touching the monthly total shown on the KPI cards — if this is a real correction (not a typo fix), also update the total via the Update Entity Balance box so Data Health stays reconciled.</div>`
     +opeField('Description',`<input id="txe-desc" value="${escH(x.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
-    +opeField('Category',`<input id="txe-cat" value="${escH(x.k||'')}" list="txe-cat-dl" style="width:100%;padding:8px 10px;box-sizing:border-box"><datalist id="txe-cat-dl">${catOpts.map(c=>`<option value="${escH(c)}">`).join('')}</datalist>`)
+    +opeField('Category',(()=>{
+      // x.k may be a legacy/unlisted label not in the live category list — keep it selectable
+      // (as the pre-selected option) instead of silently swapping it for the first live category.
+      const opts=catOpts.includes(x.k)||!x.k?catOpts:[x.k,...catOpts];
+      return `<select id="txe-cat" style="width:100%;padding:8px 10px;box-sizing:border-box">${opts.map(c=>`<option value="${escH(c)}"${c===x.k?' selected':''}>${escH(c)}</option>`).join('')}</select>`;
+    })())
     +opeField('Date',`<input id="txe-date" value="${escH(x.d)}" placeholder="e.g. 30 Apr" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Amount (IDR)',`<input id="txe-amt" type="number" min="0" step="1" value="${Math.abs(x.amt)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +`<button class="btn" style="background:#5b67f1;color:#fff;border:0;margin-top:12px" onclick="saveTxEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
