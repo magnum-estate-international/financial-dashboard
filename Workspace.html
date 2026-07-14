@@ -3507,9 +3507,16 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const amtCls = x.contra ? 'amb' : cls;
   const tagHtml = x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '';
   const entCell = showEntity ? `<td>${pill(x.e)}</td>` : '';
-  const editCell = (canEdit && x.id!=null)
-    ? `<td style="white-space:nowrap"><button type="button" onclick="openTxEdit(${x.id},${JSON.stringify(backCall)})" title="Edit" style="border:0;background:none;cursor:pointer;padding:4px 6px;color:var(--blue-300)">${ICON.edit()}</button></td>`
-    : `<td></td>`;
+  let editCell = `<td></td>`;
+  if(canEdit && x.id!=null){
+    const items=[
+      menuItem(ICON.history()+' History',`openTxHistory(${x.id},${JSON.stringify(backCall)})`),
+      menuItem(ICON.edit()+' Edit',`openTxEdit(${x.id},${JSON.stringify(backCall)})`),
+      menuItem(ICON.trash()+' Delete',`deleteTxRow(${x.id},${JSON.stringify(backCall)})`,'var(--red)'),
+    ];
+    editCell = `<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${x.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+      +`<div id="ope-menu-${x.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div></td>`;
+  }
   return `<tr data-tx-search="${escH((x.desc+' '+(x.k||'')).toLowerCase())}">
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td>
     ${entCell}
@@ -3569,6 +3576,39 @@ async function saveTxEdit(id,backCall){
     if(x){ x.desc=desc; x.k=cat; }
     eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+// "History" for a raw bank transaction has no payment-ledger equivalent (unlike an invoice) — shows
+// where the row actually came from instead: who/when it was uploaded and which import batch/source.
+async function openTxHistory(id,backCall){
+  let row=null;
+  try{ const rows=await sbFetch('transactions?select=created_at,created_by,source,source_label,upload_batch&id=eq.'+id); row=rows[0]; }catch(e){}
+  const x=TX.find(t=>t.id===id);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Transaction Record Info</h4>`;
+  if(x) h+=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · ${x.d} · <b style="color:var(--ink)">${fmt(Math.abs(x.amt))}</b><br>${escH(x.desc)}</div>`;
+  if(row){
+    h+=`<table><tbody>`
+      +`<tr><td style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 6px 0">Uploaded by</td><td style="font-size:12.5px;padding:6px 0">${escH(row.created_by||'—')}</td></tr>`
+      +`<tr><td style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 6px 0">Uploaded at</td><td style="font-size:12.5px;padding:6px 0">${row.created_at?new Date(row.created_at).toLocaleString():'—'}</td></tr>`
+      +`<tr><td style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 6px 0">Source</td><td style="font-size:12.5px;padding:6px 0">${escH(row.source_label||row.source||'—')}</td></tr>`
+      +`<tr><td style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 6px 0">Batch</td><td style="font-size:12.5px;padding:6px 0;word-break:break-all">${escH(row.upload_batch||'—')}</td></tr>`
+      +`</tbody></table>`;
+  } else {
+    h+=`<p style="color:var(--muted);font-size:12.5px">Could not load record info for this transaction.</p>`;
+  }
+  showModal('Transaction Record Info',h);
+}
+async function deleteTxRow(id,backCall){
+  if(!confirm('Delete this transaction? This removes it from the itemized detail but does NOT change the monthly total shown on the dashboard — deleting will likely create a new Data Health mismatch unless the total is corrected too. This cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const stillThere=await sbFetch('transactions?select=id&id=eq.'+id);
+    if(stillThere.length) throw new Error('Row still exists after delete — you may not have permission to delete transactions for this entity.');
+    const idx=TX.findIndex(t=>t.id===id);
+    if(idx>=0) TX.splice(idx,1);
+    eval(backCall);
+  }catch(e){ alert('Failed to delete: '+e.message); }
 }
 
 // ─── EXPORT ──────────────────────────────────────────────────────────────────
@@ -3738,10 +3778,12 @@ function outstandingPaid(){
   const ids=new Set(scopeIds());
   return OUTSTANDING.filter(o=>o.status==='paid'&&ids.has(o.e));
 }
+function menuItem(label,onclick,color){
+  return `<button type="button" onclick="${onclick}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;cursor:pointer;padding:8px 12px;font-size:12.5px;color:${color||'var(--ink)'};white-space:nowrap" onmouseover="this.style.background='#f3f4fa'" onmouseout="this.style.background='none'">${label}</button>`;
+}
 function outstandingRowHtml(o){
   const canEdit=MY_ROLE==='editor';
   let statusCell;
-  const menuItem=(label,onclick,color)=>`<button type="button" onclick="${onclick}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;cursor:pointer;padding:8px 12px;font-size:12.5px;color:${color||'var(--ink)'};white-space:nowrap" onmouseover="this.style.background='#f3f4fa'" onmouseout="this.style.background='none'">${label}</button>`;
   const items=[];
   if(canEdit) items.push(menuItem(ICON.history()+' History',`openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')`));
   if(o.status==='paid'){
