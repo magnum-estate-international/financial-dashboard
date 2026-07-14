@@ -3498,9 +3498,10 @@ function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
 // Renders one transaction (or residual/summary) row for the OpEx/Revenue drill-down tables,
 // with a Category column and an Edit action — mirrors the look of the Outstanding Liability
 // table. Edit is only offered for genuine transaction rows (x.id set); residual "not itemized"
-// summary rows have no underlying database row to edit. Edit only ever touches description/
-// category (raw_label) — never amount or date, since those feed entity_period_totals directly
-// and editing them here would desync the Data Health reconciliation check.
+// summary rows have no underlying database row to edit. Amount edits change the itemized sum
+// for that entity/month without touching entity_period_totals (the separately-entered monthly
+// total KPIs read from) — openTxEdit warns about this so a real correction also gets reflected
+// via Update Entity Balance if needed.
 function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const canEdit=MY_ROLE==='editor';
   const sign = x.contra ? '–' : (isRev?'+':'–');
@@ -3561,9 +3562,11 @@ async function openTxEdit(id,backCall){
   const catOpts=await ensureCatsByKind(kind);
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Edit Transaction</h4>`;
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · ${x.d} · <b style="color:var(--ink)">${fmt(Math.abs(x.amt))}</b><br>Amount and date can't be changed here (they feed the monthly totals shown across the dashboard) — use a correction entry via Update Data for that instead.</div>`
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Amount adjusts this entity's itemized total for ${MONTHS[MONTH]||MONTH} without touching the monthly total shown on the KPI cards — if this is a real correction (not a typo fix), also update the total via the Update Entity Balance box so Data Health stays reconciled.</div>`
     +opeField('Description',`<input id="txe-desc" value="${escH(x.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Category',`<input id="txe-cat" value="${escH(x.k||'')}" list="txe-cat-dl" style="width:100%;padding:8px 10px;box-sizing:border-box"><datalist id="txe-cat-dl">${catOpts.map(c=>`<option value="${escH(c)}">`).join('')}</datalist>`)
+    +opeField('Date',`<input id="txe-date" value="${escH(x.d)}" placeholder="e.g. 30 Apr" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +opeField('Amount (IDR)',`<input id="txe-amt" type="number" min="0" step="1" value="${Math.abs(x.amt)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +`<button class="btn" style="background:#5b67f1;color:#fff;border:0;margin-top:12px" onclick="saveTxEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
     +`<span id="txe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal('Edit Transaction',h,true);
@@ -3573,14 +3576,21 @@ async function saveTxEdit(id,backCall){
   const err=document.getElementById('txe-err'); err.textContent='';
   const desc=document.getElementById('txe-desc').value.trim();
   const cat=document.getElementById('txe-cat').value.trim();
-  if(!desc||!cat) return void(err.textContent='Description and Category are required.');
+  const dateLabel=document.getElementById('txe-date').value.trim();
+  const amtRaw=document.getElementById('txe-amt').value.trim();
+  const amtNum=Number(amtRaw);
+  if(!desc||!cat||!dateLabel) return void(err.textContent='Description, Category, and Date are required.');
+  if(!amtRaw||!isFinite(amtNum)||amtNum<=0) return void(err.textContent='Amount must be a positive number.');
   try{
+    const x=TX.find(t=>t.id===id);
+    // amount_idr is stored signed: contra/refund rows negative, everything else positive —
+    // the row's own x.contra flag (not the raw sign of the edited value) decides the stored sign.
+    const signedAmt = x&&x.contra ? -amtNum : amtNum;
     const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({description:desc,raw_label:cat})});
+      body:JSON.stringify({description:desc,raw_label:cat,day_label:dateLabel,amount_idr:signedAmt})});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
-    const x=TX.find(t=>t.id===id);
-    if(x){ x.desc=desc; x.k=cat; }
+    if(x){ x.desc=desc; x.k=cat; x.d=dateLabel; x.amt=signedAmt; }
     eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
