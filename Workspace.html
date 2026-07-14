@@ -3509,10 +3509,15 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const entCell = showEntity ? `<td>${pill(x.e)}</td>` : '';
   let editCell = `<td></td>`;
   if(canEdit && x.id!=null){
+    // encodeURIComponent deliberately leaves ' unescaped (it's in its "safe" set) — but bc is about
+    // to be wrapped in '...' as a JS string argument inside an onclick="..." HTML attribute, so an
+    // unescaped ' would terminate that JS string early. Percent-encode it manually; decodeURIComponent
+    // reverses %27 back to ' exactly like any other percent-escape.
+    const bc=encodeURIComponent(backCall).replace(/'/g,'%27');
     const items=[
-      menuItem(ICON.history()+' History',`openTxHistory(${x.id},${JSON.stringify(backCall)})`),
-      menuItem(ICON.edit()+' Edit',`openTxEdit(${x.id},${JSON.stringify(backCall)})`),
-      menuItem(ICON.trash()+' Delete',`deleteTxRow(${x.id},${JSON.stringify(backCall)})`,'var(--red)'),
+      menuItem(ICON.history()+' History',`openTxHistory(${x.id},'${bc}')`),
+      menuItem(ICON.edit()+' Edit',`openTxEdit(${x.id},'${bc}')`),
+      menuItem(ICON.trash()+' Delete',`deleteTxRow(${x.id},'${bc}')`,'var(--red)'),
     ];
     editCell = `<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${x.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
       +`<div id="ope-menu-${x.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div></td>`;
@@ -3549,6 +3554,7 @@ function filterTxRows(inputId){
   });
 }
 async function openTxEdit(id,backCall){
+  backCall=decodeURIComponent(backCall);
   const x=TX.find(t=>t.id===id);
   if(!x) return;
   const kind=x.type==='rev'?'revenue':'opex';
@@ -3558,11 +3564,12 @@ async function openTxEdit(id,backCall){
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · ${x.d} · <b style="color:var(--ink)">${fmt(Math.abs(x.amt))}</b><br>Amount and date can't be changed here (they feed the monthly totals shown across the dashboard) — use a correction entry via Update Data for that instead.</div>`
     +opeField('Description',`<input id="txe-desc" value="${escH(x.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Category',`<input id="txe-cat" value="${escH(x.k||'')}" list="txe-cat-dl" style="width:100%;padding:8px 10px;box-sizing:border-box"><datalist id="txe-cat-dl">${catOpts.map(c=>`<option value="${escH(c)}">`).join('')}</datalist>`)
-    +`<button class="btn" style="background:#5b67f1;color:#fff;border:0;margin-top:12px" onclick="saveTxEdit(${id},${JSON.stringify(backCall)})">Save changes</button>`
+    +`<button class="btn" style="background:#5b67f1;color:#fff;border:0;margin-top:12px" onclick="saveTxEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
     +`<span id="txe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal('Edit Transaction',h,true);
 }
 async function saveTxEdit(id,backCall){
+  backCall=decodeURIComponent(backCall);
   const err=document.getElementById('txe-err'); err.textContent='';
   const desc=document.getElementById('txe-desc').value.trim();
   const cat=document.getElementById('txe-cat').value.trim();
@@ -3580,6 +3587,7 @@ async function saveTxEdit(id,backCall){
 // "History" for a raw bank transaction has no payment-ledger equivalent (unlike an invoice) — shows
 // where the row actually came from instead: who/when it was uploaded and which import batch/source.
 async function openTxHistory(id,backCall){
+  backCall=decodeURIComponent(backCall);
   let row=null;
   try{ const rows=await sbFetch('transactions?select=created_at,created_by,source,source_label,upload_batch&id=eq.'+id); row=rows[0]; }catch(e){}
   const x=TX.find(t=>t.id===id);
@@ -3599,6 +3607,7 @@ async function openTxHistory(id,backCall){
   showModal('Transaction Record Info',h);
 }
 async function deleteTxRow(id,backCall){
+  backCall=decodeURIComponent(backCall);
   if(!confirm('Delete this transaction? This removes it from the itemized detail but does NOT change the monthly total shown on the dashboard — deleting will likely create a new Data Health mismatch unless the total is corrected too. This cannot be undone.')) return;
   try{
     const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'DELETE'});
