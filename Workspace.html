@@ -3457,7 +3457,7 @@ function openBDItem(type,encKey){
   } else {
     h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals — their largest transactions appear under <b>"Key Transactions of the Month"</b>.</p>`;
   }
-  showModal((isRev?'Revenue — ':'OpEx Category — ')+key,h);
+  showModal((isRev?'Revenue — ':'OpEx Category — ')+key,h,true);
 }
 function openCatEntity(type,encKey,id){
   const key=decodeURIComponent(encKey), isRev=type==='rev', fld=isRev?'rev':'opex', cls=isRev?'pos':'neg';
@@ -3493,7 +3493,7 @@ function openCatEntity(type,encKey,id){
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(val)}</strong></td><td></td></tr></tbody></table>`;
   if(tx.length) h+=`</div>`;
   if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this entity in scope.</p>`;
-  showModal(`${ENT[id].name} — ${key}`,h);
+  showModal(`${ENT[id].name} — ${key}`,h,true);
 }
 function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
 // Renders one transaction (or residual/summary) row for the OpEx/Revenue drill-down tables,
