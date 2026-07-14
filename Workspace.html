@@ -2869,7 +2869,7 @@ function renderAlert(a){
 }
 
 function renderKpiOp(a){
-  const pos=a.opNet>=0, cover=a.opex>0?(a.rev/a.opex*100):0;
+  const pos=a.opNet>=0;
   const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
   document.getElementById('kpiOp').innerHTML=`
     <div class="pcard dark clickable" onclick="openDetail('opnet')">
@@ -2894,12 +2894,7 @@ function renderKpiOp(a){
       <div class="big neg">${fmt(a.opex)}</div>
       <div class="meta"><b>${Object.keys(a.opexBD).length} categories</b> across ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'}</div>
     </div>
-    <div class="pcard amber-hl clickable" onclick="openDetail('opnet')">
-      ${hint('var(--blue-300)')}
-      <div class="lab">Revenue Coverage Ratio</div>
-      <div class="big amb">${cover.toFixed(1)}%</div>
-      <div class="meta">${cover<100?'Gap funded by financing':'Fully self-funded'}</div>
-    </div>`;
+    ${outstandingCard()}`;
 }
 function renderKpiFin(a){
   const pos=a.fullNet>=0;
@@ -2936,8 +2931,7 @@ function renderKpiFin(a){
       <div class="lab">Net Cash Movement (All Flows)</div>
       <div class="big" style="color:${pos?'#86efac':'#f87171'}">${pos?'+':'–'} ${fmt(Math.abs(a.fullNet))}</div>
       <div class="meta" style="color:rgba(255,255,255,.65)">Excludes inter-bank transfers</div>
-    </div>
-    ${outstandingCard()}`;
+    </div>`;
 }
 function mkOutstanding(o){
   const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
