@@ -373,7 +373,7 @@ a{color:#4550d8}
 
 <div class="grid cols-eq" style="margin-bottom:16px">
   <div class="panel" id="secLiabTopLabel">
-    <h2>Outstanding Liability — Top 10 Vendors</h2>
+    <h2>Outstanding Liability — Top 5 Vendors</h2>
     <div class="pn-sub" id="liabTopSub"></div>
     <div class="bd" id="liabTopVendor"></div>
   </div>
@@ -3020,24 +3020,27 @@ function renderLiabTopVendor(){
   const grand=open.reduce((s,o)=>s+o.remaining,0);
   if(sub) sub.textContent=rows.length?`${rows.length} vendor${rows.length===1?'':'s'} with outstanding liability in this scope · click a vendor for invoice detail`:'No outstanding liabilities in this scope';
   if(!rows.length){ el.innerHTML=`<p style="color:var(--muted);font-size:12.5px">No outstanding liabilities in this scope.</p>`; return; }
-  const top=rows.slice(0,10);
-  const rest=rows.slice(10);
-  const restTot=rest.reduce((s,[,v])=>s+v.tot,0);
-  const restN=rest.reduce((s,[,v])=>s+v.n,0);
+  const top=rows.slice(0,5);
   let h=`<div class="bd-total"><span class="lab">Total Outstanding Liability</span><span class="v neg">${fmt(grand)}</span></div>`;
-  top.forEach(([vendor,v],i)=>{
-    const p=grand>0?(v.tot/grand*100):0;
-    h+=`<div class="bd-row" style="cursor:pointer" onclick="openOutstandingVendor('${encodeURIComponent(vendor)}')"><span class="bl">${escH(vendor)} <span style="color:var(--blue-300);font-weight:700">›</span> <span style="color:var(--muted);font-weight:400">(${v.n})</span></span>
-      <span class="bv neg">${fmt(v.tot)}<span class="bp">${p.toFixed(1)}%</span></span>
-      <div class="bd-bar"><span style="width:${Math.max(p,1.5)}%;background:${CATCOLORS[i%CATCOLORS.length]}"></span></div></div>`;
-  });
-  if(rest.length){
-    const p=grand>0?(restTot/grand*100):0;
-    h+=`<div class="bd-row"><span class="bl" style="color:var(--muted)">${rest.length} other vendor${rest.length===1?'':'s'} (${restN})</span>
-      <span class="bv" style="color:var(--muted)">${fmt(restTot)}<span class="bp">${p.toFixed(1)}%</span></span>
-      <div class="bd-bar"><span style="width:${Math.max(p,1.5)}%;background:#c5cbdb"></span></div></div>`;
-  }
+  top.forEach(([vendor,v],i)=>{ h+=vendorRowHtml(vendor,v,grand,i); });
+  if(rows.length>top.length) h+=`<button type="button" onclick="openAllVendors()" style="width:100%;margin-top:12px;border:1px solid #e2e5f0;background:#f7f8fc;color:#3a4254;border-radius:10px;font-size:12.5px;font-weight:700;padding:8px;cursor:pointer">View all ${rows.length} →</button>`;
   el.innerHTML=h;
+}
+function vendorRowHtml(vendor,v,grand,i){
+  const p=grand>0?(v.tot/grand*100):0;
+  return `<div class="bd-row" style="cursor:pointer" onclick="openOutstandingVendor('${encodeURIComponent(vendor)}')"><span class="bl">${escH(vendor)} <span style="color:var(--blue-300);font-weight:700">›</span> <span style="color:var(--muted);font-weight:400">(${v.n})</span></span>
+    <span class="bv neg">${fmt(v.tot)}<span class="bp">${p.toFixed(1)}%</span></span>
+    <div class="bd-bar"><span style="width:${Math.max(p,1.5)}%;background:${CATCOLORS[i%CATCOLORS.length]}"></span></div></div>`;
+}
+function openAllVendors(){
+  const open=outstandingOpen();
+  const byVendor={};
+  open.forEach(o=>{ const k=o.vendor||'—'; const g=byVendor[k]=byVendor[k]||{tot:0,n:0}; g.tot+=o.remaining; g.n++; });
+  const rows=Object.entries(byVendor).sort((a,b)=>b[1].tot-a[1].tot);
+  const grand=open.reduce((s,o)=>s+o.remaining,0);
+  let h=`<div class="bd-total"><span class="lab">Total Outstanding Liability</span><span class="v neg">${fmt(grand)}</span></div>`;
+  h+=`<div class="bd">${rows.map(([vendor,v],i)=>vendorRowHtml(vendor,v,grand,i)).join('')}</div>`;
+  showModal(`All Vendors — Outstanding Liability`,h,true);
 }
 // Automatic payment-priority recommendation: ranks unpaid invoices by urgency so management
 // can see who to pay first without manually scanning every row. Not a black-box score — every
