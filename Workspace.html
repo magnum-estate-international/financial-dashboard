@@ -3554,13 +3554,55 @@ async function saveTxEdit(id,backCall){
     // amount_idr is stored signed: contra/refund rows negative, everything else positive —
     // the row's own x.contra flag (not the raw sign of the edited value) decides the stored sign.
     const signedAmt = x&&x.contra ? -amtNum : amtNum;
+    const oldCat=x?x.k:null, oldAmt=x?Math.abs(x.amt):0;
     const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
       body:JSON.stringify({description:desc,raw_label:cat,day_label:dateLabel,amount_idr:signedAmt})});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    // May's "By Entity" breakdown reads the line_items category-total table, not transactions —
+    // if we don't move this row's amount between category buckets there too, the breakdown keeps
+    // showing the stale category (or, for the new category, shows nothing at all) while Transaction
+    // Detail already reflects the edit, exactly the mismatch reported against this feature.
+    if(x && x.mo==='MAY') await syncMayLineItemCategory(x.e,x.type,oldCat,cat,oldAmt,amtNum);
     if(x){ x.desc=desc; x.k=cat; x.d=dateLabel; x.amt=signedAmt; }
     eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+// Keeps the line_items category-total table (source of the May "By Entity" breakdown) in sync
+// when a transaction's category and/or amount is edited or the row is deleted. Only relevant for
+// May — line_items only holds May rows; other months compute the breakdown directly from
+// transactions, so there's no separate aggregate to desync.
+async function syncMayLineItemCategory(entity,type,oldCat,newCat,oldAmt,newAmt){
+  const e=ENT[entity]; if(!e) return;
+  const fld=type==='rev'?'rev':'opex';
+  const dbFlow=type==='rev'?'revenue':'opex';
+  const bucket=e[fld];
+  async function setBucket(catName,newVal){
+    const q='line_items?entity_code=eq.'+encodeURIComponent(entity)+'&period_code=eq.MAY&flow=eq.'+dbFlow+'&raw_label=eq.'+encodeURIComponent(catName);
+    if(newVal<=0.5){
+      if(bucket[catName]==null) return;
+      delete bucket[catName];
+      await authedFetch(SB_URL+'/rest/v1/'+q,{method:'DELETE'});
+      return;
+    }
+    const existed=bucket[catName]!=null;
+    bucket[catName]=newVal;
+    if(existed){
+      await authedFetch(SB_URL+'/rest/v1/'+q,{method:'PATCH',
+        headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({amount_idr:newVal})});
+    } else {
+      await authedFetch(SB_URL+'/rest/v1/line_items',{method:'POST',
+        headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+        body:JSON.stringify({entity_code:entity,period_code:'MAY',flow:dbFlow,raw_label:catName,category:catName,amount_idr:newVal})});
+    }
+  }
+  if(oldCat===newCat){
+    const delta=newAmt-oldAmt;
+    if(Math.abs(delta)>0.5) await setBucket(oldCat,(bucket[oldCat]||0)+delta);
+  } else {
+    if(oldCat!=null && bucket[oldCat]!=null) await setBucket(oldCat,bucket[oldCat]-oldAmt);
+    await setBucket(newCat,(bucket[newCat]||0)+newAmt);
+  }
 }
 // "History" for a raw bank transaction has no payment-ledger equivalent (unlike an invoice) — shows
 // where the row actually came from instead: who/when it was uploaded and which import batch/source.
