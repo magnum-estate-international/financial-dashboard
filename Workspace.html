@@ -5088,6 +5088,23 @@ async function renderEntryBody(){
     +'</div></div></details>'
     +'<button id="en-send" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:14px;font-weight:700;padding:12px 26px;cursor:pointer;box-shadow:0 5px 14px -5px rgba(91,103,241,.6)">Save update</button>'
     +'<div id="en-msg" style="font-size:12px;margin:8px 0 22px;min-height:1px"></div>';
+  // ── Update Entity Balance — a dedicated box for logging opening/closing bank balance per PT
+  // per period, decoupled from the file-upload flow above (previously this was only reachable by
+  // expanding "Advanced" inside the main entry form). Feeds the Balance Reconciliation section. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Update Entity Balance</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Log the opening and/or closing bank balance for one PT and period — used by Balance Reconciliation to check the report against the actual bank balance. Leave a field blank to keep its current saved value.</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
+      +'<select id="ebal-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<select id="ebal-per" style="'+inp+'">'+pers.map(p=>'<option value="'+escH(p.code)+'">'+escH(p.label)+'</option>').join('')+'</select>'
+      +'<input id="ebal-open" inputmode="numeric" placeholder="Opening balance (IDR)" style="'+inp+'">'
+      +'<input id="ebal-close" inputmode="numeric" placeholder="Closing balance (IDR)" style="'+inp+'">'
+      +'</div>'
+      +'<button id="ebal-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save balance</button>'
+      +'<div id="ebal-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div></details>';
+  }
   // ── Outstanding payables (unpaid invoices) — separate from the monthly figures above ──
   {
     const opexCats=cats.filter(c=>c.kind==='opex');
@@ -5620,6 +5637,41 @@ async function renderEntryBody(){
         return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,freq,invNo,vendor,desc,docUrl,inv,due,amt,error};
       });
       renderOpdPreview();
+    };
+  }
+  // ── Wire the "Update Entity Balance" box ──
+  {
+    const balEnt=document.getElementById('ebal-ent'), balPer=document.getElementById('ebal-per'),
+      balOpen=document.getElementById('ebal-open'), balClose=document.getElementById('ebal-close'),
+      balBtn=document.getElementById('ebal-send'), balMsg=document.getElementById('ebal-msg');
+    const prefillBal=()=>{
+      if(!balEnt||!balPer) return;
+      const b=(BAL[balEnt.value]&&BAL[balEnt.value][balPer.value])||{};
+      balOpen.value = b.open!=null ? b.open : '';
+      balClose.value = b.close!=null ? b.close : '';
+    };
+    if(balEnt) balEnt.onchange=prefillBal;
+    if(balPer) balPer.onchange=prefillBal;
+    prefillBal();
+    if(balBtn) balBtn.onclick=async()=>{
+      balMsg.style.color='#b3261e'; balMsg.textContent='';
+      const entity=balEnt.value, pcode=balPer.value;
+      const openRaw=(balOpen.value||'').replace(/[^0-9-]/g,'');
+      const closeRaw=(balClose.value||'').replace(/[^0-9-]/g,'');
+      if(openRaw===''&&closeRaw==='') return void(balMsg.textContent='Enter an opening and/or closing balance.');
+      balBtn.disabled=true; balBtn.textContent='Saving…';
+      try{
+        const prev=(BAL[entity]&&BAL[entity][pcode])||{};
+        const bp={entity_code:entity,period_code:pcode,updated_by:MY_EMAIL,updated_at:new Date().toISOString(),
+          opening_idr: openRaw!==''?Number(openRaw):(prev.open!=null?prev.open:null),
+          closing_idr: closeRaw!==''?Number(closeRaw):(prev.close!=null?prev.close:null)};
+        const r=await authedFetch(SB_URL+'/rest/v1/entity_period_balances',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(bp)});
+        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+        (BAL[entity]=BAL[entity]||{})[pcode]={open:bp.opening_idr,close:bp.closing_idr};
+        ENTRY_DIRTY=true;
+        balMsg.style.color='#2b7a4b'; balMsg.textContent='Saved.';
+      }catch(e){ balMsg.textContent='Failed to save: '+e.message; }
+      balBtn.disabled=false; balBtn.textContent='Save balance';
     };
   }
   wireOppPicker(inp);
