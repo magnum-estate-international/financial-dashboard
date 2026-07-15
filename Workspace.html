@@ -3257,18 +3257,9 @@ function showModal(title,html,wide){
 function closeModal(){document.getElementById('overlay').classList.remove('show');}
 // Opex categories rolled up into a handful of parent cost groups for the breakdown modal —
 // purely a display grouping (openBDItem drill-down still keys off the individual category name).
-const OPEX_GROUPS=[
-  {name:'Legal, Permit & Notary',cats:['Legal','Permit','Notary Fee','Building Insurance']},
-  {name:'Salary/Payroll',cats:['Payroll & Salaries','BPJS','External Security']},
-  {name:'Utilities',cats:['Water Supply','Electricity','Internet & Communication']},
-  {name:'Accommodation & Transport',cats:['Staff Accommodation','Transport & Vehicle']},
-  {name:'Consulting & Management Fee',cats:['Consulting Fee','Professional & Management Fees']},
-  {name:'Construction Cost',cats:['Project & Daily Workers','Construction & Project Cost']},
-  {name:'Marketing',cats:['Marketing & Branding','Commission']},
-  {name:'Property Operations Expenses',cats:['Housekeeping','Maintenance']},
-];
-const OPEX_CAT_TO_GROUP={};
-OPEX_GROUPS.forEach(g=>g.cats.forEach(c=>OPEX_CAT_TO_GROUP[c]=g.name));
+// Sourced from categories.parent_group (set via the "Manage Categories" panel), not hardcoded —
+// OPEX_CAT_TO_GROUP is populated in loadFromSupabase() and refreshed on any category CRUD.
+let OPEX_CAT_TO_GROUP={};
 function opexRowsGrouped(items,total,cls){
   const byGroup={},ungrouped=[];
   items.forEach(([k,v])=>{
@@ -4533,6 +4524,14 @@ async function sbFetchAll(base){
   }
   return out;
 }
+async function refreshOpexGroupMap(){
+  try{
+    const rows=await sbFetch('categories?select=name,parent_group&kind=eq.opex');
+    const m={}; rows.forEach(r=>{ if(r.parent_group) m[r.name]=r.parent_group; });
+    OPEX_CAT_TO_GROUP=m;
+  }catch(e){ /* keep whatever grouping was already loaded */ }
+  return OPEX_CAT_TO_GROUP;
+}
 async function loadFromSupabase(){
   const [ents,li,tots,loans,hls,txAll,outs]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
@@ -4541,7 +4540,8 @@ async function loadFromSupabase(){
     sbFetch('loan_flows?select=*&order=id'),
     sbFetch('highlights?select=*&order=id'),
     sbFetchAll('transactions?select=*&order=source,ord'),
-    sbFetch('outstanding_payables?select=*&order=due_date').catch(()=>[])
+    sbFetch('outstanding_payables?select=*&order=due_date').catch(()=>[]),
+    refreshOpexGroupMap()
   ]);
   const fk={revenue:'rev',opex:'opex',financing_in:'finIn',financing_out:'finOut'};
   const E={};
@@ -4716,7 +4716,6 @@ function showUserBar(){
   b.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;margin-right:8px;min-width:0"><span style="width:27px;height:27px;flex:none;border-radius:50%;background:linear-gradient(135deg,#5b67f1,#8d7bf0);color:#fff;font-weight:700;font-size:12px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
     +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">Update data</button>':'')
     +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">⚙ Manage access</button>':'')
-    +(IS_ADMIN?'<button id="mag-cats-open" style="'+pill+'">🏷 Categories</button>':'')
     +'<button id="mag-history-open" style="'+pill+'">🕘 History</button>'
     +'<button id="mag-signout" style="'+pill+'">Sign out</button>';
   const host=document.querySelector('header.hero');
@@ -4724,7 +4723,6 @@ function showUserBar(){
   else { b.style.cssText+=';position:fixed;top:10px;right:12px;z-index:9998;background:rgba(20,27,45,.92);border-radius:14px;padding:8px 12px'; document.body.appendChild(b); }
   document.getElementById('mag-signout').onclick=signOut;
   const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
-  const cb2=document.getElementById('mag-cats-open'); if(cb2) cb2.onclick=openCategoriesPanel;
   const eb=document.getElementById('mag-entry-open'); if(eb) eb.onclick=openEntryPanel;
   const hb=document.getElementById('mag-history-open'); if(hb) hb.onclick=()=>openHistoryPanel('log');
   if(IS_ADMIN) refreshPendingBadge();
@@ -4841,22 +4839,10 @@ async function adminDel(path){
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
 }
 /* ── Manage Categories (admin) — add/rename/delete rows in `categories`, cascading a rename
-   across transactions/line_items/category_aliases since raw_label has no FK to categories.name ── */
-function closeCatsPanel(){ const m=document.getElementById('mag-cats'); if(m) m.remove(); }
-function invalidateCategoryCaches(){ OPEX_CATS_G=null; Object.keys(CATS_BY_KIND_G).forEach(k=>delete CATS_BY_KIND_G[k]); CAT_MAP=null; }
-async function openCategoriesPanel(){
-  closeCatsPanel();
-  const wrap=document.createElement('div'); wrap.id='mag-cats';
-  wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(20,27,45,.45);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Plus Jakarta Sans,system-ui,sans-serif';
-  wrap.innerHTML='<div style="background:#fff;color:#141b2d;max-width:640px;width:100%;border-radius:12px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:18px;color:#141b2d">Manage Categories</div><button id="mag-cats-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
-    +'<div style="font-size:12.5px;color:#2e3547;margin-bottom:18px;line-height:1.5">Add, rename, or delete the categories used across transactions, line items, and the bulk importer. Renaming updates every existing record; deleting only removes the category from future use — it does not touch past transactions.</div>'
-    +'<div id="mag-cats-body">Loading…</div></div>';
-  document.body.appendChild(wrap);
-  document.getElementById('mag-cats-x').onclick=closeCatsPanel;
-  wrap.addEventListener('click',e=>{if(e.target===wrap)closeCatsPanel();});
-  await renderCategoriesBody();
-}
+   across transactions/line_items/category_aliases since raw_label has no FK to categories.name.
+   Lives inline inside the "Update data" panel (see renderEntryBody's "🏷 Manage Categories"
+   details block), not its own modal. ── */
+function invalidateCategoryCaches(){ OPEX_CATS_G=null; Object.keys(CATS_BY_KIND_G).forEach(k=>delete CATS_BY_KIND_G[k]); CAT_MAP=null; refreshOpexGroupMap(); }
 async function renameCategory(oldName,newName){
   newName=(newName||'').trim();
   if(!newName || newName===oldName) return;
@@ -4888,47 +4874,72 @@ async function deleteCategoryByName(name){
   invalidateCategoryCaches();
   return true;
 }
-async function addCategory(name,kind){
+async function addCategory(name,kind,parentGroup){
   name=(name||'').trim();
   if(!name) throw new Error('Name is required');
-  const r=await authedFetch(SB_URL+'/rest/v1/categories',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({name,kind})});
+  parentGroup=(parentGroup||'').trim();
+  const r=await authedFetch(SB_URL+'/rest/v1/categories',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({name,kind,parent_group:parentGroup||null})});
+  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+  invalidateCategoryCaches();
+}
+async function setCategoryGroup(name,parentGroup){
+  const r=await authedFetch(SB_URL+'/rest/v1/categories?name=eq.'+encodeURIComponent(name),{method:'PATCH',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({parent_group:parentGroup||null})});
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
   invalidateCategoryCaches();
 }
 async function renderCategoriesBody(){
-  const body=document.getElementById('mag-cats-body'); if(!body) return;
+  const body=document.getElementById('cats-body'); if(!body) return;
   let cats=[];
-  try{ cats=await sbFetch('categories?select=name,kind&order=kind,name'); }
+  try{ cats=await sbFetch('categories?select=name,kind,parent_group&order=kind,name'); }
   catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+err.message+'</div>'; return; }
   const byKind={opex:[],revenue:[],financing:[]};
-  cats.forEach(c=>{ (byKind[c.kind]=byKind[c.kind]||[]).push(c.name); });
+  cats.forEach(c=>{ (byKind[c.kind]=byKind[c.kind]||[]).push(c); });
   const kindLabel={opex:'Operating Expense',revenue:'Revenue',financing:'Financing'};
+  const allGroups=Array.from(new Set(cats.map(c=>c.parent_group).filter(Boolean))).sort();
+  const groupDatalist='<datalist id="cc-groups-dl">'+allGroups.map(g=>'<option value="'+escH(g)+'">').join('')+'</datalist>';
   let h='';
-  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;border:1px solid #e4e7ef;border-radius:12px;padding:12px">'
+  h+='<div style="border:1px solid #e4e7ef;border-radius:12px;padding:12px;margin-bottom:14px">'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
     +'<input id="cc-name" type="text" placeholder="New category name" style="flex:1 1 200px;padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px">'
     +'<select id="cc-kind" style="padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px"><option value="opex">Operating Expense</option><option value="revenue">Revenue</option><option value="financing">Financing</option></select>'
-    +'<button id="cc-add" style="border:0;background:#5b67f1;color:#fff;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">+ Add</button></div>'
+    +'</div>'
+    +'<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#2e3547;margin-bottom:6px;cursor:pointer"><input id="cc-issub" type="checkbox"> This is a sub-category of a group</label>'
+    +'<div id="cc-groupwrap" style="display:none;margin-bottom:8px">'
+    +'<input id="cc-group" type="text" list="cc-groups-dl" placeholder="Group name — pick an existing one or type a new group" style="width:100%;padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px;box-sizing:border-box">'
+    +groupDatalist
+    +'</div>'
+    +'<button id="cc-add" style="border:0;background:#5b67f1;color:#fff;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">+ Add category</button>'
+    +'</div>'
     +'<div id="cc-msg" style="font-size:12px;color:#b3261e;margin:-8px 0 10px;min-height:1px"></div>';
   ['opex','revenue','financing'].forEach(kind=>{
     const list=(byKind[kind]||[]);
     h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:13px;color:#141b2d;margin:14px 0 6px">'+kindLabel[kind]+' ('+list.length+')</div>';
-    h+='<div style="border:1px solid #eef2f7;border-radius:10px;max-height:220px;overflow:auto">';
-    list.forEach(name=>{
-      h+='<div class="cc-row" data-name="'+escH(name)+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f2f4f9;font-size:13px">'
-        +'<span class="cc-label" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(name)+'</span>'
-        +'<button class="cc-rename" style="border:1px solid #e4e7ef;background:#fff;border-radius:8px;padding:5px 10px;font-size:11.5px;cursor:pointer">Rename</button>'
-        +'<button class="cc-del" style="border:1px solid #f6c9c3;background:#fff;color:#b3261e;border-radius:8px;padding:5px 10px;font-size:11.5px;cursor:pointer">Delete</button>'
-        +'</div>';
+    h+='<div style="border:1px solid #eef2f7;border-radius:10px;max-height:260px;overflow:auto">';
+    const rowHtml=(c,indent)=>'<div class="cc-row" data-name="'+escH(c.name)+'" data-group="'+escH(c.parent_group||'')+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f2f4f9;font-size:13px'+(indent?';padding-left:26px':'')+'">'
+      +(indent?'<span style="color:var(--muted);font-size:12px">↳</span>':'')
+      +'<span class="cc-label" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(c.name)+'</span>'
+      +'<input class="cc-group-inp" type="text" list="cc-groups-dl" value="'+escH(c.parent_group||'')+'" placeholder="No group" style="width:150px;padding:5px 8px;border:1px solid #e4e7ef;border-radius:8px;font-size:11.5px">'
+      +'<button class="cc-rename" style="border:1px solid #e4e7ef;background:#fff;border-radius:8px;padding:5px 10px;font-size:11.5px;cursor:pointer">Rename</button>'
+      +'<button class="cc-del" style="border:1px solid #f6c9c3;background:#fff;color:#b3261e;border-radius:8px;padding:5px 10px;font-size:11.5px;cursor:pointer">Delete</button>'
+      +'</div>';
+    const grouped={}, standalone=[];
+    list.forEach(c=>{ if(c.parent_group){ (grouped[c.parent_group]=grouped[c.parent_group]||[]).push(c); } else standalone.push(c); });
+    Object.keys(grouped).sort().forEach(g=>{
+      h+='<div style="padding:7px 10px;border-top:1px solid #f2f4f9;font-size:12.5px;font-weight:700;background:#fafbfe">'+escH(g)+'</div>';
+      grouped[g].sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{ h+=rowHtml(c,true); });
     });
+    standalone.sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{ h+=rowHtml(c,false); });
     if(!list.length) h+='<div style="padding:10px;font-size:12.5px;color:var(--muted)">None yet.</div>';
     h+='</div>';
   });
   body.innerHTML=h;
+  const issub=document.getElementById('cc-issub'), gwrap=document.getElementById('cc-groupwrap');
+  issub.onchange=()=>{ gwrap.style.display=issub.checked?'block':'none'; };
   document.getElementById('cc-add').onclick=async()=>{
-    const nameEl=document.getElementById('cc-name'), kindEl=document.getElementById('cc-kind'), msg=document.getElementById('cc-msg');
+    const nameEl=document.getElementById('cc-name'), kindEl=document.getElementById('cc-kind'), groupEl=document.getElementById('cc-group'), msg=document.getElementById('cc-msg');
     const btn=document.getElementById('cc-add');
     btn.disabled=true; msg.textContent='';
-    try{ await addCategory(nameEl.value,kindEl.value); await renderCategoriesBody(); }
+    try{ await addCategory(nameEl.value,kindEl.value,issub.checked?groupEl.value:null); await renderCategoriesBody(); }
     catch(e){ msg.textContent='Failed: '+e.message; btn.disabled=false; }
   };
   body.querySelectorAll('.cc-rename').forEach(b=>b.onclick=async()=>{
@@ -4944,6 +4955,16 @@ async function renderCategoriesBody(){
     b.disabled=true;
     try{ const ok=await deleteCategoryByName(name); if(ok) await renderCategoriesBody(); else b.disabled=false; }
     catch(e){ alert('Delete failed: '+e.message); b.disabled=false; }
+  });
+  body.querySelectorAll('.cc-group-inp').forEach(inp=>{
+    const orig=inp.value;
+    inp.onchange=async()=>{
+      const row=inp.closest('.cc-row'); const name=row.dataset.name;
+      if(inp.value===orig) return;
+      inp.disabled=true;
+      try{ await setCategoryGroup(name,inp.value); await renderCategoriesBody(); }
+      catch(e){ alert('Could not update group: '+e.message); inp.disabled=false; inp.value=orig; }
+    };
   });
 }
 function closeAdmin(){ const m=document.getElementById('mag-admin'); if(m) m.remove(); }
@@ -5532,6 +5553,15 @@ async function renderEntryBody(){
       +oppPickerHtml(openOP,inp)
       +'</div></details>';
   }
+  // ── Manage Categories (admin) — add/rename/delete rows in `categories`, cascading a rename
+  // across transactions/line_items/category_aliases since raw_label has no FK to categories.name.
+  if(IS_ADMIN){
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">🏷 Manage Categories</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add, rename, or delete the categories used across transactions, line items, and the bulk importer. Renaming updates every existing record; deleting only removes the category from future use — it does not touch past transactions.</div>'
+      +'<div id="cats-body">Loading…</div>'
+      +'</div></details>';
+  }
   // ── Submission history ──
   const hist=IS_ADMIN?subs.filter(s=>s.status!=='pending'):subs;
   h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:8px">'+(IS_ADMIN?'Submission log':'My submissions')+'</div>';
@@ -6091,6 +6121,7 @@ async function renderEntryBody(){
     };
   }
   wireOppPicker(inp);
+  if(IS_ADMIN) renderCategoriesBody();
   document.getElementById('en-send').onclick=async()=>{
     const entity=document.getElementById('en-ent').value;
     const dval=dateInp.value, dval2=dateInp2.value||dval;
