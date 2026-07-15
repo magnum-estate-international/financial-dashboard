@@ -374,7 +374,7 @@ a{color:#4550d8}
 <div class="panel" style="margin-bottom:16px">
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Entity</th><th class="num">Revenue</th><th class="num">Operating Expense</th><th class="num">Operating Net</th><th class="num">Financing In</th><th class="num">Financing Out</th><th class="num">Net Cash (All Flows)</th><th class="num">Cash Position</th></tr></thead>
+      <thead><tr><th>Entity</th><th class="num">Revenue</th><th class="num">Operating Expense</th><th class="num">Operating Net</th><th class="num">Financing In</th><th class="num">Financing Out</th><th class="num">Net Cash (All Flows)</th></tr></thead>
       <tbody id="entTable"></tbody>
     </table>
   </div>
@@ -2868,10 +2868,28 @@ function renderAlert(a){
   }
 }
 
+// Cash Position is a headline Operational Performance card (not tucked into a table) — a single
+// current-value snapshot per entity (entity_cash_position, meant to be refreshed daily), summed
+// across whatever's in scope. Deliberately separate from the monthly opening/closing balance used
+// by Balance Reconciliation (that one's a reconciliation benchmark, this is "what's in the bank now").
+function cashPositionCard(){
+  const ids=scopeIds();
+  let tot=0,n=0,latest=null;
+  ids.forEach(id=>{ const c=CASHPOS[id]; if(c){ tot+=c.cash; n++; if(!latest||c.at>latest) latest=c.at; } });
+  const asOf=latest?new Date(latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):null;
+  return `<div class="pcard blue-hl clickable" onclick="openDetail('cashpos')">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="lab">Cash Position</div>
+      <div class="big">${n?fmt(tot):'—'}</div>
+      <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No cash position logged yet — add it via Update Data'}</div>
+    </div>`;
+}
 function renderKpiOp(a){
   const pos=a.opNet>=0;
   const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
-  document.getElementById('kpiOp').innerHTML=`
+  const ko=document.getElementById('kpiOp');
+  ko.className='kpi5';
+  ko.innerHTML=`
     <div class="pcard dark clickable" onclick="openDetail('opnet')">
       ${hint('rgba(255,255,255,.65)')}
       <div class="lab">Net Operating Result</div>
@@ -2894,7 +2912,8 @@ function renderKpiOp(a){
       <div class="big neg">${fmt(a.opex)}</div>
       <div class="meta"><b>${Object.keys(a.opexBD).length} categories</b> across ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'}</div>
     </div>
-    ${outstandingCard()}`;
+    ${outstandingCard()}
+    ${cashPositionCard()}`;
 }
 function renderKpiFin(a){
   const pos=a.fullNet>=0;
@@ -3084,19 +3103,12 @@ function renderRevBD(a){
   document.getElementById('revBD').innerHTML=h;
 }
 
-function cashPosCellHtml(id){
-  const c=CASHPOS[id];
-  if(!c) return '<td class="num" style="color:var(--muted)">—</td>';
-  const asOf=new Date(c.at).toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
-  return `<td class="num">${fmt(c.cash)}<div style="font-size:10px;color:var(--muted);font-weight:400">as of ${asOf}</div></td>`;
-}
 function renderEntTable(){
   const ids=grpIds();
-  let h='',tr=0,to=0,tfi=0,tfo=0,tcash=0,ncash=0;
+  let h='',tr=0,to=0,tfi=0,tfo=0;
   ids.forEach(id=>{
     const e=ENT[id],ef=eff(id),r=ef.rev,o=ef.opex,fi=ef.finIn,fo=ef.finOut,net=r-o,full=r+fi-o-fo;
     tr+=r;to+=o;tfi+=fi;tfo+=fo;
-    if(CASHPOS[id]){ tcash+=CASHPOS[id].cash; ncash++; }
     h+=`<tr style="cursor:pointer;${EF===id?'background:var(--amber-bg)':''}" onclick="pickEntity('${id}')">
       <td>${pill(id)}</td>
       <td class="num ${r>0?'pos':''}">${r>0?fmt(r):'–'}</td>
@@ -3104,8 +3116,7 @@ function renderEntTable(){
       <td class="num ${net>=0?'pos':'neg'}">${net>=0?'+':''} ${fmt(net)}</td>
       <td class="num">${fi>0?fmt(fi):'–'}</td>
       <td class="num">${fo>0?fmt(fo):'–'}</td>
-      <td class="num ${full>=0?'pos':'neg'}">${full>=0?'+':''} ${fmt(full)}</td>
-      ${cashPosCellHtml(id)}</tr>`;
+      <td class="num ${full>=0?'pos':'neg'}">${full>=0?'+':''} ${fmt(full)}</td></tr>`;
   });
   const tn=tr-to,tf=tr+tfi-to-tfo;
   const lbl = GF==='all' ? 'TOTAL — ALL GROUPS' : 'TOTAL — '+GRPNAME[GF].toUpperCase();
@@ -3113,8 +3124,7 @@ function renderEntTable(){
     <td class="num pos"><strong>${fmt(tr)}</strong></td><td class="num neg"><strong>${fmt(to)}</strong></td>
     <td class="num ${tn>=0?'pos':'neg'}"><strong>${tn>=0?'+':''} ${fmt(tn)}</strong></td>
     <td class="num"><strong>${fmt(tfi)}</strong></td><td class="num"><strong>${fmt(tfo)}</strong></td>
-    <td class="num ${tf>=0?'pos':'neg'}"><strong>${tf>=0?'+':''} ${fmt(tf)}</strong></td>
-    <td class="num"><strong>${ncash?fmt(tcash):'—'}</strong></td></tr>`;
+    <td class="num ${tf>=0?'pos':'neg'}"><strong>${tf>=0?'+':''} ${fmt(tf)}</strong></td></tr>`;
   document.getElementById('entTable').innerHTML=h;
 }
 
@@ -3339,6 +3349,22 @@ function openDetail(kind){
   const a=agg();
   if(kind==='rev') showModal('Operating Revenue — Breakdown',bdTableHtml(a.revBD,a.rev,'pos'));
   else if(kind==='opex') showModal('Operating Expenses — Breakdown',bdTableHtml(a.opexBD,a.opex,'neg'));
+  else if(kind==='cashpos'){
+    const ids=scopeIds().filter(id=>CASHPOS[id]).sort((x,y)=>CASHPOS[y].cash-CASHPOS[x].cash);
+    const missing=scopeIds().filter(id=>!CASHPOS[id]);
+    let h;
+    if(!ids.length){
+      h=`<p style="color:var(--muted);font-size:12.5px">No cash position logged yet for this scope — add it via <b>Update Data → Update Cash Position</b>.</p>`;
+    } else {
+      let tot=0;
+      h=`<table><thead><tr><th>Entity</th><th class="num">Cash Position (IDR)</th><th>As of</th></tr></thead><tbody>`;
+      ids.forEach(id=>{ const c=CASHPOS[id]; tot+=c.cash;
+        h+=`<tr><td>${pill(id)}</td><td class="num">${fmt(c.cash)}</td><td style="font-size:12px;color:var(--muted)">${new Date(c.at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td></tr>`;});
+      h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table>`;
+      if(missing.length) h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">${missing.length} entit${missing.length===1?'y':'ies'} in scope without a logged cash position: ${missing.map(id=>ENT[id]?ENT[id].name:id).join(', ')}.</p>`;
+    }
+    showModal('Cash Position — by Entity',h);
+  }
   else if(kind==='finin'){
     let h=finTableHtml('finIn');
     if(a.capDep>0) h+=`<p style="color:var(--muted);font-size:12px;margin-top:10px;line-height:1.7">Excludes the <b>Shareholder Capital Deposit</b> (${fmt(a.capDep)}) — that's tracked as its own financing category to avoid double-counting, but is still included in Net Financing &amp; Net Cash Movement as an inflow.</p>`;
