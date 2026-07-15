@@ -2891,6 +2891,7 @@ function renderKpiOp(a){
   const ko=document.getElementById('kpiOp');
   ko.className='kpi4 kpi5';
   ko.innerHTML=`
+    ${cashPositionCard()}
     <div class="pcard dark clickable" onclick="openDetail('opnet')">
       ${hint('rgba(255,255,255,.65)')}
       <div class="lab">Net Operating Result</div>
@@ -2913,8 +2914,7 @@ function renderKpiOp(a){
       <div class="big neg">${fmt(a.opex)}</div>
       <div class="meta"><b>${Object.keys(a.opexBD).length} categories</b> across ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'}</div>
     </div>
-    ${outstandingCard()}
-    ${cashPositionCard()}`;
+    ${outstandingCard()}`;
 }
 function renderKpiFin(a){
   const pos=a.fullNet>=0;
