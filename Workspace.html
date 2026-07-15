@@ -604,7 +604,7 @@ const CANON={
   'Sun Lounger Payment':'Equipment, FF&E & Supplies','In-House Worker Salary':'Project & Daily Workers',
   'Salary, Allowance & Position':'Payroll & Salaries','Cleaning Service':'Cleaning Services Fee','Pool Maintenance':'Repair & Maintenance','Waste Removal':'Cleaning Services Fee','Maintenance':'Repair & Maintenance',
   'Guest Compensation':'Other Operating Expense','Tax (WHT)':'Tax','BPJS Employment Insurance':'BPJS','BPJS Health Insurance':'BPJS','Utilities / Internet':'Internet & Communication',
-  'Security & Keamanan':'Security Services','Security & Keamananan':'Security Services','Security':'Security Services',
+  'Security & Keamanan':'External Security','Security & Keamananan':'External Security','Security':'External Security','Security Services':'External Security',
   'Payroll / Salary':'Payroll & Salaries','Salary & Wages':'Payroll & Salaries','Employee Salary':'Payroll & Salaries',
   'Salary BM & Security':'Payroll & Salaries','Salary & Position Allowance':'Payroll & Salaries','Payroll / Salary & Allowances':'Payroll & Salaries',
   'Salary / Allowance':'Payroll & Salaries',
@@ -1107,7 +1107,7 @@ let TX_MULTI=[
   {mo:'APR',type:'opex',e:'supbm',d:'Apr 2026',desc:'Bank & Transfer Fees — Apr 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Bank & Transfer Fees',amt:244500},
   {mo:'APR',type:'opex',e:'supbm',d:'Apr 2026',desc:'Tax & BPJS — Apr 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Tax',amt:2188},
   {mo:'APR',type:'rev',e:'supdev',d:'Apr 2026',desc:'Interest Income — Apr 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Interest Income',amt:12660},
-  {mo:'APR',type:'opex',e:'supdev',d:'Apr 2026',desc:'Security Services — Apr 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Security Services',amt:138820000},
+  {mo:'APR',type:'opex',e:'supdev',d:'Apr 2026',desc:'External Security — Apr 2026 (transaction-derived total, PT SUP cash-flow report)',k:'External Security',amt:138820000},
   {mo:'APR',type:'opex',e:'supdev',d:'Apr 2026',desc:'Equipment, FF&E & Supplies — Apr 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Equipment, FF&E & Supplies',amt:115184500},
   {mo:'APR',type:'opex',e:'supdev',d:'Apr 2026',desc:'Construction & Project Cost — Apr 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Construction & Project Cost',amt:108662520},
   {mo:'APR',type:'opex',e:'supdev',d:'Apr 2026',desc:'Legal & Permit — Apr 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Legal & Permit',amt:94133150},
@@ -1146,7 +1146,7 @@ let TX_MULTI=[
   {mo:'JUN',type:'rev',e:'supdev',d:'Jun 2026',desc:'Other Guest Services & Income — Jun 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Other Guest Services & Income',amt:85992},
   {mo:'JUN',type:'opex',e:'supdev',d:'Jun 2026',desc:'Legal & Permit — Jun 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Legal & Permit',amt:350000000},
   {mo:'JUN',type:'opex',e:'supdev',d:'Jun 2026',desc:'Construction & Project Cost — Jun 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Construction & Project Cost',amt:75183820},
-  {mo:'JUN',type:'opex',e:'supdev',d:'Jun 2026',desc:'Security Services — Jun 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Security Services',amt:67530000},
+  {mo:'JUN',type:'opex',e:'supdev',d:'Jun 2026',desc:'External Security — Jun 2026 (transaction-derived total, PT SUP cash-flow report)',k:'External Security',amt:67530000},
   {mo:'JUN',type:'opex',e:'supdev',d:'Jun 2026',desc:'Tax & BPJS — Jun 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Tax',amt:44649348},
   {mo:'JUN',type:'opex',e:'supdev',d:'Jun 2026',desc:'Payroll & Salaries — Jun 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Payroll & Salaries',amt:20400000},
   {mo:'JUN',type:'opex',e:'supdev',d:'Jun 2026',desc:'Marketing & Branding — Jun 2026 (transaction-derived total, PT SUP cash-flow report)',k:'Marketing & Branding',amt:9394800},
@@ -3259,7 +3259,7 @@ function closeModal(){document.getElementById('overlay').classList.remove('show'
 // purely a display grouping (openBDItem drill-down still keys off the individual category name).
 const OPEX_GROUPS=[
   {name:'Legal, Permit & Notary',cats:['Legal','Permit','Notary Fee','Building Insurance']},
-  {name:'Staff Payroll',cats:['Payroll & Salaries','BPJS']},
+  {name:'Salary/Payroll',cats:['Payroll & Salaries','BPJS']},
   {name:'Utilities',cats:['Water Supply','Electricity','Internet & Communication']},
   {name:'Accommodation & Transport',cats:['Staff Accommodation','Transport & Vehicle']},
   {name:'Consulting & Management Fee',cats:['Consulting Fee','Professional & Management Fees']},
@@ -5765,7 +5765,7 @@ async function renderEntryBody(){
     // which could mean either Legal & Permit or Professional & Management Fees) so those still get
     // flagged for a human to pick, instead of being silently guessed.
     const CAT_SYNONYMS={
-      'taxes':'Tax','tax':'Tax','payroll':'Payroll & Salaries','security':'Security Services',
+      'taxes':'Tax','tax':'Tax','payroll':'Payroll & Salaries','security':'External Security',
       'professional fees':'Professional & Management Fees','repairs & maintenance':'Repair & Maintenance',
       'repairs and maintenance':'Repair & Maintenance','operational expenses':'Other Operating Expense',
       'equipment & installation':'Equipment, FF&E & Supplies','equipment and installation':'Equipment, FF&E & Supplies',
