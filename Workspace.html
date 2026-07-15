@@ -300,6 +300,9 @@ a{color:#4550d8}
 
 <div class="wrap">
 
+<div class="divlabel" id="secCashLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Cash Position</div>
+<div id="kpiCash" style="max-width:380px;margin-bottom:15px"></div>
+
 <div id="alertBox"></div>
 
 <div class="divlabel" id="secOpLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg> Operational Performance — May 2026</div>
@@ -2885,13 +2888,15 @@ function cashPositionCard(){
       <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No cash position logged yet — add it via Update Data'}</div>
     </div>`;
 }
+function renderKpiCash(){
+  const kc=document.getElementById('kpiCash'); if(kc) kc.innerHTML=cashPositionCard();
+}
 function renderKpiOp(a){
   const pos=a.opNet>=0;
   const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
   const ko=document.getElementById('kpiOp');
-  ko.className='kpi4 kpi5';
+  ko.className='kpi4';
   ko.innerHTML=`
-    ${cashPositionCard()}
     <div class="pcard dark clickable" onclick="openDetail('opnet')">
       ${hint('rgba(255,255,255,.65)')}
       <div class="lab">Net Operating Result</div>
@@ -4369,7 +4374,7 @@ function renderBalances(){
 
 function renderAll(){
   const a=agg();
-  renderBanner();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderDataHealth();renderBalances();
+  renderBanner();renderKpiCash();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderDataHealth();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
@@ -5911,7 +5916,7 @@ async function renderEntryBody(){
         const r=await authedFetch(SB_URL+'/rest/v1/entity_cash_position',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(cp)});
         if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
         CASHPOS[entity]={cash:amt,at:nowIso};
-        renderEntTable();
+        renderKpiCash();
         cposMsg.style.color='#2b7a4b'; cposMsg.textContent='Saved.';
       }catch(e){ cposMsg.textContent='Failed to save: '+e.message; }
       cposBtn.disabled=false; cposBtn.textContent='Save cash position';
