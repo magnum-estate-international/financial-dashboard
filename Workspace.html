@@ -3255,13 +3255,58 @@ function showModal(title,html,wide){
   document.getElementById('overlay').classList.add('show');
 }
 function closeModal(){document.getElementById('overlay').classList.remove('show');}
+// Opex categories rolled up into a handful of parent cost groups for the breakdown modal —
+// purely a display grouping (openBDItem drill-down still keys off the individual category name).
+const OPEX_GROUPS=[
+  {name:'Legal, Permit & Notary',cats:['Legal','Permit','Notary Fee']},
+  {name:'Staff Payroll',cats:['Payroll & Salaries','BPJS']},
+  {name:'Utilities',cats:['Water Supply','Electricity','Internet & Communication']},
+  {name:'Accommodation & Transport',cats:['Staff Accommodation','Transport & Vehicle']},
+  {name:'Consulting & Management Fee',cats:['Consulting Fee','Professional & Management Fees']},
+];
+const OPEX_CAT_TO_GROUP={};
+OPEX_GROUPS.forEach(g=>g.cats.forEach(c=>OPEX_CAT_TO_GROUP[c]=g.name));
+function opexRowsGrouped(items,total,cls){
+  const byGroup={},ungrouped=[];
+  items.forEach(([k,v])=>{
+    const g=OPEX_CAT_TO_GROUP[k];
+    if(g){ (byGroup[g]=byGroup[g]||[]).push([k,v]); } else ungrouped.push([k,v]);
+  });
+  const groupEntries=Object.entries(byGroup).map(([name,arr])=>({
+    isGroup:true,name,total:arr.reduce((s,[,v])=>s+v,0),items:arr.slice().sort((x,y)=>y[1]-x[1])}));
+  const singleEntries=ungrouped.map(([k,v])=>({isGroup:false,name:k,total:v}));
+  const all=groupEntries.concat(singleEntries).sort((a,b)=>b.total-a.total);
+  let h='';
+  all.forEach(entry=>{
+    const pct=total>0?(entry.total/total*100).toFixed(1):'0.0';
+    if(entry.isGroup){
+      h+=`<tr style="background:#f7f8fc;font-weight:700"><td style="font-size:12.5px">${entry.name}</td>
+        <td class="num ${cls}">${fmt(entry.total)}</td><td class="num">${pct}%</td></tr>`;
+      entry.items.forEach(([k,v])=>{
+        const p2=total>0?(v/total*100).toFixed(1):'0.0';
+        h+=`<tr style="cursor:pointer" onclick="openBDItem('opex','${encodeURIComponent(k)}')">
+          <td style="font-size:12px;color:var(--muted);padding-left:28px">↳ ${k} <span style="color:var(--blue-300);font-weight:700">›</span></td>
+          <td class="num ${cls}">${fmt(v)}</td><td class="num">${p2}%</td></tr>`;
+      });
+    } else {
+      h+=`<tr style="cursor:pointer" onclick="openBDItem('opex','${encodeURIComponent(entry.name)}')">
+        <td style="font-size:12.5px">${entry.name} <span style="color:var(--blue-300);font-weight:700">›</span></td>
+        <td class="num ${cls}">${fmt(entry.total)}</td><td class="num">${pct}%</td></tr>`;
+    }
+  });
+  return h;
+}
 function bdTableHtml(obj,total,cls){
   const type=cls==='pos'?'rev':'opex';
   const items=Object.entries(obj).sort((x,y)=>y[1]-x[1]);
   if(!items.length) return `<p style="color:var(--muted);font-size:13px">No items in this scope.</p>`;
   let h=`<div class="pn-sub" style="margin-bottom:8px">Click an item to see per-entity amounts &amp; transaction detail</div>`;
   h+=`<table><thead><tr><th>Item</th><th class="num">Amount (IDR)</th><th class="num">%</th></tr></thead><tbody>`;
-  items.forEach(([k,v])=>{h+=`<tr style="cursor:pointer" onclick="openBDItem('${type}','${encodeURIComponent(k)}')"><td style="font-size:12.5px">${k} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num ${cls}">${fmt(v)}</td><td class="num">${total>0?(v/total*100).toFixed(1):'0.0'}%</td></tr>`;});
+  if(type==='opex'){
+    h+=opexRowsGrouped(items,total,cls);
+  } else {
+    items.forEach(([k,v])=>{h+=`<tr style="cursor:pointer" onclick="openBDItem('${type}','${encodeURIComponent(k)}')"><td style="font-size:12.5px">${k} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num ${cls}">${fmt(v)}</td><td class="num">${total>0?(v/total*100).toFixed(1):'0.0'}%</td></tr>`;});
+  }
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(total)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   return h;
 }
