@@ -2889,7 +2889,7 @@ function renderKpiOp(a){
   const pos=a.opNet>=0;
   const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
   const ko=document.getElementById('kpiOp');
-  ko.className='kpi5';
+  ko.className='kpi4 kpi5';
   ko.innerHTML=`
     <div class="pcard dark clickable" onclick="openDetail('opnet')">
       ${hint('rgba(255,255,255,.65)')}
