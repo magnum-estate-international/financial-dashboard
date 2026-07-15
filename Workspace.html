@@ -374,7 +374,7 @@ a{color:#4550d8}
 <div class="panel" style="margin-bottom:16px">
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Entity</th><th class="num">Revenue</th><th class="num">Operating Expense</th><th class="num">Operating Net</th><th class="num">Financing In</th><th class="num">Financing Out</th><th class="num">Net Cash (All Flows)</th></tr></thead>
+      <thead><tr><th>Entity</th><th class="num">Revenue</th><th class="num">Operating Expense</th><th class="num">Operating Net</th><th class="num">Financing In</th><th class="num">Financing Out</th><th class="num">Net Cash (All Flows)</th><th class="num">Cash Position</th></tr></thead>
       <tbody id="entTable"></tbody>
     </table>
   </div>
@@ -3084,12 +3084,19 @@ function renderRevBD(a){
   document.getElementById('revBD').innerHTML=h;
 }
 
+function cashPosCellHtml(id){
+  const c=CASHPOS[id];
+  if(!c) return '<td class="num" style="color:var(--muted)">—</td>';
+  const asOf=new Date(c.at).toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+  return `<td class="num">${fmt(c.cash)}<div style="font-size:10px;color:var(--muted);font-weight:400">as of ${asOf}</div></td>`;
+}
 function renderEntTable(){
   const ids=grpIds();
-  let h='',tr=0,to=0,tfi=0,tfo=0;
+  let h='',tr=0,to=0,tfi=0,tfo=0,tcash=0,ncash=0;
   ids.forEach(id=>{
     const e=ENT[id],ef=eff(id),r=ef.rev,o=ef.opex,fi=ef.finIn,fo=ef.finOut,net=r-o,full=r+fi-o-fo;
     tr+=r;to+=o;tfi+=fi;tfo+=fo;
+    if(CASHPOS[id]){ tcash+=CASHPOS[id].cash; ncash++; }
     h+=`<tr style="cursor:pointer;${EF===id?'background:var(--amber-bg)':''}" onclick="pickEntity('${id}')">
       <td>${pill(id)}</td>
       <td class="num ${r>0?'pos':''}">${r>0?fmt(r):'–'}</td>
@@ -3097,7 +3104,8 @@ function renderEntTable(){
       <td class="num ${net>=0?'pos':'neg'}">${net>=0?'+':''} ${fmt(net)}</td>
       <td class="num">${fi>0?fmt(fi):'–'}</td>
       <td class="num">${fo>0?fmt(fo):'–'}</td>
-      <td class="num ${full>=0?'pos':'neg'}">${full>=0?'+':''} ${fmt(full)}</td></tr>`;
+      <td class="num ${full>=0?'pos':'neg'}">${full>=0?'+':''} ${fmt(full)}</td>
+      ${cashPosCellHtml(id)}</tr>`;
   });
   const tn=tr-to,tf=tr+tfi-to-tfo;
   const lbl = GF==='all' ? 'TOTAL — ALL GROUPS' : 'TOTAL — '+GRPNAME[GF].toUpperCase();
@@ -3105,7 +3113,8 @@ function renderEntTable(){
     <td class="num pos"><strong>${fmt(tr)}</strong></td><td class="num neg"><strong>${fmt(to)}</strong></td>
     <td class="num ${tn>=0?'pos':'neg'}"><strong>${tn>=0?'+':''} ${fmt(tn)}</strong></td>
     <td class="num"><strong>${fmt(tfi)}</strong></td><td class="num"><strong>${fmt(tfo)}</strong></td>
-    <td class="num ${tf>=0?'pos':'neg'}"><strong>${tf>=0?'+':''} ${fmt(tf)}</strong></td></tr>`;
+    <td class="num ${tf>=0?'pos':'neg'}"><strong>${tf>=0?'+':''} ${fmt(tf)}</strong></td>
+    <td class="num"><strong>${ncash?fmt(tcash):'—'}</strong></td></tr>`;
   document.getElementById('entTable').innerHTML=h;
 }
 
@@ -4491,6 +4500,7 @@ function applyScopeChrome(){
   }
 }
 let BAL={};
+let CASHPOS={};
 let OUTSTANDING=[];
 async function runDashboard(){
   const D=await loadFromSupabase();
@@ -4521,6 +4531,15 @@ async function runDashboard(){
         close:b.closing_idr==null?null:Number(b.closing_idr)};
     });
   }catch(e){ BAL={}; }
+  // per-entity cash position — a single current-value snapshot (not tied to any month), meant to
+  // be refreshed daily; deliberately a separate table from entity_period_balances (that one is the
+  // monthly open/close reconciliation benchmark, this one is just "what's in the bank right now").
+  try{
+    CASHPOS={};
+    (await sbFetch('entity_cash_position?select=entity_code,cash_idr,updated_at')).forEach(c=>{
+      CASHPOS[c.entity_code]={cash:Number(c.cash_idr),at:c.updated_at};
+    });
+  }catch(e){ CASHPOS={}; }
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
@@ -5252,6 +5271,21 @@ async function renderEntryBody(){
       +'<div id="ebal-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
   }
+  // ── Update Cash Position — a single current-value snapshot per entity, meant to be refreshed
+  // daily (unlike Update Entity Balance above, which is a per-month reconciliation benchmark).
+  // Feeds the "Cash Position" column in Entity Performance Summary. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.dollar()+'Update Cash Position</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Log the current bank cash balance for one PT — meant to be updated daily as a quick snapshot of what\'s in the bank right now (separate from the monthly opening/closing balance above).</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
+      +'<select id="cpos-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<input id="cpos-amt" inputmode="numeric" placeholder="Cash position (IDR)" style="'+inp+'">'
+      +'</div>'
+      +'<button id="cpos-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save cash position</button>'
+      +'<div id="cpos-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div></details>';
+  }
   // ── Outstanding payables (unpaid invoices) — separate from the monthly figures above ──
   {
     const opexCats=cats.filter(c=>c.kind==='opex');
@@ -5823,6 +5857,37 @@ async function renderEntryBody(){
         balMsg.style.color='#2b7a4b'; balMsg.textContent='Saved.';
       }catch(e){ balMsg.textContent='Failed to save: '+e.message; }
       balBtn.disabled=false; balBtn.textContent='Save balance';
+    };
+  }
+  // ── Wire the "Update Cash Position" box ──
+  {
+    const cposEnt=document.getElementById('cpos-ent'), cposAmt=document.getElementById('cpos-amt'),
+      cposBtn=document.getElementById('cpos-send'), cposMsg=document.getElementById('cpos-msg');
+    const prefillCashPos=()=>{
+      if(!cposEnt) return;
+      const c=CASHPOS[cposEnt.value];
+      cposAmt.value = c ? c.cash : '';
+    };
+    if(cposEnt) cposEnt.onchange=prefillCashPos;
+    prefillCashPos();
+    if(cposBtn) cposBtn.onclick=async()=>{
+      cposMsg.style.color='#b3261e'; cposMsg.textContent='';
+      const entity=cposEnt.value;
+      const raw=(cposAmt.value||'').replace(/[^0-9-]/g,'');
+      if(raw==='') return void(cposMsg.textContent='Enter a cash position.');
+      const amt=Number(raw);
+      if(!isFinite(amt)||amt<0) return void(cposMsg.textContent='Invalid amount.');
+      cposBtn.disabled=true; cposBtn.textContent='Saving…';
+      try{
+        const nowIso=new Date().toISOString();
+        const cp={entity_code:entity,cash_idr:amt,updated_by:MY_EMAIL,updated_at:nowIso};
+        const r=await authedFetch(SB_URL+'/rest/v1/entity_cash_position',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(cp)});
+        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+        CASHPOS[entity]={cash:amt,at:nowIso};
+        renderEntTable();
+        cposMsg.style.color='#2b7a4b'; cposMsg.textContent='Saved.';
+      }catch(e){ cposMsg.textContent='Failed to save: '+e.message; }
+      cposBtn.disabled=false; cposBtn.textContent='Save cash position';
     };
   }
   wireOppPicker(inp);
