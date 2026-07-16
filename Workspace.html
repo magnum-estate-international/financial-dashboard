@@ -4962,10 +4962,14 @@ async function renderCategoriesBody(){
     const list=(byKind[kind]||[]);
     h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:13px;color:#141b2d;margin:14px 0 6px">'+kindLabel[kind]+' ('+list.length+')</div>';
     h+='<div style="border:1px solid #eef2f7;border-radius:10px;max-height:260px;overflow:auto">';
+    const kindGroups=Array.from(new Set((groupsByKind[kind]||[]).concat(list.map(c=>c.parent_group).filter(Boolean)))).sort();
     const rowHtml=(c,indent)=>'<div class="cc-row" data-name="'+escH(c.name)+'" data-kind="'+escH(c.kind)+'" data-group="'+escH(c.parent_group||'')+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f2f4f9;font-size:13px'+(indent?';padding-left:26px':'')+'">'
       +(indent?'<span style="color:var(--muted);font-size:12px">↳</span>':'')
       +'<span class="cc-label" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(c.name)+'</span>'
-      +'<input class="cc-group-inp" type="text" list="cc-groups-dl" value="'+escH(c.parent_group||'')+'" placeholder="No group" style="width:150px;padding:5px 8px;border:1px solid #e4e7ef;border-radius:8px;font-size:11.5px">'
+      +'<select class="cc-group-inp" style="width:170px;padding:5px 8px;border:1px solid #e4e7ef;border-radius:8px;font-size:11.5px">'
+      +'<option value=""'+(c.parent_group?'':' selected')+'>No group</option>'
+      +kindGroups.map(g=>'<option value="'+escH(g)+'"'+(g===c.parent_group?' selected':'')+'>'+escH(g)+'</option>').join('')
+      +'</select>'
       +'<button class="cc-rename" style="border:1px solid #e4e7ef;background:#fff;border-radius:8px;padding:5px 10px;font-size:11.5px;cursor:pointer">Rename</button>'
       +'<button class="cc-del" style="border:1px solid #f6c9c3;background:#fff;color:#b3261e;border-radius:8px;padding:5px 10px;font-size:11.5px;cursor:pointer">Delete</button>'
       +'</div>';
