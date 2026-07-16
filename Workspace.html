@@ -3560,11 +3560,15 @@ function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
 // total KPIs read from) — openTxEdit warns about this so a real correction also gets reflected
 // via Update Entity Balance if needed.
 // Best-effort vendor extraction: most descriptions in this dataset end with the vendor/payee
-// name in parentheses (e.g. "Payment X (Vendor Name)") — no dedicated vendor column exists on
-// transactions, so this is a display heuristic, not authoritative data.
+// name in parentheses (e.g. "Payment X (Vendor Name)") — used as a fallback for rows that
+// predate the transactions.vendor column, or were never given an explicit vendor value.
 function vendorFromDesc(desc){
   const m=String(desc||'').match(/\(([^()]+)\)\s*$/);
   return m?m[1].trim():'—';
+}
+// Prefers the stored vendor value (editable via Edit Transaction) over the description guess.
+function displayVendor(x){
+  return (x.vendor!=null && x.vendor!=='') ? x.vendor : vendorFromDesc(x.desc);
 }
 function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const canEdit=MY_ROLE==='editor';
@@ -3591,7 +3595,7 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td>
     ${entCell}
     <td style="font-size:12px;color:var(--muted)">${escH(x.k||'—')}</td>
-    <td style="font-size:12px;color:var(--muted)">${escH(vendorFromDesc(x.desc))}</td>
+    <td style="font-size:12px;color:var(--muted)">${escH(displayVendor(x))}</td>
     <td style="font-size:12.5px">${escH(x.desc)}${tagHtml}</td>
     <td class="num ${amtCls}">${sign} ${fmt(Math.abs(x.amt))}</td>
     ${editCell}
@@ -3630,6 +3634,7 @@ async function openTxEdit(id,backCall){
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Edit Transaction</h4>`;
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Amount adjusts this entity's itemized total for ${MONTHS[MONTH]||MONTH} without touching the monthly total shown on the KPI cards — if this is a real correction (not a typo fix), also update the total via the Update Entity Balance box so Data Health stays reconciled.</div>`
     +opeField('Description',`<input id="txe-desc" value="${escH(x.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +opeField('Vendor',`<input id="txe-vendor" value="${escH(displayVendor(x))}" placeholder="No vendor" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Category',(()=>{
       // x.k may be a legacy/unlisted label not in the live category list — keep it selectable
       // (as the pre-selected option) instead of silently swapping it for the first live category.
@@ -3646,6 +3651,7 @@ async function saveTxEdit(id,backCall){
   backCall=decodeURIComponent(backCall);
   const err=document.getElementById('txe-err'); err.textContent='';
   const desc=document.getElementById('txe-desc').value.trim();
+  const vendor=document.getElementById('txe-vendor').value.trim();
   const cat=document.getElementById('txe-cat').value.trim();
   const dateLabel=document.getElementById('txe-date').value.trim();
   const amtRaw=document.getElementById('txe-amt').value.trim();
@@ -3660,14 +3666,14 @@ async function saveTxEdit(id,backCall){
     const oldCat=x?x.k:null, oldAmt=x?Math.abs(x.amt):0;
     const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({description:desc,raw_label:cat,day_label:dateLabel,amount_idr:signedAmt})});
+      body:JSON.stringify({description:desc,vendor:vendor||null,raw_label:cat,day_label:dateLabel,amount_idr:signedAmt})});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     // May's "By Entity" breakdown reads the line_items category-total table, not transactions —
     // if we don't move this row's amount between category buckets there too, the breakdown keeps
     // showing the stale category (or, for the new category, shows nothing at all) while Transaction
     // Detail already reflects the edit, exactly the mismatch reported against this feature.
     if(x && x.mo==='MAY') await syncMayLineItemCategory(x.e,x.type,oldCat,cat,oldAmt,amtNum);
-    if(x){ x.desc=desc; x.k=cat; x.d=dateLabel; x.amt=signedAmt; }
+    if(x){ x.desc=desc; x.vendor=vendor||null; x.k=cat; x.d=dateLabel; x.amt=signedAmt; }
     eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
@@ -3863,7 +3869,7 @@ function openHealthCell(id,mo,txType,label){
   if(tx.length){
     h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th>Vendor</th><th>Category</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
     tx.forEach(x=>{s+=x.amt;
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}</td><td style="font-size:12px;color:var(--muted)">${escH(vendorFromDesc(x.desc))}</td><td style="font-size:12px;color:var(--muted)">${x.k&&!/^Bank book/.test(x.k)?x.k:'—'}</td><td class="num">${fmt(x.amt)}</td></tr>`;});
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}</td><td style="font-size:12px;color:var(--muted)">${escH(displayVendor(x))}</td><td style="font-size:12px;color:var(--muted)">${x.k&&!/^Bank book/.test(x.k)?x.k:'—'}</td><td class="num">${fmt(x.amt)}</td></tr>`;});
   } else { h+=`<table><tbody>`; }
   const residual=total-s;
   if(Math.abs(residual)>1000){
@@ -4575,7 +4581,7 @@ async function loadFromSupabase(){
   tots.forEach(t=>{(M[t.entity_code]=M[t.entity_code]||{})[t.period_code]={rev:+t.revenue,opex:+t.opex,finIn:+t.financing_in,finOut:+t.financing_out};});
   Object.keys(M).forEach(id=>{const ks=Object.keys(M[id]); if(ks.length===1&&ks[0]==='MAY') delete M[id];});
   const mkLoan=r=>({f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr});
-  const mkTx=r=>{const o={id:r.id,mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,k:r.raw_label,amt:+r.amount_idr}; if(r.contra)o.contra=1; return o;};
+  const mkTx=r=>{const o={id:r.id,mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,vendor:r.vendor||null,k:r.raw_label,amt:+r.amount_idr}; if(r.contra)o.contra=1; return o;};
   const bs={TX:[],TX_MULTI:[],TX_MS:[],TX_ICG_OPEX:[]};
   txAll.forEach(r=>{(bs[r.source]=bs[r.source]||[]).push(mkTx(r));});
   // TX must include every source bucket (not just the four original ones) — a fixed allow-list here
