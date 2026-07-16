@@ -3505,10 +3505,10 @@ function openBDItem(type,encKey){
     let s=0;
     const backCallBD=`openBDItem('${type}','${encKey}')`;
     h+=txSearchBoxHtml('bditem-search');
-    h+=`<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Date</th><th>Entity</th><th>Category</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+    h+=`<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Date</th><th>Entity</th><th>Category</th><th>Vendor</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
     tx.forEach(x=>{s+=x.amt; h+=txRowHtml(x,type,cls,isRev,true,backCallBD);});
     Object.entries(residual).forEach(([id,r])=>{s+=r; h+=residualRowHtml(pill(id),r,cls,isRev,true);});
-    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong>${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="5"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong>${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
     if(hasResidual) h+=`<p style="color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:8px"><b>Summary</b> rows represent entities whose figures are consolidated from bank-report category totals, so the TOTAL here matches the <b>By Entity</b> TOTAL above.</p>`;
   } else {
     h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals — their largest transactions appear under <b>"Key Transactions of the Month"</b>.</p>`;
@@ -3537,7 +3537,7 @@ function openCatEntity(type,encKey,id){
   const backCallCE=`openCatEntity('${type}','${encKey}','${id}')`;
   if(tx.length){
     h+=txSearchBoxHtml('ce-search');
-    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Category</th><th>Vendor</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
     tx.forEach(x=>{s+=x.amt; h+=txRowHtml(x,type,cls,isRev,false,backCallCE);});
   } else {
     h+=`<table><tbody>`;
@@ -3546,7 +3546,7 @@ function openCatEntity(type,encKey,id){
   if(Math.abs(residual)>0.5){
     h+=residualRowHtml(null,residual,cls,isRev,false);
   }
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(val)}</strong></td><td></td></tr></tbody></table>`;
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(val)}</strong></td><td></td></tr></tbody></table>`;
   if(tx.length) h+=`</div>`;
   if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this entity in scope.</p>`;
   showModal(`${ENT[id].name} — ${key}`,h,true);
@@ -3559,6 +3559,13 @@ function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
 // for that entity/month without touching entity_period_totals (the separately-entered monthly
 // total KPIs read from) — openTxEdit warns about this so a real correction also gets reflected
 // via Update Entity Balance if needed.
+// Best-effort vendor extraction: most descriptions in this dataset end with the vendor/payee
+// name in parentheses (e.g. "Payment X (Vendor Name)") — no dedicated vendor column exists on
+// transactions, so this is a display heuristic, not authoritative data.
+function vendorFromDesc(desc){
+  const m=String(desc||'').match(/\(([^()]+)\)\s*$/);
+  return m?m[1].trim():'—';
+}
 function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const canEdit=MY_ROLE==='editor';
   const sign = x.contra ? '–' : (isRev?'+':'–');
@@ -3584,6 +3591,7 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td>
     ${entCell}
     <td style="font-size:12px;color:var(--muted)">${escH(x.k||'—')}</td>
+    <td style="font-size:12px;color:var(--muted)">${escH(vendorFromDesc(x.desc))}</td>
     <td style="font-size:12.5px">${escH(x.desc)}${tagHtml}</td>
     <td class="num ${amtCls}">${sign} ${fmt(Math.abs(x.amt))}</td>
     ${editCell}
@@ -3594,6 +3602,7 @@ function residualRowHtml(label,amt,cls,isRev,showEntity){
   return `<tr data-tx-search="">
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[MONTH]||MONTH}</td>
     ${entCell}
+    <td style="font-size:12px;color:var(--muted)">—</td>
     <td style="font-size:12px;color:var(--muted)">—</td>
     <td style="font-size:12.5px;color:var(--muted)">Consolidated from the bank-report category total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td>
     <td class="num ${cls}">${isRev?'+':'–'} ${fmt(Math.abs(amt))}</td>
@@ -3852,16 +3861,16 @@ function openHealthCell(id,mo,txType,label){
   let s=0;
   let h=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">${ENT[id].name} — ${label} — ${MONTHS[mo]||mo}</h4>`;
   if(tx.length){
-    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
+    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th>Vendor</th><th>Category</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
     tx.forEach(x=>{s+=x.amt;
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}</td><td style="font-size:12px;color:var(--muted)">${x.k&&!/^Bank book/.test(x.k)?x.k:'—'}</td><td class="num">${fmt(x.amt)}</td></tr>`;});
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}</td><td style="font-size:12px;color:var(--muted)">${escH(vendorFromDesc(x.desc))}</td><td style="font-size:12px;color:var(--muted)">${x.k&&!/^Bank book/.test(x.k)?x.k:'—'}</td><td class="num">${fmt(x.amt)}</td></tr>`;});
   } else { h+=`<table><tbody>`; }
   const residual=total-s;
   if(Math.abs(residual)>1000){
     const neg=residual<0;
-    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[mo]||mo}</td><td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized detail exceeds the official total — investigate for a possible double-count':'Consolidated from the bank-report total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td><td></td><td class="num" style="color:${neg?'var(--red)':'inherit'}">${fmt(residual)}</td></tr>`;
+    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[mo]||mo}</td><td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized detail exceeds the official total — investigate for a possible double-count':'Consolidated from the bank-report total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td><td></td><td></td><td class="num" style="color:${neg?'var(--red)':'inherit'}">${fmt(residual)}</td></tr>`;
   }
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?3:1}"><strong>OFFICIAL TOTAL</strong></td><td class="num"><strong>${fmt(total)}</strong></td></tr></tbody></table>`;
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?4:1}"><strong>OFFICIAL TOTAL</strong></td><td class="num"><strong>${fmt(total)}</strong></td></tr></tbody></table>`;
   if(tx.length) h+=`</div>`;
   showModal(`${ENT[id].name} — ${label} — ${MONTHS[mo]||mo}`,h);
 }
