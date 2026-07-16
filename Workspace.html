@@ -4864,9 +4864,16 @@ async function deleteCategoryByName(name){
     sbFetch('line_items?select=id&category=eq.'+encodeURIComponent(name)+'&limit=1'),
     sbFetch('category_aliases?select=raw_label&category=eq.'+encodeURIComponent(name)+'&limit=1'),
   ]);
-  const inUse=(tx&&tx.length)||(li1&&li1.length)||(li2&&li2.length)||(al&&al.length);
-  if(inUse){
-    if(!confirm('"'+name+'" is still used by existing transactions or line items. Deleting it will NOT remove those records — they will just no longer match a defined category. Delete anyway?')) return false;
+  // Hard-block deleting a category that still has real financial data attached to it — reassigning
+  // or deleting that data first is a deliberate, separate action, never an accidental side-effect
+  // of cleaning up the category list.
+  const dataInUse=(tx&&tx.length)||(li1&&li1.length)||(li2&&li2.length);
+  if(dataInUse){
+    alert('"'+name+'" can\'t be deleted — it still has transactions or line items recorded under it. Move that data to a different category first (rename it, or edit each transaction), then delete this one.');
+    return false;
+  }
+  if(al&&al.length){
+    if(!confirm('"'+name+'" has no transactions, but is still referenced by '+al.length+' import alias rule(s) (used to auto-match bank statement categories). Delete anyway?')) return false;
   } else {
     if(!confirm('Delete category "'+name+'"?')) return false;
   }
