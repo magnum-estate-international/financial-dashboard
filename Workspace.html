@@ -3948,27 +3948,38 @@ function outstandingRowHtml(o){
     <td style="white-space:nowrap;${va}">${actionCell}</td>
   </tr>`;
 }
-let OP_VIEW='category';
+let OP_VIEW='category', OP_SEARCH='';
 function openOutstanding(view){
   view=OP_VIEW=view||OP_VIEW||'entity';
   const open=outstandingOpen();
   const tot=open.reduce((s,o)=>s+o.remaining,0);
   const keyOf=view==='entity'?(o=>o.e):view==='frequency'?(o=>o.freq||'OTP'):(o=>o.cat||'—');
   const byGroup={}; open.forEach(o=>{const k=keyOf(o); const g=byGroup[k]=byGroup[k]||{tot:0,n:0}; g.tot+=o.remaining; g.n++;});
-  const rows=Object.entries(byGroup).sort((a,b)=>b[1].tot-a[1].tot);
+  const searchText=k=>view==='entity'?(ENT[k]?ENT[k].name:k):view==='frequency'?(FREQ_LABEL[k]||k):k;
+  const q=OP_SEARCH.trim().toLowerCase();
+  const rows=Object.entries(byGroup)
+    .filter(([k])=>!q||searchText(k).toLowerCase().includes(q))
+    .sort((a,b)=>b[1].tot-a[1].tot);
   const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openOutstanding('${v}')">${label}</button>`;
-  let h=`<div style="display:flex;gap:8px;margin-bottom:14px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('frequency','By Frequency')}</div>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">`
+    +`<div style="display:flex;gap:8px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('frequency','By Frequency')}</div>`
+    +`<input id="op-search" type="text" placeholder="🔍 Search…" value="${escH(OP_SEARCH)}" oninput="onOpSearchInput(this.value)" style="margin-left:auto;padding:7px 13px;border:1px solid #e4e7ef;border-radius:999px;font-size:12.5px;min-width:170px;box-sizing:border-box">`
+    +`</div>`;
   h+=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total outstanding in this scope: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${open.length} invoice${open.length===1?'':'s'})</div>`;
   const colLabel=view==='entity'?'Entity':view==='frequency'?'Frequency':'Cost Category';
   const rowLabel=k=>view==='entity'?pill(k):view==='frequency'?escH(`${FREQ_LABEL[k]||k} (${k})`):escH(k);
   const rowOnclick=k=>view==='entity'?`openOutstandingEntity('${k}')`:view==='frequency'?`openOutstandingFrequency('${encodeURIComponent(k)}')`:`openOutstandingCategory('${encodeURIComponent(k)}')`;
   h+=`<table><thead><tr><th>${colLabel}</th><th class="num" style="text-align:right">Invoices</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
     +(rows.length?rows.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span>›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join('')
-      :`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No outstanding liabilities in this scope</td></tr>`)
+      :`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':''} outstanding liabilities in this scope</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${open.length}</td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr>`
     +`</tbody></table>`;
   showModal('Outstanding Liability',h);
+  const si=document.getElementById('op-search');
+  if(si && document.activeElement!==si && OP_SEARCH_FOCUS){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
 }
+let OP_SEARCH_FOCUS=false;
+function onOpSearchInput(v){ OP_SEARCH=v; OP_SEARCH_FOCUS=true; openOutstanding(OP_VIEW); }
 let OPE_ID=null, OPE_TAB='open', OPE_ROWS=[], OPE_SCOPE_TYPE='entity';
 const OPE_FKEYS={invno:['opef-invno'],vendor:['opef-vendor'],cat:['opef-cat'],freq:['opef-freq'],desc:['opef-desc'],inv:['opef-inv-from','opef-inv-to'],due:['opef-due-from','opef-due-to'],status:['opef-status'],amt:['opef-amt-min','opef-amt-max']};
 function thFilterable(label,key,controlsHtml){
