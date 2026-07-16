@@ -36,8 +36,8 @@ header .wrap{display:flex;align-items:center;justify-content:space-between;gap:2
   display:grid;place-items:center;box-shadow:0 8px 20px -6px rgba(91,103,241,.65);
   font-family:inherit;font-weight:800;font-size:13px;letter-spacing:.5px;color:#fff}
 .brand h1{font-weight:800;font-size:24px;letter-spacing:-.4px;line-height:1.15;color:#fff}
-.brand .sub{font-size:10.5px;color:#8e97ad;letter-spacing:2px;text-transform:uppercase;margin-top:6px;font-weight:600}
-.hero-meta{text-align:right;font-size:13px;color:#8e97ad}
+.brand .sub{font-size:12.5px;color:#8e97ad;letter-spacing:1.6px;text-transform:uppercase;margin-top:6px;font-weight:600}
+.hero-meta{text-align:right;font-size:14.5px;color:#8e97ad}
 .hero-meta .period{font-size:21px;color:#fff;font-weight:800;letter-spacing:-.3px}
 .toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:-28px auto 20px;max-width:1280px;padding:14px 20px;
   background:#fff;border-radius:16px;box-shadow:var(--shadow);border:var(--border);position:sticky;top:12px;z-index:30}
@@ -4715,10 +4715,10 @@ function showUserBar(){
   const b=document.createElement('div');
   b.id='mag-userbar';
   const initial=(email||'?').charAt(0).toUpperCase();
-  const pill='border:1px solid rgba(255,255,255,.22);border-radius:999px;background:rgba(255,255,255,.09);color:#e6e9f5;font-size:12px;font-weight:600;padding:8px 15px;cursor:pointer;font-family:inherit;white-space:nowrap';
-  b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;max-width:1280px;margin:0 auto 16px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
-  b.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;margin-right:8px;min-width:0"><span style="width:27px;height:27px;flex:none;border-radius:50%;background:linear-gradient(135deg,#5b67f1,#8d7bf0);color:#fff;font-weight:700;font-size:12px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
-    +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">Update data</button>':'')
+  const pill='border:1px solid rgba(255,255,255,.22);border-radius:999px;background:rgba(255,255,255,.09);color:#e6e9f5;font-size:13.5px;font-weight:600;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap';
+  b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;max-width:1280px;margin:0 auto 16px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:14px;color:#c7cddd';
+  b.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;margin-right:8px;min-width:0"><span style="width:30px;height:30px;flex:none;border-radius:50%;background:linear-gradient(135deg,#5b67f1,#8d7bf0);color:#fff;font-weight:700;font-size:13.5px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
+    +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:13.5px;font-weight:700;padding:10px 19px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">Update data</button>':'')
     +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">⚙ Manage access</button>':'')
     +'<button id="mag-history-open" style="'+pill+'">🕘 History</button>'
     +'<button id="mag-signout" style="'+pill+'">Sign out</button>';
