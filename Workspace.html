@@ -2911,13 +2911,13 @@ function renderKpiOp(a){
     </div>
     <div class="pcard green-hl clickable" onclick="openDetail('rev')">
       ${hint('var(--blue-300)')}
-      <div class="lab">Operating Revenue</div>
+      <div class="lab">Revenue</div>
       <div class="big pos">${fmt(a.rev)}</div>
       <div class="meta">Excludes loan inflows</div>
     </div>
     <div class="pcard red-hl clickable" onclick="openDetail('opex')">
       ${hint('var(--blue-300)')}
-      <div class="lab">Operating Expenses</div>
+      <div class="lab">Expenses</div>
       <div class="big neg">${fmt(a.opex)}</div>
       <div class="meta"><b>${Object.keys(a.opexBD).length} categories</b> across ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'}</div>
     </div>`;
