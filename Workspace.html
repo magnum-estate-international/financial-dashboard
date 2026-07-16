@@ -4874,38 +4874,85 @@ async function deleteCategoryByName(name){
   invalidateCategoryCaches();
   return true;
 }
+async function ensureCategoryGroup(name,kind){
+  name=(name||'').trim();
+  if(!name) return;
+  try{
+    await authedFetch(SB_URL+'/rest/v1/category_groups',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=ignore-duplicates,return=minimal'},body:JSON.stringify({name,kind})});
+  }catch(e){ /* best-effort — the group text on the category itself is the source of truth */ }
+}
+async function addCategoryGroup(name,kind){
+  name=(name||'').trim();
+  if(!name) throw new Error('Name is required');
+  const r=await authedFetch(SB_URL+'/rest/v1/category_groups',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({name,kind})});
+  if(!r.ok){ const t=await r.text(); throw new Error(/duplicate key|already exists/i.test(t)?'A group named "'+name+'" already exists.':(t||('HTTP '+r.status))); }
+  invalidateCategoryCaches();
+}
+async function deleteCategoryGroup(name){
+  if(!confirm('Delete the empty group "'+name+'"?')) return false;
+  await adminDel('category_groups?name=eq.'+encodeURIComponent(name));
+  invalidateCategoryCaches();
+  return true;
+}
 async function addCategory(name,kind,parentGroup){
   name=(name||'').trim();
   if(!name) throw new Error('Name is required');
   parentGroup=(parentGroup||'').trim();
   const r=await authedFetch(SB_URL+'/rest/v1/categories',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({name,kind,parent_group:parentGroup||null})});
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+  if(parentGroup) await ensureCategoryGroup(parentGroup,kind);
   invalidateCategoryCaches();
 }
-async function setCategoryGroup(name,parentGroup){
+async function setCategoryGroup(name,parentGroup,kind){
   const r=await authedFetch(SB_URL+'/rest/v1/categories?name=eq.'+encodeURIComponent(name),{method:'PATCH',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({parent_group:parentGroup||null})});
   if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+  if(parentGroup) await ensureCategoryGroup(parentGroup,kind);
+  invalidateCategoryCaches();
+}
+async function renameCategoryGroup(oldGroup,newGroup){
+  newGroup=(newGroup||'').trim();
+  if(!newGroup || newGroup===oldGroup) return;
+  const r=await authedFetch(SB_URL+'/rest/v1/categories?parent_group=eq.'+encodeURIComponent(oldGroup),{method:'PATCH',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({parent_group:newGroup})});
+  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+  await authedFetch(SB_URL+'/rest/v1/category_groups?name=eq.'+encodeURIComponent(oldGroup),{method:'PATCH',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({name:newGroup})});
   invalidateCategoryCaches();
 }
 async function renderCategoriesBody(){
   const body=document.getElementById('cats-body'); if(!body) return;
-  let cats=[];
-  try{ cats=await sbFetch('categories?select=name,kind,parent_group&order=kind,name'); }
+  let cats=[],groupsTbl=[];
+  try{
+    [cats,groupsTbl]=await Promise.all([
+      sbFetch('categories?select=name,kind,parent_group&order=kind,name'),
+      sbFetch('category_groups?select=name,kind&order=kind,name')
+    ]);
+  }
   catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+err.message+'</div>'; return; }
   const byKind={opex:[],revenue:[],financing:[]};
   cats.forEach(c=>{ (byKind[c.kind]=byKind[c.kind]||[]).push(c); });
+  const groupsByKind={opex:[],revenue:[],financing:[]};
+  groupsTbl.forEach(g=>{ (groupsByKind[g.kind]=groupsByKind[g.kind]||[]).push(g.name); });
   const kindLabel={opex:'Operating Expense',revenue:'Revenue',financing:'Financing'};
-  const allGroups=Array.from(new Set(cats.map(c=>c.parent_group).filter(Boolean))).sort();
+  const allGroups=Array.from(new Set(cats.map(c=>c.parent_group).filter(Boolean).concat(groupsTbl.map(g=>g.name)))).sort();
   const groupDatalist='<datalist id="cc-groups-dl">'+allGroups.map(g=>'<option value="'+escH(g)+'">').join('')+'</datalist>';
   let h='';
   h+='<div style="border:1px solid #e4e7ef;border-radius:12px;padding:12px;margin-bottom:14px">'
+    +'<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:12.5px;color:#141b2d;margin-bottom:8px">Add a main category (group)</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    +'<input id="cg-name" type="text" placeholder="Main category name, e.g. Utilities" style="flex:1 1 200px;padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px">'
+    +'<select id="cg-kind" style="padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px"><option value="opex">Operating Expense</option><option value="revenue">Revenue</option><option value="financing">Financing</option></select>'
+    +'<button id="cg-add" style="border:0;background:#141b2d;color:#fff;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">+ Add main category</button>'
+    +'</div>'
+    +'<div id="cg-msg" style="font-size:12px;color:#b3261e;margin-top:6px;min-height:1px"></div>'
+    +'</div>'
+    +'<div style="border:1px solid #e4e7ef;border-radius:12px;padding:12px;margin-bottom:14px">'
+    +'<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:12.5px;color:#141b2d;margin-bottom:8px">Add a category</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
     +'<input id="cc-name" type="text" placeholder="New category name" style="flex:1 1 200px;padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px">'
     +'<select id="cc-kind" style="padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px"><option value="opex">Operating Expense</option><option value="revenue">Revenue</option><option value="financing">Financing</option></select>'
     +'</div>'
-    +'<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#2e3547;margin-bottom:6px;cursor:pointer"><input id="cc-issub" type="checkbox"> This is a sub-category of a group</label>'
+    +'<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#2e3547;margin-bottom:6px;cursor:pointer"><input id="cc-issub" type="checkbox"> This is a sub-category of a main category</label>'
     +'<div id="cc-groupwrap" style="display:none;margin-bottom:8px">'
-    +'<input id="cc-group" type="text" list="cc-groups-dl" placeholder="Group name — pick an existing one or type a new group" style="width:100%;padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px;box-sizing:border-box">'
+    +'<input id="cc-group" type="text" list="cc-groups-dl" placeholder="Main category — pick an existing one or type a new one" style="width:100%;padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px;box-sizing:border-box">'
     +groupDatalist
     +'</div>'
     +'<button id="cc-add" style="border:0;background:#5b67f1;color:#fff;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">+ Add category</button>'
@@ -4915,7 +4962,7 @@ async function renderCategoriesBody(){
     const list=(byKind[kind]||[]);
     h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:13px;color:#141b2d;margin:14px 0 6px">'+kindLabel[kind]+' ('+list.length+')</div>';
     h+='<div style="border:1px solid #eef2f7;border-radius:10px;max-height:260px;overflow:auto">';
-    const rowHtml=(c,indent)=>'<div class="cc-row" data-name="'+escH(c.name)+'" data-group="'+escH(c.parent_group||'')+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f2f4f9;font-size:13px'+(indent?';padding-left:26px':'')+'">'
+    const rowHtml=(c,indent)=>'<div class="cc-row" data-name="'+escH(c.name)+'" data-kind="'+escH(c.kind)+'" data-group="'+escH(c.parent_group||'')+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f2f4f9;font-size:13px'+(indent?';padding-left:26px':'')+'">'
       +(indent?'<span style="color:var(--muted);font-size:12px">↳</span>':'')
       +'<span class="cc-label" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(c.name)+'</span>'
       +'<input class="cc-group-inp" type="text" list="cc-groups-dl" value="'+escH(c.parent_group||'')+'" placeholder="No group" style="width:150px;padding:5px 8px;border:1px solid #e4e7ef;border-radius:8px;font-size:11.5px">'
@@ -4924,15 +4971,29 @@ async function renderCategoriesBody(){
       +'</div>';
     const grouped={}, standalone=[];
     list.forEach(c=>{ if(c.parent_group){ (grouped[c.parent_group]=grouped[c.parent_group]||[]).push(c); } else standalone.push(c); });
+    const emptyGroups=(groupsByKind[kind]||[]).filter(g=>!grouped[g]);
+    const groupHdr=(g,empty)=>'<div class="cc-group-hdr" data-group="'+escH(g)+'" data-kind="'+escH(kind)+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f2f4f9;font-size:12.5px;font-weight:700;background:#fafbfe">'
+      +'<span style="flex:1">'+escH(g)+(empty?' <span style="font-weight:400;color:var(--muted);font-size:11px">— no categories yet</span>':'')+'</span>'
+      +'<button class="cc-group-rename" style="border:1px solid #e4e7ef;background:#fff;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer;color:#141b2d">Rename</button>'
+      +(empty?'<button class="cc-group-del" style="border:1px solid #f6c9c3;background:#fff;color:#b3261e;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer">Delete</button>':'')
+      +'</div>';
     Object.keys(grouped).sort().forEach(g=>{
-      h+='<div style="padding:7px 10px;border-top:1px solid #f2f4f9;font-size:12.5px;font-weight:700;background:#fafbfe">'+escH(g)+'</div>';
+      h+=groupHdr(g,false);
       grouped[g].sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{ h+=rowHtml(c,true); });
     });
+    emptyGroups.sort().forEach(g=>{ h+=groupHdr(g,true); });
     standalone.sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{ h+=rowHtml(c,false); });
-    if(!list.length) h+='<div style="padding:10px;font-size:12.5px;color:var(--muted)">None yet.</div>';
+    if(!list.length && !emptyGroups.length) h+='<div style="padding:10px;font-size:12.5px;color:var(--muted)">None yet.</div>';
     h+='</div>';
   });
   body.innerHTML=h;
+  document.getElementById('cg-add').onclick=async()=>{
+    const nameEl=document.getElementById('cg-name'), kindEl=document.getElementById('cg-kind'), msg=document.getElementById('cg-msg');
+    const btn=document.getElementById('cg-add');
+    btn.disabled=true; msg.textContent='';
+    try{ await addCategoryGroup(nameEl.value,kindEl.value); await renderCategoriesBody(); }
+    catch(e){ msg.textContent='Failed: '+e.message; btn.disabled=false; }
+  };
   const issub=document.getElementById('cc-issub'), gwrap=document.getElementById('cc-groupwrap');
   issub.onchange=()=>{ gwrap.style.display=issub.checked?'block':'none'; };
   document.getElementById('cc-add').onclick=async()=>{
@@ -4942,6 +5003,12 @@ async function renderCategoriesBody(){
     try{ await addCategory(nameEl.value,kindEl.value,issub.checked?groupEl.value:null); await renderCategoriesBody(); }
     catch(e){ msg.textContent='Failed: '+e.message; btn.disabled=false; }
   };
+  body.querySelectorAll('.cc-group-del').forEach(b=>b.onclick=async()=>{
+    const hdr=b.closest('.cc-group-hdr'); const name=hdr.dataset.group;
+    b.disabled=true;
+    try{ const ok=await deleteCategoryGroup(name); if(ok) await renderCategoriesBody(); else b.disabled=false; }
+    catch(e){ alert('Delete group failed: '+e.message); b.disabled=false; }
+  });
   body.querySelectorAll('.cc-rename').forEach(b=>b.onclick=async()=>{
     const row=b.closest('.cc-row'); const oldName=row.dataset.name;
     const nn=prompt('Rename "'+oldName+'" to:',oldName);
@@ -4956,13 +5023,21 @@ async function renderCategoriesBody(){
     try{ const ok=await deleteCategoryByName(name); if(ok) await renderCategoriesBody(); else b.disabled=false; }
     catch(e){ alert('Delete failed: '+e.message); b.disabled=false; }
   });
+  body.querySelectorAll('.cc-group-rename').forEach(b=>b.onclick=async()=>{
+    const hdr=b.closest('.cc-group-hdr'); const oldGroup=hdr.dataset.group;
+    const nn=prompt('Rename group "'+oldGroup+'" to:',oldGroup);
+    if(nn==null) return;
+    b.disabled=true;
+    try{ await renameCategoryGroup(oldGroup,nn); await renderCategoriesBody(); }
+    catch(e){ alert('Rename group failed: '+e.message); b.disabled=false; }
+  });
   body.querySelectorAll('.cc-group-inp').forEach(inp=>{
     const orig=inp.value;
     inp.onchange=async()=>{
-      const row=inp.closest('.cc-row'); const name=row.dataset.name;
+      const row=inp.closest('.cc-row'); const name=row.dataset.name, kind=row.dataset.kind;
       if(inp.value===orig) return;
       inp.disabled=true;
-      try{ await setCategoryGroup(name,inp.value); await renderCategoriesBody(); }
+      try{ await setCategoryGroup(name,inp.value,kind); await renderCategoriesBody(); }
       catch(e){ alert('Could not update group: '+e.message); inp.disabled=false; inp.value=orig; }
     };
   });
