@@ -238,6 +238,7 @@ a{color:#4550d8}
       </div>
     </div>
     <div class="hero-meta">
+      <div id="heroToday" style="font-size:12.5px;color:rgba(255,255,255,.65);margin-bottom:4px"></div>
       <div class="period">April – 22 June 2026 (YTD)</div>
       <div id="heroScope">Consolidated · 17 Entities · 4 Groups + 3 Standalone</div>
     </div>
@@ -2843,6 +2844,10 @@ const ICON={
   clip:(s=14)=>svgOpen(s)+`<path d="M21.44 11.05 12.25 20.24a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95L9.41 17.41a1.5 1.5 0 0 1-2.12-2.12l8.49-8.49"/></svg>`,
 };
 function renderBanner(){
+  const todayEl=document.getElementById('heroToday');
+  if(todayEl && !todayEl.textContent){
+    todayEl.textContent='Accessed '+new Date().toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  }
   document.querySelector('.hero-meta .period').textContent=MONTHS[MONTH];
   const moLbl=MONTHS[MONTH];
   const opL=document.getElementById('secOpLabel'); if(opL) opL.innerHTML=`${ICON.trend()} Operational Performance — ${moLbl}`;
