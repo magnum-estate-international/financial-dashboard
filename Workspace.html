@@ -2894,8 +2894,20 @@ function cashPositionCard(){
       <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No cash position logged yet — add it via Update Data'}</div>
     </div>`;
 }
+function fixCostCard(){
+  const ids=scopeIds();
+  let tot=0,n=0,latest=null;
+  ids.forEach(id=>{ const c=FIXCOST[id]; if(c){ tot+=c.amt; n++; if(!latest||c.at>latest) latest=c.at; } });
+  const asOf=latest?new Date(latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):null;
+  return `<div class="pcard clickable" onclick="openDetail('fixcost')">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="lab">Monthly Fix Cost</div>
+      <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${n?fmt(tot):'—'}</div>
+      <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No fixed cost logged yet — add it via Update Data'}</div>
+    </div>`;
+}
 function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc) kc.innerHTML=cashPositionCard()+outstandingCard();
+  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi3'; kc.innerHTML=cashPositionCard()+fixCostCard()+outstandingCard(); }
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
@@ -3423,6 +3435,22 @@ function openDetail(kind){
       if(missing.length) h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">${missing.length} entit${missing.length===1?'y':'ies'} in scope without a logged cash position: ${missing.map(id=>ENT[id]?ENT[id].name:id).join(', ')}.</p>`;
     }
     showModal('Cash Position — by Entity',h);
+  }
+  else if(kind==='fixcost'){
+    const ids=scopeIds().filter(id=>FIXCOST[id]).sort((x,y)=>FIXCOST[y].amt-FIXCOST[x].amt);
+    const missing=scopeIds().filter(id=>!FIXCOST[id]);
+    let h;
+    if(!ids.length){
+      h=`<p style="color:var(--muted);font-size:12.5px">No fixed cost logged yet for this scope — add it via <b>Update Data → Update Fix Cost</b>.</p>`;
+    } else {
+      let tot=0;
+      h=`<table><thead><tr><th>Entity</th><th class="num">Monthly Fix Cost (IDR)</th><th>Period</th></tr></thead><tbody>`;
+      ids.forEach(id=>{ const c=FIXCOST[id]; tot+=c.amt;
+        h+=`<tr><td>${pill(id)}</td><td class="num">${fmt(c.amt)}</td><td style="font-size:12px;color:var(--muted)">${c.period||'—'}</td></tr>`;});
+      h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table>`;
+      if(missing.length) h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">${missing.length} entit${missing.length===1?'y':'ies'} in scope without a logged fixed cost: ${missing.map(id=>ENT[id]?ENT[id].name:id).join(', ')}.</p>`;
+    }
+    showModal('Monthly Fix Cost — by Entity',h);
   }
   else if(kind==='finin'){
     let h=finTableHtml('finIn');
@@ -4675,6 +4703,7 @@ function applyScopeChrome(){
 }
 let BAL={};
 let CASHPOS={};
+let FIXCOST={};
 let OUTSTANDING=[];
 async function runDashboard(){
   const D=await loadFromSupabase();
@@ -4714,6 +4743,15 @@ async function runDashboard(){
       CASHPOS[c.entity_code]={cash:Number(c.cash_idr),at:c.updated_at};
     });
   }catch(e){ CASHPOS={}; }
+  // per-entity monthly fixed cost — a single current snapshot (recurring costs: payroll, taxes,
+  // professional fees, insurance etc), sourced from the manually-maintained "RECAP FIX & LIABILITY
+  // EXPENSES ALL PT" workbook. Separate from itemized transactions — this is a management estimate.
+  try{
+    FIXCOST={};
+    (await sbFetch('entity_fixed_costs?select=entity_code,amount_idr,period_label,source_label,updated_at')).forEach(c=>{
+      FIXCOST[c.entity_code]={amt:Number(c.amount_idr),period:c.period_label,source:c.source_label,at:c.updated_at};
+    });
+  }catch(e){ FIXCOST={}; }
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
