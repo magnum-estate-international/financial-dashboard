@@ -4623,6 +4623,43 @@ function opeField(label,html){
 // Liability pattern (openOutstanding -> openOutstandingDetail -> row menu) but without a
 // paid/open concept, since fixed cost is a recurring monthly estimate, not an unpaid invoice. ───
 let FC_VIEW='entity', FC_SEARCH='', FC_SEARCH_FOCUS=false;
+// Rolls Fix Cost's "By Category" categories up into the same parent cost groups used by the
+// Operating Expenses breakdown (categories.parent_group, via OPEX_CAT_TO_GROUP) — same collapsible
+// group-header pattern as opexRowsGrouped, adapted for the extra Items-count column and to drill
+// into openFixCostCategory instead of openBDItem. Reuses the generic toggleOpexGroup() expander.
+function fixCostCatRowsGrouped(grouped){
+  const byGroup={}, ungrouped=[];
+  grouped.forEach(([k,v])=>{
+    const g=OPEX_CAT_TO_GROUP[k];
+    if(g){ (byGroup[g]=byGroup[g]||[]).push([k,v]); } else ungrouped.push([k,v]);
+  });
+  const groupEntries=Object.entries(byGroup).map(([name,arr])=>({
+    isGroup:true,name,
+    n:arr.reduce((s,[,v])=>s+v.n,0),
+    tot:arr.reduce((s,[,v])=>s+v.tot,0),
+    items:arr.slice().sort((a,b)=>b[1].tot-a[1].tot)}));
+  const singleEntries=ungrouped.map(([k,v])=>({isGroup:false,name:k,n:v.n,tot:v.tot}));
+  const all=groupEntries.concat(singleEntries).sort((a,b)=>b.tot-a.tot);
+  let h='';
+  all.forEach((entry,gi)=>{
+    if(entry.isGroup){
+      const gid='fcxg_'+gi;
+      h+=`<tr style="background:#f7f8fc;font-weight:700;cursor:pointer" onclick="toggleOpexGroup('${gid}')">`
+        +`<td style="font-size:12.5px"><span id="${gid}_chev" style="display:inline-block;width:14px;color:var(--blue-300)">▸</span> ${escH(entry.name)} <span style="font-weight:400;color:var(--muted);font-size:11px">(${entry.items.length} — click to view details)</span></td>`
+        +`<td class="num" style="text-align:right">${entry.n}</td><td class="num neg" style="text-align:right">${fmt(entry.tot)}</td></tr>`;
+      entry.items.forEach(([k,v])=>{
+        h+=`<tr class="${gid}_row" style="display:none;cursor:pointer" onclick="openFixCostCategory('${encodeURIComponent(k)}')">`
+          +`<td style="font-size:12px;color:var(--muted);padding-left:28px">↳ ${escH(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
+          +`<td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`;
+      });
+    } else {
+      h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostCategory('${encodeURIComponent(entry.name)}')">`
+        +`<td>${escH(entry.name)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
+        +`<td class="num" style="text-align:right">${entry.n}</td><td class="num neg" style="text-align:right">${fmt(entry.tot)}</td></tr>`;
+    }
+  });
+  return h;
+}
 function openFixCost(view){
   view=FC_VIEW=view||FC_VIEW||'entity';
   const rows=fixCostInScope();
@@ -4644,7 +4681,7 @@ function openFixCost(view){
   const rowLabel=k=>view==='entity'?pill(k):escH(k);
   const rowOnclick=k=>view==='entity'?`openFixCostEntity('${k}')`:view==='vendor'?`openFixCostVendor('${encodeURIComponent(k)}')`:`openFixCostCategory('${encodeURIComponent(k)}')`;
   h+=`<table><thead><tr><th>${colLabel}</th><th class="num" style="text-align:right">Items</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
-    +(grouped.length?grouped.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join('')
+    +(grouped.length?(view==='category'?fixCostCatRowsGrouped(grouped):grouped.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join(''))
       :`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':''} fixed cost in this scope</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${rows.length}</td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr>`
     +`</tbody></table>`;
