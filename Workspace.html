@@ -4653,8 +4653,10 @@ function fixCostCatRowsGrouped(grouped){
           +`<td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`;
       });
     } else {
-      h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostCategory('${encodeURIComponent(entry.name)}')">`
-        +`<td>${escH(entry.name)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
+      // No parent group of its own — still bolded with the same header background as a group row,
+      // so it reads as a peer top-level line rather than a visually demoted leftover.
+      h+=`<tr style="background:#f7f8fc;font-weight:700;cursor:pointer" onclick="openFixCostCategory('${encodeURIComponent(entry.name)}')">`
+        +`<td style="font-size:12.5px">${escH(entry.name)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
         +`<td class="num" style="text-align:right">${entry.n}</td><td class="num neg" style="text-align:right">${fmt(entry.tot)}</td></tr>`;
     }
   });
