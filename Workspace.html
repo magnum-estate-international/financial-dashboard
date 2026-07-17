@@ -5279,22 +5279,26 @@ async function renameCategory(oldName,newName){
     patch('line_items?raw_label=eq.'+encodeURIComponent(oldName),{raw_label:newName}),
     patch('line_items?category=eq.'+encodeURIComponent(oldName),{category:newName}),
     patch('category_aliases?category=eq.'+encodeURIComponent(oldName),{category:newName}),
+    patch('outstanding_payables?category=eq.'+encodeURIComponent(oldName),{category:newName}),
+    patch('entity_fixed_costs?category=eq.'+encodeURIComponent(oldName),{category:newName}),
   ]);
   invalidateCategoryCaches();
 }
 async function deleteCategoryByName(name){
-  const [tx,li1,li2,al]=await Promise.all([
+  const [tx,li1,li2,al,op,fc]=await Promise.all([
     sbFetch('transactions?select=id&raw_label=eq.'+encodeURIComponent(name)+'&limit=1'),
     sbFetch('line_items?select=id&raw_label=eq.'+encodeURIComponent(name)+'&limit=1'),
     sbFetch('line_items?select=id&category=eq.'+encodeURIComponent(name)+'&limit=1'),
     sbFetch('category_aliases?select=raw_label&category=eq.'+encodeURIComponent(name)+'&limit=1'),
+    sbFetch('outstanding_payables?select=id&category=eq.'+encodeURIComponent(name)+'&limit=1'),
+    sbFetch('entity_fixed_costs?select=id&category=eq.'+encodeURIComponent(name)+'&limit=1'),
   ]);
   // Hard-block deleting a category that still has real financial data attached to it — reassigning
   // or deleting that data first is a deliberate, separate action, never an accidental side-effect
   // of cleaning up the category list.
-  const dataInUse=(tx&&tx.length)||(li1&&li1.length)||(li2&&li2.length);
+  const dataInUse=(tx&&tx.length)||(li1&&li1.length)||(li2&&li2.length)||(op&&op.length)||(fc&&fc.length);
   if(dataInUse){
-    alert('"'+name+'" can\'t be deleted — it still has transactions or line items recorded under it. Move that data to a different category first (rename it, or edit each transaction), then delete this one.');
+    alert('"'+name+'" can\'t be deleted — it still has transactions, line items, outstanding liabilities, or fixed cost items recorded under it. Move that data to a different category first (rename it, or edit each record), then delete this one.');
     return false;
   }
   if(al&&al.length){
