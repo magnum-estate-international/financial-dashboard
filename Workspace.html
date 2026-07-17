@@ -4282,6 +4282,243 @@ function findVendor(name){
   const hit=(VENDORS_G||[]).find(v=>v.toLowerCase()===n);
   return hit||null;
 }
+// ─── SHARED BULK-IMPORT MATCHING — used by both Outstanding Liability and Fixed Cost bulk
+// import/preview, so a row flagged "not recognized" can be fixed with a dropdown right there in
+// the preview (inline onchange handlers need global scope, hence these live at top level). ───
+// Normalizes dash variants (em/en dash, hyphen) and collapses whitespace so entity names typed
+// with a plain "-" still match DB names that use "—" (and vice versa).
+function normEntName(s){ return String(s).trim().toLowerCase().replace(/[‒-―‐‑]/g,'-').replace(/\./g,'').replace(/\s+/g,' '); }
+function findEntityByNameG(name){
+  if(!name) return null;
+  const n=normEntName(name);
+  let hit=EIDS.find(id=>normEntName(ENT[id].name)===n);
+  if(!hit) hit=EIDS.find(id=>normEntName(ENT[id].name).includes(n)||n.includes(normEntName(ENT[id].name)));
+  return hit||null;
+}
+// Unambiguous synonyms seen in real imported files that map cleanly to exactly one canonical
+// category — deliberately does NOT include ambiguous terms (e.g. "Legal & Professional Fees",
+// which could mean either Legal & Permit or Professional & Management Fees) so those still get
+// flagged for a human to pick, instead of being silently guessed.
+const CAT_SYNONYMS={
+  'taxes':'Tax','tax':'Tax','payroll':'Staff Salaries/Allowance','security':'External Security',
+  'professional fees':'Consulting Fee','repairs & maintenance':'Maintenance',
+  'repairs and maintenance':'Maintenance','operational expenses':'Other Operating Expense',
+  'equipment & installation':'Equipment, FF&E & Supplies','equipment and installation':'Equipment, FF&E & Supplies',
+  'bpjs kesehatan':'BPJS','bpjs ketenagakerjaan':'BPJS','bpjs tk':'BPJS',
+  'notary':'Notary Fee','notary fee':'Notary Fee','notary fees':'Notary Fee','deed':'Notary Fee','deed / legal fee':'Notary Fee','deed preparation':'Notary Fee',
+  'business trip':'Travel & Business Trip','travel':'Travel & Business Trip','staff accomodation':'Staff Accommodation',
+  'consulting fee':'Consulting Fee','consultant fee':'Consulting Fee','tax consultant fee':'Consulting Fee','consultant / accounting fee':'Consulting Fee',
+  'cleaning services fee':'Cleanliness','cleaning service':'Cleanliness','cleaning services':'Cleanliness','cleaning':'Cleanliness',
+  'laundry':'Laundry & Linen','housekeeping':'Cleanliness','waste removal':'Maintenance','waste drainage services':'Maintenance',
+  'legal':'Legal','permit':'Permit','legal fee':'Legal','retainer legal fee':'Legal','legal retainer':'Legal','legal services':'Legal',
+  'perizinan':'Permit','pbg':'Permit','slf':'Permit','permit fee':'Permit','business licensing':'Permit',
+  'cleaning supplies':'Equipment, FF&E & Supplies',
+  'insurance':'Building Insurance','insurance (property all risk)':'Building Insurance','property insurance':'Building Insurance',
+  'land':'Land','land installment':'Land','land purchase':'Land',
+  'commission':'Commission','sales commission':'Commission','agent commission':'Commission','sales comission':'Commission','agent comission':'Commission',
+  'supply':'Supplies','supplies':'Supplies','general supplies':'Supplies','office supplies':'Supplies','grocery supplies':'Supplies',
+  'entertainment':'Entertainment & Meeting','meeting':'Entertainment & Meeting','meetings':'Entertainment & Meeting',
+  'entertainment meeting':'Entertainment & Meeting','entertainment & meeting':'Entertainment & Meeting',
+  'business entertainment':'Entertainment & Meeting','client entertainment':'Entertainment & Meeting',
+};
+function findCategoryG(name){
+  if(!name) return null;
+  const n=String(name).trim().toLowerCase();
+  const hit=(OPEX_CATS_G||[]).find(c=>c.toLowerCase()===n);
+  if(hit) return hit;
+  const syn=CAT_SYNONYMS[n];
+  if(syn && (OPEX_CATS_G||[]).includes(syn)) return syn;
+  return null;
+}
+// Defaults to OTP for blank/unrecognized values — Frequency is a soft classification aid, not
+// something worth hard-blocking an import over (unlike Entity/Category/Vendor matches).
+function normalizeFreq(v){
+  const s=String(v||'').trim().toLowerCase();
+  if(!s) return 'OTP';
+  if(/^rec|month/.test(s)) return 'REC';
+  if(/^prg|progress/.test(s)) return 'PRG';
+  if(/^otp|one.?time/.test(s)) return 'OTP';
+  return 'OTP';
+}
+function parseFlexDate(v){
+  if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  if(typeof v==='number') { const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?null:d.toISOString().slice(0,10); }
+  if(typeof v==='string'){
+    const s=v.trim();
+    let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+    m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    const d=new Date(s); if(!isNaN(d)) return d.toISOString().slice(0,10);
+  }
+  return null;
+}
+// Renders a plain value when matched, or an inline "pick one" dropdown when not — so a flagged
+// row can be fixed right in the preview instead of forcing a re-upload.
+function fixPickCellHtml(onFixCall,options,placeholder){
+  return `<select onchange="${onFixCall}" style="font-size:11px;padding:3px 4px;border:1px solid #f6c9c3;border-radius:6px;max-width:170px">`
+    +`<option value="">${escH(placeholder)}</option>`
+    +options.map(o=>`<option value="${escH(o)}">${escH(o)}</option>`).join('')
+    +`</select>`;
+}
+let OPD_ROWS=[];
+function computeOpdRow(r){
+  let error=null;
+  if(r.idRaw && (r.id==null||isNaN(r.id))) error='Invalid ID';
+  else if(r.idRaw && !r.existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
+  else if(!r.entityMatch) error='Entity not recognized';
+  else if(!r.catMatch) error='Category not recognized — pick one, or add it via Manage Categories first';
+  else if(!r.vendorMatch) error='Vendor not recognized — pick one, or add it via Manage Vendors first';
+  else if(!r.desc) error='Missing description';
+  else if(!r.inv) error='Invalid invoice date';
+  else if(!r.due) error='Invalid due date';
+  else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
+  else if(r.existing && r.amt<r.existing.paidAmt) error='Amount can\'t be less than the '+fmtIDR(r.existing.paidAmt)+' already recorded as paid for this ID';
+  r.error=error;
+  r.category=r.catMatch||r.catRaw||'';
+  r.vendor=r.vendorMatch||r.vendorRaw||'';
+}
+function fixOpdField(i,field,value){
+  const r=OPD_ROWS[i]; if(!r) return;
+  if(field==='entity') r.entityMatch=value||null;
+  else if(field==='cat') r.catMatch=value||null;
+  else if(field==='vendor') r.vendorMatch=value||null;
+  computeOpdRow(r);
+  renderOpdPreview();
+}
+function entityPickCellHtml(onFixCall){
+  return `<select onchange="${onFixCall}" style="font-size:11px;padding:3px 4px;border:1px solid #f6c9c3;border-radius:6px;max-width:170px">`
+    +`<option value="">— pick entity —</option>`
+    +EIDS.map(id=>`<option value="${id}">${escH(ENT[id].name)}</option>`).join('')
+    +`</select>`;
+}
+function opdEntityCell(r,i){
+  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml(`fixOpdField(${i},'entity',this.value)`);
+}
+function opdCatCell(r,i){
+  return r.catMatch?escH(r.catMatch):fixPickCellHtml(`fixOpdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —');
+}
+function opdVendorCell(r,i){
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml(`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+}
+function renderOpdPreview(){
+  const el=document.getElementById('opd-preview'); if(!el) return;
+  if(!OPD_ROWS.length){ el.innerHTML=''; return; }
+  const valid=OPD_ROWS.filter(r=>!r.error);
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Frequency</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+  OPD_ROWS.forEach((r,i)=>{
+    h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+      +'<td style="font-size:11px;font-weight:700;color:'+(r.id?'#4550d8':'#2b7a4b')+'">'+(r.id?('Update #'+r.id):'New')+'</td>'
+      +'<td style="font-size:12px">'+opdEntityCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+escH(r.invNo||'—')+'</td>'
+      +'<td style="font-size:12px">'+opdVendorCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+opdCatCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+escH(r.freq||'OTP')+'</td>'
+      +'<td style="font-size:12px;white-space:nowrap">'+(r.inv||'—')+'</td>'
+      +'<td style="font-size:12px;white-space:nowrap">'+(r.due||'—')+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
+      +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length;
+  h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+OPD_ROWS.length+' row(s) ready ('+toInsertN+' new, '+toUpdateN+' update)'+(OPD_ROWS.length>valid.length?' — fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
+  h+='<button id="opd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' outstanding '+(valid.length===1?'liability':'liabilities')+'</button>';
+  h+='<div id="opd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+  el.innerHTML=h;
+  const impBtn=document.getElementById('opd-import');
+  if(impBtn) impBtn.onclick=async()=>{
+    impBtn.disabled=true; impBtn.textContent='Importing…';
+    try{
+      const fieldsOf=r=>({entity_code:r.entityMatch,category:r.category,frequency:r.freq,invoice_number:r.invNo||null,vendor_name:r.vendor,description:r.desc,document_url:r.docUrl||null,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt});
+      const toInsert=valid.filter(r=>!r.id), toUpdate=valid.filter(r=>r.id);
+      if(toInsert.length) await adminAddBatch('outstanding_payables',toInsert.map(fieldsOf));
+      if(toUpdate.length) await Promise.all(toUpdate.map(r=>adminUpdateOne('outstanding_payables',r.id,fieldsOf(r))));
+      const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+      OUTSTANDING=fresh.map(mkOutstanding);
+      renderKpiFin(agg());
+      document.getElementById('opd-import-msg').style.color='#2b7a4b';
+      document.getElementById('opd-import-msg').textContent='✓ Added '+toInsert.length+' new, updated '+toUpdate.length+' existing.';
+      impBtn.textContent='Imported ✓';
+    }catch(e){
+      document.getElementById('opd-import-msg').style.color='#b3261e';
+      document.getElementById('opd-import-msg').textContent='Import failed: '+e.message;
+      impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' outstanding '+(valid.length===1?'liability':'liabilities');
+    }
+  };
+}
+let FCD_ROWS=[];
+function computeFcdRow(r){
+  let error=null;
+  if(r.idRaw && (r.id==null||isNaN(r.id))) error='Invalid ID';
+  else if(r.idRaw && !r.existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
+  else if(!r.entityMatch) error='Entity not recognized';
+  else if(!r.catMatch) error='Category not recognized — pick one, or add it via Manage Categories first';
+  else if(r.vendorRaw && !r.vendorMatch) error='Vendor not recognized — pick one, or add it via Manage Vendors first';
+  else if(!r.desc) error='Missing description';
+  else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
+  r.error=error;
+  r.category=r.catMatch||r.catRaw||'';
+  r.vendor=r.vendorMatch||null;
+}
+function fixFcdField(i,field,value){
+  const r=FCD_ROWS[i]; if(!r) return;
+  if(field==='entity') r.entityMatch=value||null;
+  else if(field==='cat') r.catMatch=value||null;
+  else if(field==='vendor'){ r.vendorMatch=value||null; if(!r.vendorRaw) r.vendorRaw=value; }
+  computeFcdRow(r);
+  renderFcdPreview();
+}
+function fcdEntityCell(r,i){
+  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml(`fixFcdField(${i},'entity',this.value)`);
+}
+function fcdCatCell(r,i){
+  return r.catMatch?escH(r.catMatch):fixPickCellHtml(`fixFcdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —');
+}
+function fcdVendorCell(r,i){
+  if(!r.vendorRaw) return '—';
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml(`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+}
+function renderFcdPreview(){
+  const el=document.getElementById('fcd-preview'); if(!el) return;
+  if(!FCD_ROWS.length){ el.innerHTML=''; return; }
+  const valid=FCD_ROWS.filter(r=>!r.error);
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+  FCD_ROWS.forEach((r,i)=>{
+    h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+      +'<td style="font-size:11px;font-weight:700;color:'+(r.id?'#4550d8':'#2b7a4b')+'">'+(r.id?('Update #'+r.id):'New')+'</td>'
+      +'<td style="font-size:12px">'+fcdEntityCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+fcdCatCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+fcdVendorCell(r,i)+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
+      +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length;
+  h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+FCD_ROWS.length+' row(s) ready ('+toInsertN+' new, '+toUpdateN+' update)'+(FCD_ROWS.length>valid.length?' — fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
+  h+='<button id="fcd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' fixed cost item'+(valid.length===1?'':'s')+'</button>';
+  h+='<div id="fcd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+  el.innerHTML=h;
+  const impBtnFc=document.getElementById('fcd-import');
+  if(impBtnFc) impBtnFc.onclick=async()=>{
+    impBtnFc.disabled=true; impBtnFc.textContent='Importing…';
+    try{
+      const fieldsOf=r=>({entity_code:r.entityMatch,category:r.category,vendor:r.vendor||null,description:r.desc,amount_idr:r.amt});
+      const toInsert=valid.filter(r=>!r.id), toUpdate=valid.filter(r=>r.id);
+      if(toInsert.length) await adminAddBatch('entity_fixed_costs',toInsert.map(fieldsOf));
+      if(toUpdate.length) await Promise.all(toUpdate.map(r=>adminUpdateOne('entity_fixed_costs',r.id,fieldsOf(r))));
+      await refreshFixCost();
+      document.getElementById('fcd-import-msg').style.color='#2b7a4b';
+      document.getElementById('fcd-import-msg').textContent='✓ Added '+toInsert.length+' new, updated '+toUpdate.length+' existing.';
+      impBtnFc.textContent='Imported ✓';
+    }catch(e){
+      document.getElementById('fcd-import-msg').style.color='#b3261e';
+      document.getElementById('fcd-import-msg').textContent='Import failed: '+e.message;
+      impBtnFc.disabled=false; impBtnFc.textContent='Import '+valid.length+' fixed cost item'+(valid.length===1?'':'s');
+    }
+  };
+}
 function vendorSelectHtml(id,current,extraStyle){
   return `<select id="${id}" style="width:100%;padding:8px 10px;box-sizing:border-box${extraStyle?';'+extraStyle:''}">`
     +`<option value=""${current?'':' selected'}>No vendor</option>`
@@ -5924,7 +6161,7 @@ async function renderEntryBody(){
       sbFetch('entry_submissions?select=*&order=id.desc&limit=300')
     ]);
   }catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+escH(err.message)+'</div>'; return; }
-  await ensureVendorsG();
+  await Promise.all([ensureVendorsG(),ensureOpexCatsG()]);
   const th='text-align:left;font-size:11px;color:#3a4254;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px';
   const td='padding:8px;font-size:12.5px;border-top:1px solid #eef2f7;vertical-align:top';
   const chip=st=>{const c={pending:['#8a6d1a','#faf3d9','⏳ pending'],approved:['#2b7a4b','#e3f2e8','✓ approved'],rejected:['#b3261e','#fbe9e7','✗ rejected']}[st]||['#232c40','#eef2f7',st];
@@ -6450,122 +6687,6 @@ async function renderEntryBody(){
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
       XLSX.writeFile(wb,'outstanding_payables_template.xlsx');
     };
-    // Normalizes dash variants (em/en dash, hyphen) and collapses whitespace so entity names
-    // typed with a plain "-" still match DB names that use "—" (and vice versa).
-    function normEntName(s){ return String(s).trim().toLowerCase().replace(/[‒-―‐‑]/g,'-').replace(/\./g,'').replace(/\s+/g,' '); }
-    function findEntityByName(name){
-      if(!name) return null;
-      const n=normEntName(name);
-      let hit=EIDS.find(id=>normEntName(eName(id))===n);
-      if(!hit) hit=EIDS.find(id=>normEntName(eName(id)).includes(n)||n.includes(normEntName(eName(id))));
-      return hit||null;
-    }
-    // Unambiguous synonyms seen in real imported files that map cleanly to exactly one canonical
-    // category — deliberately does NOT include ambiguous terms (e.g. "Legal & Professional Fees",
-    // which could mean either Legal & Permit or Professional & Management Fees) so those still get
-    // flagged for a human to pick, instead of being silently guessed.
-    const CAT_SYNONYMS={
-      'taxes':'Tax','tax':'Tax','payroll':'Payroll & Salaries','security':'External Security',
-      'professional fees':'Professional & Management Fees','repairs & maintenance':'Maintenance',
-      'repairs and maintenance':'Maintenance','operational expenses':'Other Operating Expense',
-      'equipment & installation':'Equipment, FF&E & Supplies','equipment and installation':'Equipment, FF&E & Supplies',
-      'bpjs kesehatan':'BPJS','bpjs ketenagakerjaan':'BPJS','bpjs tk':'BPJS',
-      'notary':'Notary Fee','notary fee':'Notary Fee','notary fees':'Notary Fee','deed':'Notary Fee','deed / legal fee':'Notary Fee','deed preparation':'Notary Fee',
-      'business trip':'Travel & Business Trip','travel':'Travel & Business Trip','staff accomodation':'Staff Accommodation',
-      'consulting fee':'Consulting Fee','consultant fee':'Consulting Fee','tax consultant fee':'Consulting Fee','consultant / accounting fee':'Consulting Fee',
-      'cleaning services fee':'Housekeeping','cleaning service':'Housekeeping','cleaning services':'Housekeeping','cleaning':'Housekeeping',
-      'laundry':'Housekeeping','housekeeping':'Housekeeping','waste removal':'Housekeeping','waste drainage services':'Housekeeping',
-      'legal':'Legal','permit':'Permit','legal fee':'Legal','retainer legal fee':'Legal','legal retainer':'Legal','legal services':'Legal',
-      'perizinan':'Permit','pbg':'Permit','slf':'Permit','permit fee':'Permit','business licensing':'Permit',
-      'cleaning supplies':'Equipment, FF&E & Supplies',
-      'insurance':'Building Insurance','insurance (property all risk)':'Building Insurance','property insurance':'Building Insurance',
-      'engineering outsourcing':'Engineering Outsourcing','engineering outsource':'Engineering Outsourcing','outsourced engineering':'Engineering Outsourcing',
-      'land':'Land','land installment':'Land','land purchase':'Land',
-      'commission':'Commission','sales commission':'Commission','agent commission':'Commission','sales comission':'Commission','agent comission':'Commission',
-      'supply':'Supplies','supplies':'Supplies','general supplies':'Supplies','office supplies':'Supplies','grocery supplies':'Supplies',
-      'entertainment':'Entertainment & Meeting','meeting':'Entertainment & Meeting','meetings':'Entertainment & Meeting',
-      'entertainment meeting':'Entertainment & Meeting','entertainment & meeting':'Entertainment & Meeting',
-      'business entertainment':'Entertainment & Meeting','client entertainment':'Entertainment & Meeting',
-    };
-    // Defaults to OTP for blank/unrecognized values — Frequency is a soft classification aid,
-    // not something worth hard-blocking an import over (unlike Entity/Category matches).
-    function normalizeFreq(v){
-      const s=String(v||'').trim().toLowerCase();
-      if(!s) return 'OTP';
-      if(/^rec|month/.test(s)) return 'REC';
-      if(/^prg|progress/.test(s)) return 'PRG';
-      if(/^otp|one.?time/.test(s)) return 'OTP';
-      return 'OTP';
-    }
-    function findCategory(name){
-      if(!name) return null;
-      const n=String(name).trim().toLowerCase();
-      const hit=opexCats2.find(c=>c.name.toLowerCase()===n);
-      if(hit) return hit.name;
-      const syn=CAT_SYNONYMS[n];
-      if(syn && opexCats2.some(c=>c.name===syn)) return syn;
-      return null;
-    }
-    function parseFlexDate(v){
-      if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
-      if(typeof v==='number') { const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?null:d.toISOString().slice(0,10); }
-      if(typeof v==='string'){
-        const s=v.trim();
-        let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-        if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
-        m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-        const d=new Date(s); if(!isNaN(d)) return d.toISOString().slice(0,10);
-      }
-      return null;
-    }
-    let OPD_ROWS=[];
-    function renderOpdPreview(){
-      const el=document.getElementById('opd-preview'); if(!el) return;
-      if(!OPD_ROWS.length){ el.innerHTML=''; return; }
-      const valid=OPD_ROWS.filter(r=>!r.error);
-      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Frequency</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
-      OPD_ROWS.forEach((r,i)=>{
-        h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
-          +'<td style="font-size:11px;font-weight:700;color:'+(r.id?'#4550d8':'#2b7a4b')+'">'+(r.id?('Update #'+r.id):'New')+'</td>'
-          +'<td style="font-size:12px">'+escH(r.entityMatch?eName(r.entityMatch):(r.entityRaw||'—'))+'</td>'
-          +'<td style="font-size:12px">'+escH(r.invNo||'—')+'</td>'
-          +'<td style="font-size:12px">'+escH(r.vendor||'—')+'</td>'
-          +'<td style="font-size:12px">'+escH(r.category||'—')+'</td>'
-          +'<td style="font-size:12px">'+escH(r.freq||'OTP')+'</td>'
-          +'<td style="font-size:12px;white-space:nowrap">'+(r.inv||'—')+'</td>'
-          +'<td style="font-size:12px;white-space:nowrap">'+(r.due||'—')+'</td>'
-          +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
-          +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
-          +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
-      });
-      h+='</tbody></table></div>';
-      const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length;
-      h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+OPD_ROWS.length+' row(s) ready ('+toInsertN+' new, '+toUpdateN+' update)'+(OPD_ROWS.length>valid.length?' — fix the flagged rows in your file and re-upload to include them':'')+'.</div>';
-      h+='<button id="opd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' outstanding '+(valid.length===1?'liability':'liabilities')+'</button>';
-      h+='<div id="opd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
-      el.innerHTML=h;
-      const impBtn=document.getElementById('opd-import');
-      if(impBtn) impBtn.onclick=async()=>{
-        impBtn.disabled=true; impBtn.textContent='Importing…';
-        try{
-          const fieldsOf=r=>({entity_code:r.entityMatch,category:r.category,frequency:r.freq,invoice_number:r.invNo||null,vendor_name:r.vendor,description:r.desc,document_url:r.docUrl||null,invoice_date:r.inv,due_date:r.due,amount_idr:r.amt});
-          const toInsert=valid.filter(r=>!r.id), toUpdate=valid.filter(r=>r.id);
-          if(toInsert.length) await adminAddBatch('outstanding_payables',toInsert.map(fieldsOf));
-          if(toUpdate.length) await Promise.all(toUpdate.map(r=>adminUpdateOne('outstanding_payables',r.id,fieldsOf(r))));
-          const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
-          OUTSTANDING=fresh.map(mkOutstanding);
-          renderKpiFin(agg());
-          document.getElementById('opd-import-msg').style.color='#2b7a4b';
-          document.getElementById('opd-import-msg').textContent='✓ Added '+toInsert.length+' new, updated '+toUpdate.length+' existing.';
-          impBtn.textContent='Imported ✓';
-        }catch(e){
-          document.getElementById('opd-import-msg').style.color='#b3261e';
-          document.getElementById('opd-import-msg').textContent='Import failed: '+e.message;
-          impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' outstanding '+(valid.length===1?'liability':'liabilities');
-        }
-      };
-    }
     const fileInp=document.getElementById('opd-file');
     if(fileInp) fileInp.onchange=async()=>{
       const f=fileInp.files[0]; if(!f) return;
@@ -6590,8 +6711,8 @@ async function renderEntryBody(){
         const idRaw=kId!=null?String(r[kId]||'').trim():'';
         const id=idRaw?Number(idRaw):null;
         const existing=id!=null&&!isNaN(id)?OUTSTANDING.find(x=>x.id===id):null;
-        const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByName(entityRaw);
-        const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategory(catRaw);
+        const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameG(entityRaw);
+        const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategoryG(catRaw);
         const freq=normalizeFreq(kFreq!=null?r[kFreq]:'');
         const invNo=kInvNo!=null?String(r[kInvNo]||'').trim():'';
         const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=findVendor(vendorRaw);
@@ -6599,19 +6720,9 @@ async function renderEntryBody(){
         const docUrl=kDocUrl!=null?safeDocUrl(String(r[kDocUrl]||'').trim()):null;
         const inv=kInv!=null?parseFlexDate(r[kInv]):null, due=kDue!=null?parseFlexDate(r[kDue]):null;
         const amt=kAmt!=null?Number(r[kAmt]):NaN;
-        let error=null;
-        if(idRaw && (id==null||isNaN(id))) error='Invalid ID';
-        else if(idRaw && !existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
-        else if(!entityMatch) error='Entity not recognized';
-        else if(!catMatch) error='Category not recognized — must match one of the existing cost categories exactly';
-        else if(!vendorRaw) error='Missing vendor';
-        else if(!vendorMatch) error='Vendor not recognized — add it via Manage Vendors first, or match an existing vendor name exactly';
-        else if(!desc) error='Missing description';
-        else if(!inv) error='Invalid invoice date';
-        else if(!due) error='Invalid due date';
-        else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
-        else if(existing && amt<existing.paidAmt) error='Amount can\'t be less than the '+fmtIDR(existing.paidAmt)+' already recorded as paid for this ID';
-        return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,freq,invNo,vendor:vendorMatch||vendorRaw,desc,docUrl,inv,due,amt,error};
+        const row={id:(existing?id:null),idRaw,existing,entityRaw,entityMatch,catRaw,catMatch,freq,invNo,vendorRaw,vendorMatch,desc,docUrl,inv,due,amt};
+        computeOpdRow(row);
+        return row;
       });
       renderOpdPreview();
     };
@@ -6669,61 +6780,6 @@ async function renderEntryBody(){
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'FixedCost');
       XLSX.writeFile(wb,'fixed_cost_template.xlsx');
     };
-    function normEntNameFc(s){ return String(s).trim().toLowerCase().replace(/[‒-―‐‑]/g,'-').replace(/\./g,'').replace(/\s+/g,' '); }
-    function findEntityByNameFc(name){
-      if(!name) return null;
-      const n=normEntNameFc(name);
-      let hit=EIDS.find(id=>normEntNameFc(eName(id))===n);
-      if(!hit) hit=EIDS.find(id=>normEntNameFc(eName(id)).includes(n)||n.includes(normEntNameFc(eName(id))));
-      return hit||null;
-    }
-    function findCategoryFc(name){
-      if(!name) return null;
-      const n=String(name).trim().toLowerCase();
-      const hit=opexCatsFc2.find(c=>c.name.toLowerCase()===n);
-      return hit?hit.name:null;
-    }
-    let FCD_ROWS=[];
-    function renderFcdPreview(){
-      const el=document.getElementById('fcd-preview'); if(!el) return;
-      if(!FCD_ROWS.length){ el.innerHTML=''; return; }
-      const valid=FCD_ROWS.filter(r=>!r.error);
-      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
-      FCD_ROWS.forEach((r,i)=>{
-        h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
-          +'<td style="font-size:11px;font-weight:700;color:'+(r.id?'#4550d8':'#2b7a4b')+'">'+(r.id?('Update #'+r.id):'New')+'</td>'
-          +'<td style="font-size:12px">'+escH(r.entityMatch?eName(r.entityMatch):(r.entityRaw||'—'))+'</td>'
-          +'<td style="font-size:12px">'+escH(r.category||'—')+'</td>'
-          +'<td style="font-size:12px">'+escH(r.vendor||'—')+'</td>'
-          +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
-          +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
-          +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
-      });
-      h+='</tbody></table></div>';
-      const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length;
-      h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+FCD_ROWS.length+' row(s) ready ('+toInsertN+' new, '+toUpdateN+' update)'+(FCD_ROWS.length>valid.length?' — fix the flagged rows in your file and re-upload to include them':'')+'.</div>';
-      h+='<button id="fcd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' fixed cost item'+(valid.length===1?'':'s')+'</button>';
-      h+='<div id="fcd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
-      el.innerHTML=h;
-      const impBtnFc=document.getElementById('fcd-import');
-      if(impBtnFc) impBtnFc.onclick=async()=>{
-        impBtnFc.disabled=true; impBtnFc.textContent='Importing…';
-        try{
-          const fieldsOf=r=>({entity_code:r.entityMatch,category:r.category,vendor:r.vendor||null,description:r.desc,amount_idr:r.amt});
-          const toInsert=valid.filter(r=>!r.id), toUpdate=valid.filter(r=>r.id);
-          if(toInsert.length) await adminAddBatch('entity_fixed_costs',toInsert.map(fieldsOf));
-          if(toUpdate.length) await Promise.all(toUpdate.map(r=>adminUpdateOne('entity_fixed_costs',r.id,fieldsOf(r))));
-          await refreshFixCost();
-          document.getElementById('fcd-import-msg').style.color='#2b7a4b';
-          document.getElementById('fcd-import-msg').textContent='✓ Added '+toInsert.length+' new, updated '+toUpdate.length+' existing.';
-          impBtnFc.textContent='Imported ✓';
-        }catch(e){
-          document.getElementById('fcd-import-msg').style.color='#b3261e';
-          document.getElementById('fcd-import-msg').textContent='Import failed: '+e.message;
-          impBtnFc.disabled=false; impBtnFc.textContent='Import '+valid.length+' fixed cost item'+(valid.length===1?'':'s');
-        }
-      };
-    }
     const fileInpFc=document.getElementById('fcd-file');
     if(fileInpFc) fileInpFc.onchange=async()=>{
       const f=fileInpFc.files[0]; if(!f) return;
@@ -6742,20 +6798,14 @@ async function renderEntryBody(){
         const idRaw=kId!=null?String(r[kId]||'').trim():'';
         const id=idRaw?Number(idRaw):null;
         const existing=id!=null&&!isNaN(id)?FIXCOST.find(x=>x.id===id):null;
-        const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameFc(entityRaw);
-        const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategoryFc(catRaw);
+        const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameG(entityRaw);
+        const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategoryG(catRaw);
         const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=findVendor(vendorRaw);
         const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
         const amtRaw=kAmt!=null?r[kAmt]:'', amt=Number(amtRaw);
-        let error=null;
-        if(idRaw && (id==null||isNaN(id))) error='Invalid ID';
-        else if(idRaw && !existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
-        else if(!entityMatch) error='Entity not recognized';
-        else if(!catMatch) error='Category not recognized — must match one of the existing cost categories exactly';
-        else if(vendorRaw && !vendorMatch) error='Vendor not recognized — add it via Manage Vendors first, or match an existing vendor name exactly';
-        else if(!desc) error='Missing description';
-        else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
-        return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,vendor:vendorMatch||null,desc,amt,error};
+        const row={id:(existing?id:null),idRaw,existing,entityRaw,entityMatch,catRaw,catMatch,vendorRaw,vendorMatch,desc,amt};
+        computeFcdRow(row);
+        return row;
       });
       renderFcdPreview();
     };
