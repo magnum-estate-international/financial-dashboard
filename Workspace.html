@@ -3706,11 +3706,13 @@ async function openTxEdit(id,backCall){
   if(!x) return;
   const kind=x.type==='rev'?'revenue':'opex';
   const catOpts=await ensureCatsByKind(kind);
+  await ensureVendorsG();
+  const curVendor=(x.vendor!=null && x.vendor!=='')?x.vendor:null;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Edit Transaction</h4>`;
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Amount adjusts this entity's itemized total for ${MONTHS[MONTH]||MONTH} without touching the monthly total shown on the KPI cards — if this is a real correction (not a typo fix), also update the total via the Update Entity Balance box so Data Health stays reconciled.</div>`
     +opeField('Description',`<input id="txe-desc" value="${escH(x.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
-    +opeField('Vendor',`<input id="txe-vendor" value="${escH(displayVendor(x))}" placeholder="No vendor" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +opeField('Vendor',vendorSelectHtml('txe-vendor',curVendor,'margin-bottom:10px'))
     +opeField('Category',(()=>{
       // x.k may be a legacy/unlisted label not in the live category list — keep it selectable
       // (as the pre-selected option) instead of silently swapping it for the first live category.
@@ -4261,6 +4263,115 @@ async function ensureOpexCatsG(){
   catch(e){ OPEX_CATS_G=['Other Operating Expense']; }
   return OPEX_CATS_G;
 }
+// ─── VENDOR PICKLIST — canonical vendor names, locked via a dropdown everywhere a vendor is
+// entered (transactions, outstanding liabilities, fixed cost), so pulling one vendor name always
+// pulls every related record regardless of past spelling variants. Mirrors OPEX_CATS_G's pattern.
+let VENDORS_G=null;
+async function ensureVendorsG(){
+  if(VENDORS_G) return VENDORS_G;
+  try{ VENDORS_G=(await sbFetch('vendors?select=name&order=name')).map(r=>r.name); }
+  catch(e){ VENDORS_G=[]; }
+  return VENDORS_G;
+}
+function invalidateVendorCache(){ VENDORS_G=null; }
+// Vendor is matched against the locked `vendors` list (case-insensitive) so a bulk import can
+// never introduce a new spelling variant — unrecognized names are flagged, not silently kept.
+function findVendor(name){
+  if(!name) return null;
+  const n=String(name).trim().toLowerCase();
+  const hit=(VENDORS_G||[]).find(v=>v.toLowerCase()===n);
+  return hit||null;
+}
+function vendorSelectHtml(id,current,extraStyle){
+  return `<select id="${id}" style="width:100%;padding:8px 10px;box-sizing:border-box${extraStyle?';'+extraStyle:''}">`
+    +`<option value=""${current?'':' selected'}>No vendor</option>`
+    +VENDORS_G.map(v=>`<option value="${escH(v)}"${v===current?' selected':''}>${escH(v)}</option>`).join('')
+    +(current&&!VENDORS_G.includes(current)?`<option value="${escH(current)}" selected>${escH(current)} (not in vendor list)</option>`:'')
+    +`</select>`;
+}
+async function renameVendor(oldName,newName){
+  newName=(newName||'').trim();
+  if(!newName || newName===oldName) return;
+  const patch=(path,body)=>authedFetch(SB_URL+'/rest/v1/'+path,{method:'PATCH',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(body)});
+  const r=await patch('vendors?name=eq.'+encodeURIComponent(oldName),{name:newName});
+  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+  await Promise.all([
+    patch('transactions?vendor=eq.'+encodeURIComponent(oldName),{vendor:newName}),
+    patch('outstanding_payables?vendor_name=eq.'+encodeURIComponent(oldName),{vendor_name:newName}),
+    patch('entity_fixed_costs?vendor=eq.'+encodeURIComponent(oldName),{vendor:newName}),
+  ]);
+  invalidateVendorCache();
+}
+async function deleteVendorByName(name){
+  const [tx,op,fc]=await Promise.all([
+    sbFetch('transactions?select=id&vendor=eq.'+encodeURIComponent(name)+'&limit=1'),
+    sbFetch('outstanding_payables?select=id&vendor_name=eq.'+encodeURIComponent(name)+'&limit=1'),
+    sbFetch('entity_fixed_costs?select=id&vendor=eq.'+encodeURIComponent(name)+'&limit=1'),
+  ]);
+  const inUse=(tx&&tx.length)||(op&&op.length)||(fc&&fc.length);
+  if(inUse){
+    alert('"'+name+'" can\'t be deleted — it still has transactions, outstanding liabilities, or fixed cost items recorded under it. Rename or reassign that data first.');
+    return false;
+  }
+  if(!confirm('Delete vendor "'+name+'"?')) return false;
+  await adminDel('vendors?name=eq.'+encodeURIComponent(name));
+  invalidateVendorCache();
+  return true;
+}
+async function addVendor(name){
+  name=(name||'').trim();
+  if(!name) throw new Error('Name is required');
+  const r=await authedFetch(SB_URL+'/rest/v1/vendors',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({name})});
+  if(!r.ok){ const t=await r.text(); throw new Error(/duplicate key|already exists/i.test(t)?'A vendor named "'+name+'" already exists.':(t||('HTTP '+r.status))); }
+  invalidateVendorCache();
+}
+async function renderVendorsBody(){
+  const body=document.getElementById('vendors-body'); if(!body) return;
+  let vendorsList=[];
+  try{ vendorsList=await sbFetch('vendors?select=name&order=name'); }
+  catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+err.message+'</div>'; return; }
+  let h='';
+  h+='<div style="border:1px solid #e4e7ef;border-radius:12px;padding:12px;margin-bottom:14px">'
+    +'<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:12.5px;color:#141b2d;margin-bottom:8px">Add a vendor</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    +'<input id="vv-name" type="text" placeholder="Vendor name" style="flex:1 1 200px;padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px">'
+    +'<button id="vv-add" style="border:0;background:#5b67f1;color:#fff;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">+ Add vendor</button>'
+    +'</div>'
+    +'<div id="vv-msg" style="font-size:12px;color:#b3261e;margin-top:6px;min-height:1px"></div>'
+    +'</div>'
+    +'<div style="border:1px solid #eef2f7;border-radius:10px;max-height:320px;overflow:auto">';
+  if(!vendorsList.length) h+='<div style="padding:10px;font-size:12.5px;color:var(--muted)">None yet.</div>';
+  vendorsList.forEach(v=>{
+    h+='<div class="vv-row" data-name="'+escH(v.name)+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f2f4f9;font-size:13px">'
+      +'<span class="vv-label" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(v.name)+'</span>'
+      +'<button class="vv-rename" style="border:1px solid #e4e7ef;background:#fff;border-radius:8px;padding:5px 10px;font-size:11.5px;cursor:pointer">Rename</button>'
+      +'<button class="vv-del" style="border:1px solid #f6c9c3;background:#fff;color:#b3261e;border-radius:8px;padding:5px 10px;font-size:11.5px;cursor:pointer">Delete</button>'
+      +'</div>';
+  });
+  h+='</div>';
+  body.innerHTML=h;
+  document.getElementById('vv-add').onclick=async()=>{
+    const nameEl=document.getElementById('vv-name'), msg=document.getElementById('vv-msg');
+    const btn=document.getElementById('vv-add');
+    btn.disabled=true; msg.textContent='';
+    try{ await addVendor(nameEl.value); await renderVendorsBody(); }
+    catch(e){ msg.textContent='Failed: '+e.message; btn.disabled=false; }
+  };
+  body.querySelectorAll('.vv-rename').forEach(b=>b.onclick=async()=>{
+    const row=b.closest('.vv-row'); const oldName=row.dataset.name;
+    const nn=prompt('Rename "'+oldName+'" to:',oldName);
+    if(nn==null) return;
+    b.disabled=true;
+    try{ await renameVendor(oldName,nn); await renderVendorsBody(); }
+    catch(e){ alert('Rename failed: '+e.message); b.disabled=false; }
+  });
+  body.querySelectorAll('.vv-del').forEach(b=>b.onclick=async()=>{
+    const row=b.closest('.vv-row'); const name=row.dataset.name;
+    b.disabled=true;
+    try{ const ok=await deleteVendorByName(name); if(ok) await renderVendorsBody(); else b.disabled=false; }
+    catch(e){ alert('Delete failed: '+e.message); b.disabled=false; }
+  });
+}
 const CATS_BY_KIND_G={};
 async function ensureCatsByKind(kind){
   if(CATS_BY_KIND_G[kind]) return CATS_BY_KIND_G[kind];
@@ -4425,6 +4536,7 @@ function fixCostRowHtml(f){
 }
 async function openFixCostEdit(id){
   const cats=await ensureOpexCatsG();
+  await ensureVendorsG();
   const f=FIXCOST.find(x=>x.id===id);
   if(!f) return;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID)">‹ Back</button>`;
@@ -4432,7 +4544,7 @@ async function openFixCostEdit(id){
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
     +opeField('Entity',`<select id="fce-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===f.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
     +opeField('Cost category',`<select id="fce-cat" style="width:100%;padding:8px 10px">${cats.map(c=>`<option value="${escH(c)}"${c===f.cat?' selected':''}>${escH(c)}</option>`).join('')}</select>`)
-    +opeField('Vendor',`<input id="fce-vendor" value="${escH(f.vendor||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +opeField('Vendor',vendorSelectHtml('fce-vendor',f.vendor||null))
     +opeField('Amount (IDR)',`<input id="fce-amt" type="number" min="1" value="${f.amt}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +`</div>`
     +opeField('Description',`<input id="fce-desc" value="${escH(f.desc||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
@@ -4469,6 +4581,7 @@ async function deleteFixCostRow(id){
 }
 async function openOutstandingEdit(id,entityId,tab){
   const cats=await ensureOpexCatsG();
+  await ensureVendorsG();
   const o=OUTSTANDING.find(x=>x.id===id);
   if(!o) return;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstandingEntity('${entityId}','${tab}')">‹ Back</button>`;
@@ -4479,7 +4592,7 @@ async function openOutstandingEdit(id,entityId,tab){
     +opeField('Cost category',`<select id="ope-cat" style="width:100%;padding:8px 10px">${cats.map(c=>`<option value="${escH(c)}"${c===o.cat?' selected':''}>${escH(c)}</option>`).join('')}</select>`)
     +opeField('Frequency',`<select id="ope-freq" style="width:100%;padding:8px 10px">${['OTP','REC','PRG'].map(f=>`<option value="${f}"${f===o.freq?' selected':''}>${f} — ${FREQ_LABEL[f]}</option>`).join('')}</select>`)
     +opeField('Invoice #',`<input id="ope-invno" value="${escH(o.invNo||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
-    +opeField('Vendor',`<input id="ope-vendor" value="${escH(o.vendor)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +opeField('Vendor',vendorSelectHtml('ope-vendor',o.vendor||null))
     +opeField('Invoice date',`<input id="ope-inv" type="date" value="${o.inv}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +opeField('Due date',`<input id="ope-due" type="date" value="${o.due}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +opeField('Amount (IDR)',`<input id="ope-amt" type="number" min="${o.paidAmt||1}" value="${o.amt}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
@@ -5807,6 +5920,7 @@ async function renderEntryBody(){
       sbFetch('entry_submissions?select=*&order=id.desc&limit=300')
     ]);
   }catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+escH(err.message)+'</div>'; return; }
+  await ensureVendorsG();
   const th='text-align:left;font-size:11px;color:#3a4254;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px';
   const td='padding:8px;font-size:12.5px;border-top:1px solid #eef2f7;vertical-align:top';
   const chip=st=>{const c={pending:['#8a6d1a','#faf3d9','⏳ pending'],approved:['#2b7a4b','#e3f2e8','✓ approved'],rejected:['#b3261e','#fbe9e7','✗ rejected']}[st]||['#232c40','#eef2f7',st];
@@ -5921,7 +6035,7 @@ async function renderEntryBody(){
       +'<select id="opd-cat" style="'+inp+'">'+opexCats.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
       +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option><option value="PRG">PRG — By Progress</option></select>'
       +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
-      +'<input id="opd-vendor" placeholder="Vendor name" style="'+inp+'">'
+      +'<select id="opd-vendor" style="'+inp+'"><option value="">No vendor</option>'+VENDORS_G.map(v=>'<option value="'+escH(v)+'">'+escH(v)+'</option>').join('')+'</select>'
       +'<input id="opd-inv" type="date" aria-label="Invoice date" style="'+inp+'">'
       +'<input id="opd-due" type="date" aria-label="Due date" style="'+inp+'">'
       +'<input id="opd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
@@ -5932,7 +6046,7 @@ async function renderEntryBody(){
       +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div>'
       +'<div id="opd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment), REC (monthly payment), or PRG (paid by project progress/milestone); defaults to OTP if left blank or unrecognized.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name, Category an existing cost category, and Vendor an existing vendor name (add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment), REC (monthly payment), or PRG (paid by project progress/milestone); defaults to OTP if left blank or unrecognized.</div>'
       +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b> (e.g. correcting Frequency for many rows at once): click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
       +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
       +'<div><label for="opd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
@@ -5959,7 +6073,7 @@ async function renderEntryBody(){
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="fcd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<select id="fcd-cat" style="'+inp+'">'+opexCatsFc.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
-      +'<input id="fcd-vendor" placeholder="Vendor name (optional)" style="'+inp+'">'
+      +'<select id="fcd-vendor" style="'+inp+'"><option value="">No vendor</option>'+VENDORS_G.map(v=>'<option value="'+escH(v)+'">'+escH(v)+'</option>').join('')+'</select>'
       +'<input id="fcd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
       +'</div>'
       +'<input id="fcd-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
@@ -5967,7 +6081,7 @@ async function renderEntryBody(){
       +'<div id="fcd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div>'
       +'<div id="fcd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Category, Vendor, Description, Amount</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Category, Vendor, Description, Amount</b>. Entity must match a PT name, Category an existing cost category, and Vendor an existing vendor name (leave blank for no vendor, or add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
       +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b>: click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
       +'<button id="fcd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
       +'<div><label for="fcd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
@@ -5993,6 +6107,16 @@ async function renderEntryBody(){
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add, rename, or delete the categories used across transactions, line items, and the bulk importer. Renaming updates every existing record; deleting only removes the category from future use — it does not touch past transactions.</div>'
       +'<div id="cats-body">Loading…</div>'
+      +'</div></details>';
+  }
+  // ── Manage Vendors (admin) — add/rename/delete rows in `vendors`, cascading a rename across
+  // transactions/outstanding_payables/entity_fixed_costs, so pulling one vendor always pulls every
+  // related record regardless of past spelling variants.
+  if(IS_ADMIN){
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">🏢 Manage Vendors</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add, rename, or delete the vendors used across transactions, outstanding liabilities, and fixed cost. Renaming updates every existing record — vendor fields elsewhere are locked to this list so a new spelling variant can never sneak in.</div>'
+      +'<div id="vendors-body">Loading…</div>'
       +'</div></details>';
   }
   // ── Submission history ──
@@ -6466,7 +6590,7 @@ async function renderEntryBody(){
         const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategory(catRaw);
         const freq=normalizeFreq(kFreq!=null?r[kFreq]:'');
         const invNo=kInvNo!=null?String(r[kInvNo]||'').trim():'';
-        const vendor=kVendor!=null?String(r[kVendor]||'').trim():'';
+        const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=findVendor(vendorRaw);
         const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
         const docUrl=kDocUrl!=null?safeDocUrl(String(r[kDocUrl]||'').trim()):null;
         const inv=kInv!=null?parseFlexDate(r[kInv]):null, due=kDue!=null?parseFlexDate(r[kDue]):null;
@@ -6476,13 +6600,14 @@ async function renderEntryBody(){
         else if(idRaw && !existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
         else if(!entityMatch) error='Entity not recognized';
         else if(!catMatch) error='Category not recognized — must match one of the existing cost categories exactly';
-        else if(!vendor) error='Missing vendor';
+        else if(!vendorRaw) error='Missing vendor';
+        else if(!vendorMatch) error='Vendor not recognized — add it via Manage Vendors first, or match an existing vendor name exactly';
         else if(!desc) error='Missing description';
         else if(!inv) error='Invalid invoice date';
         else if(!due) error='Invalid due date';
         else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
         else if(existing && amt<existing.paidAmt) error='Amount can\'t be less than the '+fmtIDR(existing.paidAmt)+' already recorded as paid for this ID';
-        return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,freq,invNo,vendor,desc,docUrl,inv,due,amt,error};
+        return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,freq,invNo,vendor:vendorMatch||vendorRaw,desc,docUrl,inv,due,amt,error};
       });
       renderOpdPreview();
     };
@@ -6615,7 +6740,7 @@ async function renderEntryBody(){
         const existing=id!=null&&!isNaN(id)?FIXCOST.find(x=>x.id===id):null;
         const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameFc(entityRaw);
         const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategoryFc(catRaw);
-        const vendor=kVendor!=null?String(r[kVendor]||'').trim():'';
+        const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=findVendor(vendorRaw);
         const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
         const amtRaw=kAmt!=null?r[kAmt]:'', amt=Number(amtRaw);
         let error=null;
@@ -6623,9 +6748,10 @@ async function renderEntryBody(){
         else if(idRaw && !existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
         else if(!entityMatch) error='Entity not recognized';
         else if(!catMatch) error='Category not recognized — must match one of the existing cost categories exactly';
+        else if(vendorRaw && !vendorMatch) error='Vendor not recognized — add it via Manage Vendors first, or match an existing vendor name exactly';
         else if(!desc) error='Missing description';
         else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
-        return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,vendor,desc,amt,error};
+        return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,vendor:vendorMatch||null,desc,amt,error};
       });
       renderFcdPreview();
     };
@@ -6697,7 +6823,7 @@ async function renderEntryBody(){
     };
   }
   wireOppPicker(inp);
-  if(IS_ADMIN) renderCategoriesBody();
+  if(IS_ADMIN){ renderCategoriesBody(); renderVendorsBody(); }
   document.getElementById('en-send').onclick=async()=>{
     const entity=document.getElementById('en-ent').value;
     const dval=dateInp.value, dval2=dateInp2.value||dval;
