@@ -2929,9 +2929,9 @@ function openFixCostCategory(id,catEnc){
   const tot=rows.reduce((s,r)=>s+r.amt,0);
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCostEntity('${id}')">‹ Back to categories</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id]?ENT[id].name:id} — ${escH(cat)}</h4>`;
-  h+=`<table><thead><tr><th>Vendor</th><th>Description</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`;
-  rows.forEach(r=>{ h+=`<tr><td style="font-size:12.5px">${r.vendor?escH(r.vendor):'—'}</td><td style="font-size:12.5px">${escH(r.desc||'')}</td><td class="num neg" style="text-align:right">${fmt(r.amt)}</td></tr>`; });
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="2"><strong>TOTAL</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
+  h+=`<table><thead><tr><th>Category</th><th>Vendor</th><th>Description</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`;
+  rows.forEach(r=>{ h+=`<tr><td style="font-size:12.5px">${escH(r.cat)}</td><td style="font-size:12.5px">${r.vendor?escH(r.vendor):'—'}</td><td style="font-size:12.5px">${escH(r.desc||'')}</td><td class="num neg" style="text-align:right">${fmt(r.amt)}</td></tr>`; });
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
   showModal(`${ENT[id]?ENT[id].name:id} — ${cat}`,h,true);
 }
 function renderKpiCash(){
