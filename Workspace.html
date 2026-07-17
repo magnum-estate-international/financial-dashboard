@@ -2998,7 +2998,7 @@ function fixCostInScope(){
 function fixCostCard(){
   const rows=fixCostInScope();
   const tot=rows.reduce((s,f)=>s+f.amt,0);
-  return `<div class="pcard clickable" onclick="openFixCost('category')">
+  return `<div class="pcard clickable" onclick="openFixCost('vendor')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="lab">Monthly Fix Cost</div>
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
@@ -4622,7 +4622,7 @@ function opeField(label,html){
 // ─── FIXED COST DRILL-DOWN — By Entity / By Category / By Vendor, mirroring the Outstanding
 // Liability pattern (openOutstanding -> openOutstandingDetail -> row menu) but without a
 // paid/open concept, since fixed cost is a recurring monthly estimate, not an unpaid invoice. ───
-let FC_VIEW='entity', FC_SEARCH='', FC_SEARCH_FOCUS=false;
+let FC_VIEW='vendor', FC_SEARCH='', FC_SEARCH_FOCUS=false;
 // Rolls Fix Cost's "By Category" categories up into the same parent cost groups used by the
 // Operating Expenses breakdown (categories.parent_group, via OPEX_CAT_TO_GROUP) — same collapsible
 // group-header pattern as opexRowsGrouped, adapted for the extra Items-count column and to drill
