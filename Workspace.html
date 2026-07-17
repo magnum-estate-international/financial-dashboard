@@ -2894,92 +2894,8 @@ function cashPositionCard(){
       <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No cash position logged yet — add it via Update Data'}</div>
     </div>`;
 }
-function fixCostTotal(id){ const rows=FIXCOST[id]; return rows?rows.reduce((s,r)=>s+r.amt,0):0; }
-function fixCostCard(){
-  const ids=scopeIds();
-  let tot=0,n=0,latest=null;
-  ids.forEach(id=>{ const rows=FIXCOST[id]; if(rows&&rows.length){ tot+=fixCostTotal(id); n++; rows.forEach(r=>{ if(!latest||r.at>latest) latest=r.at; }); } });
-  const asOf=latest?new Date(latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):null;
-  return `<div class="pcard clickable" onclick="openFixCost('entity')">
-      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Monthly Fix Cost</div>
-      <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${n?fmt(tot):'—'}</div>
-      <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No fixed cost logged yet — add it via Update Data'}</div>
-    </div>`;
-}
-function fixCostAllInScope(){
-  const ids=scopeIds();
-  const all=[];
-  ids.forEach(id=>{(FIXCOST[id]||[]).forEach(r=>all.push(Object.assign({entity:id},r)));});
-  return all;
-}
-// Top-level breakdown: By Entity / By Category, mirroring Outstanding Liability's openOutstanding.
-let FC_VIEW='entity';
-function openFixCost(view){
-  view=FC_VIEW=view||FC_VIEW||'entity';
-  const all=fixCostAllInScope();
-  const tot=all.reduce((s,r)=>s+r.amt,0);
-  const keyOf=view==='entity'?(r=>r.entity):(r=>r.cat);
-  const byGroup={}; all.forEach(r=>{const k=keyOf(r); const g=byGroup[k]=byGroup[k]||{tot:0,n:0}; g.tot+=r.amt; g.n++;});
-  const rows=Object.entries(byGroup).sort((a,b)=>b[1].tot-a[1].tot);
-  const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openFixCost('${v}')">${label}</button>`;
-  let h=`<div style="display:flex;gap:8px;margin-bottom:14px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}</div>`;
-  h+=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total monthly fix cost in this scope: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${all.length} item${all.length===1?'':'s'})</div>`;
-  const colLabel=view==='entity'?'Entity':'Cost Category';
-  const rowLabel=k=>view==='entity'?pill(k):escH(k);
-  const rowOnclick=k=>view==='entity'?`openFixCostEntity('${k}')`:`openFixCostCategoryAll('${encodeURIComponent(k)}')`;
-  h+=`<table><thead><tr><th>${colLabel}</th><th class="num" style="text-align:right">Items</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
-    +(rows.length?rows.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join('')
-      :`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No fixed cost logged in this scope</td></tr>`)
-    +`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${all.length}</td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr>`
-    +`</tbody></table>`;
-  showModal('Monthly Fix Cost',h,true);
-}
-// Drill-down: entity -> category breakdown -> line-item detail (openFixCostEntity/openFixCostCategory),
-// or category -> entity breakdown -> line-item detail (openFixCostCategoryAll/openFixCostCategory),
-// mirroring the Outstanding Liability pattern (openOutstanding -> openOutstandingEntity -> row detail).
-function openFixCostEntity(id){
-  const rows=FIXCOST[id]||[];
-  const tot=rows.reduce((s,r)=>s+r.amt,0);
-  const byCat={}; rows.forEach(r=>{ const g=byCat[r.cat]=byCat[r.cat]||{tot:0,n:0}; g.tot+=r.amt; g.n++; });
-  const cats=Object.entries(byCat).sort((a,b)=>b[1].tot-a[1].tot);
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCost('entity')">‹ Back to breakdown</button>`;
-  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id]?ENT[id].name:id} — Monthly Fix Cost</h4>`;
-  if(!cats.length){ h+=`<p style="color:var(--muted);font-size:12.5px">No fixed cost logged for this entity.</p>`; showModal('Monthly Fix Cost',h); return; }
-  h+=`<table><thead><tr><th>Category</th><th class="num" style="text-align:right">Items</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`;
-  cats.forEach(([cat,v])=>{
-    h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostCategory('${id}','${encodeURIComponent(cat)}','entity')"><td style="font-size:12.5px">${escH(cat)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`;});
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${rows.length}</td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-  showModal(`${ENT[id]?ENT[id].name:id} — Monthly Fix Cost`,h,true);
-}
-function openFixCostCategoryAll(catEnc){
-  const cat=decodeURIComponent(catEnc);
-  const rows=fixCostAllInScope().filter(r=>r.cat===cat);
-  const tot=rows.reduce((s,r)=>s+r.amt,0);
-  const byEnt={}; rows.forEach(r=>{ const g=byEnt[r.entity]=byEnt[r.entity]||{tot:0,n:0}; g.tot+=r.amt; g.n++; });
-  const ents=Object.entries(byEnt).sort((a,b)=>b[1].tot-a[1].tot);
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCost('category')">‹ Back to breakdown</button>`;
-  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(cat)} — Monthly Fix Cost</h4>`;
-  h+=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">Items</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`;
-  ents.forEach(([id,v])=>{
-    h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostCategory('${id}','${encodeURIComponent(cat)}','category')"><td>${pill(id)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`;});
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${rows.length}</td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-  showModal(`${cat} — Monthly Fix Cost`,h,true);
-}
-function openFixCostCategory(id,catEnc,from){
-  const cat=decodeURIComponent(catEnc);
-  const rows=(FIXCOST[id]||[]).filter(r=>r.cat===cat);
-  const tot=rows.reduce((s,r)=>s+r.amt,0);
-  const backOnclick=from==='category'?`openFixCostCategoryAll('${encodeURIComponent(cat)}')`:`openFixCostEntity('${id}')`;
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backOnclick}">‹ Back</button>`;
-  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id]?ENT[id].name:id} — ${escH(cat)}</h4>`;
-  h+=`<table><thead><tr><th>Category</th><th>Vendor</th><th>Description</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`;
-  rows.forEach(r=>{ h+=`<tr><td style="font-size:12.5px">${escH(r.cat)}</td><td style="font-size:12.5px">${r.vendor?escH(r.vendor):'—'}</td><td style="font-size:12.5px">${escH(r.desc||'')}</td><td class="num neg" style="text-align:right">${fmt(r.amt)}</td></tr>`; });
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
-  showModal(`${ENT[id]?ENT[id].name:id} — ${cat}`,h,true);
-}
 function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi3'; kc.innerHTML=cashPositionCard()+fixCostCard()+outstandingCard(); }
+  const kc=document.getElementById('kpiCash'); if(kc) kc.innerHTML=cashPositionCard()+outstandingCard();
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
@@ -3508,7 +3424,6 @@ function openDetail(kind){
     }
     showModal('Cash Position — by Entity',h);
   }
-  else if(kind==='fixcost'){ openFixCost('entity'); }
   else if(kind==='finin'){
     let h=finTableHtml('finIn');
     if(a.capDep>0) h+=`<p style="color:var(--muted);font-size:12px;margin-top:10px;line-height:1.7">Excludes the <b>Shareholder Capital Deposit</b> (${fmt(a.capDep)}) — that's tracked as its own financing category to avoid double-counting, but is still included in Net Financing &amp; Net Cash Movement as an inflow.</p>`;
@@ -4760,7 +4675,6 @@ function applyScopeChrome(){
 }
 let BAL={};
 let CASHPOS={};
-let FIXCOST={};
 let OUTSTANDING=[];
 async function runDashboard(){
   const D=await loadFromSupabase();
@@ -4800,17 +4714,6 @@ async function runDashboard(){
       CASHPOS[c.entity_code]={cash:Number(c.cash_idr),at:c.updated_at};
     });
   }catch(e){ CASHPOS={}; }
-  // per-entity monthly fixed cost — itemized rows (category/vendor/description/amount) sourced from
-  // the manually-maintained "RECAP FIX & LIABILITY EXPENSES ALL PT" workbook. Separate from itemized
-  // transactions — this is a management estimate of recurring costs (payroll, taxes, professional
-  // fees, insurance etc). FIXCOST is keyed by entity_code -> array of itemized rows.
-  try{
-    FIXCOST={};
-    (await sbFetch('entity_fixed_costs?select=id,entity_code,category,vendor,description,amount_idr,period_label,source_label,created_at')).forEach(c=>{
-      (FIXCOST[c.entity_code]=FIXCOST[c.entity_code]||[]).push({
-        id:c.id,cat:c.category,vendor:c.vendor,desc:c.description,amt:Number(c.amount_idr),period:c.period_label,source:c.source_label,at:c.created_at});
-    });
-  }catch(e){ FIXCOST={}; }
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
