@@ -2895,7 +2895,7 @@ function cashPositionCard(){
     </div>`;
 }
 function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc) kc.innerHTML=cashPositionCard()+outstandingCard();
+  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi3'; kc.innerHTML=cashPositionCard()+fixCostCard()+outstandingCard(); }
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
@@ -2986,6 +2986,28 @@ function outstandingCard(){
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
       <div class="meta">${open.length?`${open.length} unpaid invoice${open.length>1?'s':''}${overdueN?`, <span style="color:var(--red)">${overdueN} overdue</span>`:''}`:'No outstanding liabilities — click to add one'}</div>
     </div>`;
+}
+// ─── FIXED COST MANAGEMENT (recurring monthly costs — mirrors Outstanding Liability's shape) ───
+function mkFixCost(f){
+  return {id:f.id,e:f.entity_code,cat:f.category,vendor:f.vendor,desc:f.description,amt:+f.amount_idr,at:f.created_at};
+}
+function fixCostInScope(){
+  const ids=new Set(scopeIds());
+  return FIXCOST.filter(f=>ids.has(f.e));
+}
+function fixCostCard(){
+  const rows=fixCostInScope();
+  const tot=rows.reduce((s,f)=>s+f.amt,0);
+  return `<div class="pcard clickable" onclick="openFixCost('category')">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="lab">Monthly Fix Cost</div>
+      <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
+      <div class="meta">${rows.length?`${rows.length} recurring cost item${rows.length>1?'s':''} — click to view`:'No fixed cost logged — click to add one'}</div>
+    </div>`;
+}
+async function refreshFixCost(){
+  try{ FIXCOST=(await sbFetch('entity_fixed_costs?select=*&order=id')).map(mkFixCost); }catch(e){}
+  renderKpiCash();
 }
 function renderLiabTopVendor(){
   const el=document.getElementById('liabTopVendor'); if(!el) return;
@@ -4087,6 +4109,12 @@ document.addEventListener('click',e=>{
   if(!e.target.closest('.ope-row-menu')&&!e.target.closest('[onclick^="toggleOpeRowMenu"]')){
     document.querySelectorAll('.ope-row-menu').forEach(m=>m.style.display='none');
   }
+  if(!e.target.closest('.fc-filter-pop')&&!e.target.closest('[id^="fcef-btn-"]')){
+    document.querySelectorAll('.fc-filter-pop').forEach(p=>p.style.display='none');
+  }
+  if(!e.target.closest('.fc-row-menu')&&!e.target.closest('[onclick^="toggleFcRowMenu"]')){
+    document.querySelectorAll('.fc-row-menu').forEach(m=>m.style.display='none');
+  }
 });
 function clearOpeFilterGroup(key){
   (OPE_FKEYS[key]||[]).forEach(id=>{const el=document.getElementById(id); if(el) el.value=(el.tagName==='SELECT'?'All':'');});
@@ -4242,6 +4270,202 @@ async function ensureCatsByKind(kind){
 }
 function opeField(label,html){
   return `<div><label style="display:block;font-size:10px;font-weight:700;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px">${label}</label>${html}</div>`;
+}
+// ─── FIXED COST DRILL-DOWN — By Entity / By Category / By Vendor, mirroring the Outstanding
+// Liability pattern (openOutstanding -> openOutstandingDetail -> row menu) but without a
+// paid/open concept, since fixed cost is a recurring monthly estimate, not an unpaid invoice. ───
+let FC_VIEW='entity', FC_SEARCH='', FC_SEARCH_FOCUS=false;
+function openFixCost(view){
+  view=FC_VIEW=view||FC_VIEW||'entity';
+  const rows=fixCostInScope();
+  const tot=rows.reduce((s,f)=>s+f.amt,0);
+  const keyOf=view==='entity'?(f=>f.e):view==='vendor'?(f=>f.vendor||'—'):(f=>f.cat||'—');
+  const byGroup={}; rows.forEach(f=>{const k=keyOf(f); const g=byGroup[k]=byGroup[k]||{tot:0,n:0}; g.tot+=f.amt; g.n++;});
+  const searchText=k=>view==='entity'?(ENT[k]?ENT[k].name:k):k;
+  const q=FC_SEARCH.trim().toLowerCase();
+  const grouped=Object.entries(byGroup)
+    .filter(([k])=>!q||searchText(k).toLowerCase().includes(q))
+    .sort((a,b)=>b[1].tot-a[1].tot);
+  const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openFixCost('${v}')">${label}</button>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">`
+    +`<div style="display:flex;gap:8px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}</div>`
+    +`<input id="fc-search" type="text" placeholder="🔍 Search…" value="${escH(FC_SEARCH)}" oninput="onFcSearchInput(this.value)" style="margin-left:auto;padding:7px 13px;border:1px solid #e4e7ef;border-radius:999px;font-size:12.5px;min-width:170px;box-sizing:border-box">`
+    +`</div>`;
+  h+=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total monthly fix cost in this scope: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${rows.length} item${rows.length===1?'':'s'})</div>`;
+  const colLabel=view==='entity'?'Entity':view==='vendor'?'Vendor':'Cost Category';
+  const rowLabel=k=>view==='entity'?pill(k):escH(k);
+  const rowOnclick=k=>view==='entity'?`openFixCostEntity('${k}')`:view==='vendor'?`openFixCostVendor('${encodeURIComponent(k)}')`:`openFixCostCategory('${encodeURIComponent(k)}')`;
+  h+=`<table><thead><tr><th>${colLabel}</th><th class="num" style="text-align:right">Items</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
+    +(grouped.length?grouped.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join('')
+      :`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':''} fixed cost in this scope</td></tr>`)
+    +`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${rows.length}</td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr>`
+    +`</tbody></table>`;
+  showModal('Monthly Fix Cost',h);
+  const si=document.getElementById('fc-search');
+  if(si && document.activeElement!==si && FC_SEARCH_FOCUS){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
+}
+function onFcSearchInput(v){ FC_SEARCH=v; FC_SEARCH_FOCUS=true; openFixCost(FC_VIEW); }
+function openFixCostEntity(id){ openFixCostDetailView('entity',id); }
+function openFixCostCategory(catEnc){ openFixCostDetailView('category',decodeURIComponent(catEnc)); }
+function openFixCostVendor(vendorEnc){ openFixCostDetailView('vendor',decodeURIComponent(vendorEnc)); }
+function computeFceRows(scopeType,value){
+  return fixCostInScope().filter(f=>scopeType==='entity'?f.e===value:scopeType==='vendor'?(f.vendor||'—')===value:(f.cat||'—')===value)
+    .sort((a,b)=>b.amt-a.amt);
+}
+let FCE_ID=null, FCE_ROWS=[], FCE_SCOPE_TYPE='entity';
+const FCE_FKEYS={ent:['fcef-ent'],cat:['fcef-cat'],vendor:['fcef-vendor'],desc:['fcef-desc'],amt:['fcef-amt-min','fcef-amt-max']};
+function thFilterableFc(label,key,controlsHtml){
+  return `<th><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="fcef-btn-${key}" onclick="toggleFcFilterPop('${key}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
+    +`<div id="fcef-pop-${key}" class="fc-filter-pop" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:10px;z-index:100001;min-width:170px">`
+    +controlsHtml
+    +`<div style="margin-top:6px;text-align:right"><button type="button" class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="clearFcFilterGroup('${key}')">Clear</button></div>`
+    +`</div></th>`;
+}
+function toggleFcFilterPop(key,btnEl){
+  const pop=document.getElementById('fcef-pop-'+key);
+  const willOpen=pop.style.display!=='block';
+  document.querySelectorAll('.fc-filter-pop').forEach(p=>p.style.display='none');
+  if(willOpen){
+    const r=btnEl.getBoundingClientRect();
+    pop.style.top=(r.bottom+4)+'px';
+    pop.style.left=Math.max(8,Math.min(r.left-70,window.innerWidth-190))+'px';
+    pop.style.display='block';
+  }
+}
+function toggleFcRowMenu(id,btnEl){
+  const menu=document.getElementById('fc-menu-'+id);
+  const willOpen=menu.style.display!=='block';
+  document.querySelectorAll('.fc-row-menu').forEach(m=>m.style.display='none');
+  if(willOpen){
+    const r=btnEl.getBoundingClientRect();
+    menu.style.top=(r.bottom+4)+'px';
+    menu.style.left=Math.max(8,Math.min(r.right-170,window.innerWidth-180))+'px';
+    menu.style.display='block';
+  }
+}
+function clearFcFilterGroup(key){
+  (FCE_FKEYS[key]||[]).forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+  renderFixCostRows();
+  document.querySelectorAll('.fc-filter-pop').forEach(p=>p.style.display='none');
+}
+function clearFixCostFilters(){
+  Object.values(FCE_FKEYS).flat().forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+  renderFixCostRows();
+  document.querySelectorAll('.fc-filter-pop').forEach(p=>p.style.display='none');
+}
+function updateFcFilterIndicators(){
+  const g=id=>{const el=document.getElementById(id); return el?el.value:'';};
+  const active={ ent:!!g('fcef-ent'), cat:!!g('fcef-cat'), vendor:!!g('fcef-vendor'), desc:!!g('fcef-desc'), amt:!!g('fcef-amt-min')||!!g('fcef-amt-max') };
+  Object.entries(active).forEach(([k,isActive])=>{
+    const btn=document.getElementById('fcef-btn-'+k); if(!btn) return;
+    btn.style.color=isActive?'#5b67f1':'var(--muted)';
+    btn.style.fontWeight=isActive?'900':'400';
+  });
+}
+function fcTxt(id,ph){ return `<input id="${id}" type="text" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box" oninput="renderFixCostRows()">`; }
+function fcNum(id,ph){ return `<input id="${id}" type="number" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" oninput="renderFixCostRows()">`; }
+function openFixCostDetailView(scopeType,value){
+  FCE_ID=value; FCE_SCOPE_TYPE=scopeType;
+  FCE_ROWS=computeFceRows(scopeType,value);
+  const title=scopeType==='entity'?(ENT[value]?ENT[value].name:value):escH(value);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCost('${scopeType}')">‹ Back to breakdown</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${title} — Monthly Fix Cost</h4>`;
+  h+=`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearFixCostFilters()">Clear all filters</button></div>`;
+  h+=`<div class="table-scroll" style="max-height:440px"><table style="table-layout:fixed;width:100%">`
+    +`<colgroup>${scopeType!=='entity'?'<col style="width:150px">':''}<col style="width:160px"><col style="width:150px"><col><col style="width:120px"><col style="width:40px"></colgroup>`
+    +`<thead><tr>`
+    +(scopeType!=='entity'?thFilterableFc('Entity','ent',fcTxt('fcef-ent','Filter entity…')):'')
+    +thFilterableFc('Category','cat',fcTxt('fcef-cat','Filter category…'))
+    +thFilterableFc('Vendor','vendor',fcTxt('fcef-vendor','Filter vendor…'))
+    +thFilterableFc('Description','desc',fcTxt('fcef-desc','Filter description…'))
+    +thFilterableFc('Amount (IDR)','amt',fcNum('fcef-amt-min','Min')+fcNum('fcef-amt-max','Max'))
+    +`<th></th></tr></thead><tbody id="fceBody"></tbody></table></div>`;
+  showModal(`${title} — Monthly Fix Cost`,h,true);
+  renderFixCostRows();
+}
+function renderFixCostRows(){
+  const body=document.getElementById('fceBody'); if(!body) return;
+  const g=id=>{const el=document.getElementById(id); return el?el.value:'';};
+  const entQ=g('fcef-ent').toLowerCase(), catQ=g('fcef-cat').toLowerCase(), vendorQ=g('fcef-vendor').toLowerCase(), descQ=g('fcef-desc').toLowerCase();
+  const amtMinS=g('fcef-amt-min'), amtMaxS=g('fcef-amt-max');
+  const amtMin=amtMinS?Number(amtMinS):null, amtMax=amtMaxS?Number(amtMaxS):null;
+  const filtered=FCE_ROWS.filter(f=>{
+    if(entQ && !(ENT[f.e]?ENT[f.e].name:f.e).toLowerCase().includes(entQ)) return false;
+    if(catQ && !(f.cat||'').toLowerCase().includes(catQ)) return false;
+    if(vendorQ && !(f.vendor||'').toLowerCase().includes(vendorQ)) return false;
+    if(descQ && !(f.desc||'').toLowerCase().includes(descQ)) return false;
+    if(amtMin!=null && f.amt<amtMin) return false;
+    if(amtMax!=null && f.amt>amtMax) return false;
+    return true;
+  });
+  const tot=filtered.reduce((s,f)=>s+f.amt,0);
+  const totColspan=FCE_SCOPE_TYPE!=='entity'?4:3;
+  body.innerHTML=(filtered.length?filtered.map(fixCostRowHtml).join(''):`<tr><td colspan="${totColspan+2}" style="text-align:center;color:var(--muted);padding:20px">No fixed cost items match these filters</td></tr>`)
+    +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${totColspan}"><strong>TOTAL${filtered.length!==FCE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`;
+  updateFcFilterIndicators();
+}
+function fixCostRowHtml(f){
+  const canEdit=MY_ROLE==='editor';
+  const items=[];
+  if(canEdit){
+    items.push(menuItem(ICON.edit()+' Edit',`openFixCostEdit(${f.id})`));
+    items.push(menuItem(ICON.trash()+' Delete',`deleteFixCostRow(${f.id})`,'var(--red)'));
+  }
+  const actionCell=items.length?(`<button type="button" onclick="toggleFcRowMenu(${f.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+    +`<div id="fc-menu-${f.id}" class="fc-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div>`):'';
+  const wrap='word-break:break-word;overflow-wrap:break-word;vertical-align:top';
+  return `<tr data-fc-id="${f.id}">
+    ${FCE_SCOPE_TYPE!=='entity'?`<td style="${wrap}">${pill(f.e)}</td>`:''}
+    <td style="font-size:12.5px;${wrap}">${escH(f.cat||'—')}</td>
+    <td style="font-size:12.5px;${wrap}">${f.vendor?escH(f.vendor):'—'}</td>
+    <td style="font-size:12.5px;${wrap}">${escH(f.desc||'')}</td>
+    <td class="num neg" style="white-space:nowrap;vertical-align:top">${fmt(f.amt)}</td>
+    <td style="white-space:nowrap;vertical-align:top">${actionCell}</td>
+  </tr>`;
+}
+async function openFixCostEdit(id){
+  const cats=await ensureOpexCatsG();
+  const f=FIXCOST.find(x=>x.id===id);
+  if(!f) return;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID)">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Fixed Cost</h4>`;
+  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
+    +opeField('Entity',`<select id="fce-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===f.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
+    +opeField('Cost category',`<select id="fce-cat" style="width:100%;padding:8px 10px">${cats.map(c=>`<option value="${escH(c)}"${c===f.cat?' selected':''}>${escH(c)}</option>`).join('')}</select>`)
+    +opeField('Vendor',`<input id="fce-vendor" value="${escH(f.vendor||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +opeField('Amount (IDR)',`<input id="fce-amt" type="number" min="1" value="${f.amt}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
+    +`</div>`
+    +opeField('Description',`<input id="fce-desc" value="${escH(f.desc||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button class="btn" style="background:#5b67f1;color:#fff;border:0" onclick="saveFixCostEdit(${id})">Save changes</button>`
+    +`<span id="fce-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Fixed Cost',h,true);
+}
+async function saveFixCostEdit(id){
+  const err=document.getElementById('fce-err'); err.textContent='';
+  const entity=document.getElementById('fce-ent').value;
+  const category=document.getElementById('fce-cat').value;
+  const vendor=document.getElementById('fce-vendor').value.trim();
+  const desc=document.getElementById('fce-desc').value.trim();
+  const amt=Number(document.getElementById('fce-amt').value);
+  if(!desc||!amt||amt<=0) return void(err.textContent='Please fill in description and a valid amount.');
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/entity_fixed_costs?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({entity_code:entity,category,vendor:vendor||null,description:desc,amount_idr:amt,updated_at:new Date().toISOString()})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    await refreshFixCost();
+    openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID);
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function deleteFixCostRow(id){
+  if(!confirm('Delete this fixed cost item? This cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/entity_fixed_costs?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    await refreshFixCost();
+    if(FIXCOST.some(x=>x.id===id)) throw new Error('Row still exists after delete — you may not have permission to delete this entry (only its original creator or an admin can).');
+    openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID);
+  }catch(e){ alert('Failed to delete: '+e.message); }
 }
 async function openOutstandingEdit(id,entityId,tab){
   const cats=await ensureOpexCatsG();
@@ -4617,7 +4841,7 @@ async function refreshOpexGroupMap(){
   return OPEX_CAT_TO_GROUP;
 }
 async function loadFromSupabase(){
-  const [ents,li,tots,loans,hls,txAll,outs]=await Promise.all([
+  const [ents,li,tots,loans,hls,txAll,outs,fixc]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
     sbFetch('line_items?select=*&period_code=eq.MAY&limit=2000'),
     sbFetch('entity_period_totals?select=*&limit=2000'),
@@ -4625,6 +4849,7 @@ async function loadFromSupabase(){
     sbFetch('highlights?select=*&order=id'),
     sbFetchAll('transactions?select=*&order=source,ord'),
     sbFetch('outstanding_payables?select=*&order=due_date').catch(()=>[]),
+    sbFetch('entity_fixed_costs?select=*&order=id').catch(()=>[]),
     refreshOpexGroupMap()
   ]);
   const fk={revenue:'rev',opex:'opex',financing_in:'finIn',financing_out:'finOut'};
@@ -4646,6 +4871,7 @@ async function loadFromSupabase(){
     LOANS_JUN:loans.filter(l=>l.period_code==='JUN').map(mkLoan),
     HIGHLIGHTS:hls.map(h=>({d:h.day_label,e:h.entity_code,desc:h.description,ty:h.flow_type,amt:+h.amount_idr})),
     OUTSTANDING:(outs||[]).map(mkOutstanding),
+    FIXCOST:(fixc||[]).map(mkFixCost),
     TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
@@ -4676,11 +4902,13 @@ function applyScopeChrome(){
 let BAL={};
 let CASHPOS={};
 let OUTSTANDING=[];
+let FIXCOST=[];
 async function runDashboard(){
   const D=await loadFromSupabase();
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
   HIGHLIGHTS=D.HIGHLIGHTS;TX=D.TX;TX_MULTI=D.TX_MULTI;TX_MS=D.TX_MS;TX_ICG_OPEX=D.TX_ICG_OPEX;
   OUTSTANDING=D.OUTSTANDING;
+  FIXCOST=D.FIXCOST;
   EIDS=Object.keys(ENT);
   if(!EIDS.length){ showNoAccess(); return; }
   LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
@@ -5714,6 +5942,41 @@ async function renderEntryBody(){
       +'</div>'
       +'</div></details>';
   }
+  // ── Fixed cost (recurring monthly costs, e.g. payroll/tax/professional fees) — separate from
+  // both the monthly figures above and the unpaid-invoice tracker above ──
+  {
+    const opexCatsFc=cats.filter(c=>c.kind==='opex');
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Add a Fixed Cost (recurring monthly cost)</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks recurring monthly costs per PT (payroll, taxes, professional fees, utilities, insurance, etc.) as a management estimate — separate from itemized transactions and not tied to a specific month.</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="fcd-tab-one" type="button" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
+      +'<button id="fcd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
+      +'<select id="fcd-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<button id="fcd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
+      +'</div>'
+      +'<div id="fcd-single">'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+      +'<select id="fcd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<select id="fcd-cat" style="'+inp+'">'+opexCatsFc.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
+      +'<input id="fcd-vendor" placeholder="Vendor name (optional)" style="'+inp+'">'
+      +'<input id="fcd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
+      +'</div>'
+      +'<input id="fcd-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
+      +'<button id="fcd-send" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save fixed cost</button>'
+      +'<div id="fcd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div>'
+      +'<div id="fcd-bulk" style="display:none">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Category, Vendor, Description, Amount</b>. Entity must match a PT name and Category an existing cost category — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
+      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b>: click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
+      +'<button id="fcd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<div><label for="fcd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+      +'<input id="fcd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'<span id="fcd-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
+      +'<div id="fcd-preview" style="margin-top:12px"></div>'
+      +'</div>'
+      +'</div></details>';
+  }
   // ── Record a payment against an outstanding payable (supports partial payments) ──
   {
     let openOP=[];
@@ -6222,6 +6485,149 @@ async function renderEntryBody(){
         return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,freq,invNo,vendor,desc,docUrl,inv,due,amt,error};
       });
       renderOpdPreview();
+    };
+  }
+  // ── Fixed cost: single-entry save ──
+  const fcdSend=document.getElementById('fcd-send');
+  if(fcdSend) fcdSend.onclick=async()=>{
+    setMsg('fcd-msg','');
+    const entity=document.getElementById('fcd-ent').value;
+    const category=document.getElementById('fcd-cat').value;
+    const vendor=document.getElementById('fcd-vendor').value.trim();
+    const desc=document.getElementById('fcd-desc').value.trim();
+    const amt=Number(document.getElementById('fcd-amt').value);
+    if(!desc||!amt||amt<=0) return setMsg('fcd-msg','Please fill in description and a valid amount.');
+    fcdSend.disabled=true; fcdSend.textContent='Saving…';
+    try{
+      await adminAddBatch('entity_fixed_costs',[{entity_code:entity,category,vendor:vendor||null,description:desc,amount_idr:amt}]);
+      await refreshFixCost();
+      setMsg('fcd-msg','✓ Saved.',true);
+      ['fcd-vendor','fcd-desc','fcd-amt'].forEach(id=>{document.getElementById(id).value='';});
+    }catch(e){ setMsg('fcd-msg','Failed to save: '+e.message); }
+    fcdSend.disabled=false; fcdSend.textContent='Save fixed cost';
+  };
+  // ── Fixed cost: tab toggle + bulk Excel import ──
+  {
+    const tabOneFc=document.getElementById('fcd-tab-one'), tabBulkFc=document.getElementById('fcd-tab-bulk');
+    const paneOneFc=document.getElementById('fcd-single'), paneBulkFc=document.getElementById('fcd-bulk');
+    const setTabFc=t=>{
+      const one=t==='one';
+      if(paneOneFc) paneOneFc.style.display=one?'':'none';
+      if(paneBulkFc) paneBulkFc.style.display=one?'none':'';
+      if(tabOneFc){ tabOneFc.style.background=one?'#5b67f1':'#fff'; tabOneFc.style.color=one?'#fff':'#3a4254'; tabOneFc.style.border=one?'0':'1px solid #e4e7ef'; }
+      if(tabBulkFc){ tabBulkFc.style.background=one?'#fff':'#5b67f1'; tabBulkFc.style.color=one?'#3a4254':'#fff'; tabBulkFc.style.border=one?'1px solid #e4e7ef':'0'; }
+    };
+    if(tabOneFc) tabOneFc.onclick=()=>setTabFc('one');
+    if(tabBulkFc) tabBulkFc.onclick=()=>setTabFc('bulk');
+    const expBtnFc=document.getElementById('fcd-export');
+    if(expBtnFc) expBtnFc.onclick=()=>{
+      const entSel=document.getElementById('fcd-export-ent').value;
+      const rows=[['ID','Entity','Category','Vendor','Description','Amount']];
+      FIXCOST.filter(f=>entSel==='all'||f.e===entSel).sort((a,b)=>b.amt-a.amt).forEach(f=>{
+        rows.push([f.id,eName(f.e),f.cat||'',f.vendor||'',f.desc||'',f.amt]);
+      });
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'FixedCost');
+      const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
+      XLSX.writeFile(wb,'fixed_cost_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    };
+    const opexCatsFc2=cats.filter(c=>c.kind==='opex');
+    const tplBtnFc=document.getElementById('fcd-template');
+    if(tplBtnFc) tplBtnFc.onclick=()=>{
+      const rows=[['Entity','Category','Vendor','Description','Amount'],
+        [eName(EIDS[0]),opexCatsFc2[0]?opexCatsFc2[0].name:'Other Operating Expense','Sample Vendor','Sample recurring cost description',1000000]];
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'FixedCost');
+      XLSX.writeFile(wb,'fixed_cost_template.xlsx');
+    };
+    function normEntNameFc(s){ return String(s).trim().toLowerCase().replace(/[‒-―‐‑]/g,'-').replace(/\./g,'').replace(/\s+/g,' '); }
+    function findEntityByNameFc(name){
+      if(!name) return null;
+      const n=normEntNameFc(name);
+      let hit=EIDS.find(id=>normEntNameFc(eName(id))===n);
+      if(!hit) hit=EIDS.find(id=>normEntNameFc(eName(id)).includes(n)||n.includes(normEntNameFc(eName(id))));
+      return hit||null;
+    }
+    function findCategoryFc(name){
+      if(!name) return null;
+      const n=String(name).trim().toLowerCase();
+      const hit=opexCatsFc2.find(c=>c.name.toLowerCase()===n);
+      return hit?hit.name:null;
+    }
+    let FCD_ROWS=[];
+    function renderFcdPreview(){
+      const el=document.getElementById('fcd-preview'); if(!el) return;
+      if(!FCD_ROWS.length){ el.innerHTML=''; return; }
+      const valid=FCD_ROWS.filter(r=>!r.error);
+      let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+      FCD_ROWS.forEach((r,i)=>{
+        h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+          +'<td style="font-size:11px;font-weight:700;color:'+(r.id?'#4550d8':'#2b7a4b')+'">'+(r.id?('Update #'+r.id):'New')+'</td>'
+          +'<td style="font-size:12px">'+escH(r.entityMatch?eName(r.entityMatch):(r.entityRaw||'—'))+'</td>'
+          +'<td style="font-size:12px">'+escH(r.category||'—')+'</td>'
+          +'<td style="font-size:12px">'+escH(r.vendor||'—')+'</td>'
+          +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
+          +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
+          +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
+      });
+      h+='</tbody></table></div>';
+      const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length;
+      h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+FCD_ROWS.length+' row(s) ready ('+toInsertN+' new, '+toUpdateN+' update)'+(FCD_ROWS.length>valid.length?' — fix the flagged rows in your file and re-upload to include them':'')+'.</div>';
+      h+='<button id="fcd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' fixed cost item'+(valid.length===1?'':'s')+'</button>';
+      h+='<div id="fcd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+      el.innerHTML=h;
+      const impBtnFc=document.getElementById('fcd-import');
+      if(impBtnFc) impBtnFc.onclick=async()=>{
+        impBtnFc.disabled=true; impBtnFc.textContent='Importing…';
+        try{
+          const fieldsOf=r=>({entity_code:r.entityMatch,category:r.category,vendor:r.vendor||null,description:r.desc,amount_idr:r.amt});
+          const toInsert=valid.filter(r=>!r.id), toUpdate=valid.filter(r=>r.id);
+          if(toInsert.length) await adminAddBatch('entity_fixed_costs',toInsert.map(fieldsOf));
+          if(toUpdate.length) await Promise.all(toUpdate.map(r=>adminUpdateOne('entity_fixed_costs',r.id,fieldsOf(r))));
+          await refreshFixCost();
+          document.getElementById('fcd-import-msg').style.color='#2b7a4b';
+          document.getElementById('fcd-import-msg').textContent='✓ Added '+toInsert.length+' new, updated '+toUpdate.length+' existing.';
+          impBtnFc.textContent='Imported ✓';
+        }catch(e){
+          document.getElementById('fcd-import-msg').style.color='#b3261e';
+          document.getElementById('fcd-import-msg').textContent='Import failed: '+e.message;
+          impBtnFc.disabled=false; impBtnFc.textContent='Import '+valid.length+' fixed cost item'+(valid.length===1?'':'s');
+        }
+      };
+    }
+    const fileInpFc=document.getElementById('fcd-file');
+    if(fileInpFc) fileInpFc.onchange=async()=>{
+      const f=fileInpFc.files[0]; if(!f) return;
+      document.getElementById('fcd-filename').textContent=f.name;
+      let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
+        document.getElementById('fcd-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
+      }
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+      if(!rows.length){ FCD_ROWS=[]; renderFcdPreview(); return; }
+      const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
+      const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
+      const kId=col(['id','row id']), kEnt=col(['entity','pt']), kCat=col(['category','cost category']), kVendor=col(['vendor','vendor name']),
+        kDesc=col(['description','transaction description']), kAmt=col(['amount','amount (idr)','amount idr']);
+      FCD_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+        const idRaw=kId!=null?String(r[kId]||'').trim():'';
+        const id=idRaw?Number(idRaw):null;
+        const existing=id!=null&&!isNaN(id)?FIXCOST.find(x=>x.id===id):null;
+        const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameFc(entityRaw);
+        const catRaw=kCat!=null?r[kCat]:'', catMatch=findCategoryFc(catRaw);
+        const vendor=kVendor!=null?String(r[kVendor]||'').trim():'';
+        const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
+        const amtRaw=kAmt!=null?r[kAmt]:'', amt=Number(amtRaw);
+        let error=null;
+        if(idRaw && (id==null||isNaN(id))) error='Invalid ID';
+        else if(idRaw && !existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
+        else if(!entityMatch) error='Entity not recognized';
+        else if(!catMatch) error='Category not recognized — must match one of the existing cost categories exactly';
+        else if(!desc) error='Missing description';
+        else if(!amt||amt<=0||isNaN(amt)) error='Invalid amount';
+        return {id:(existing?id:null),entityRaw,entityMatch,category:catMatch||catRaw,vendor,desc,amt,error};
+      });
+      renderFcdPreview();
     };
   }
   // ── Wire the "Update Entity Balance" box ──
