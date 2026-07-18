@@ -4162,6 +4162,19 @@ function refreshOutstandingRowsInPlace(entity,tab,focusId){
   }
   scrollOpeRowIntoView(focusId);
 }
+// Sortable Status/Amount columns for the Outstanding Liability detail table — click the header to
+// toggle ascending/descending. Status sorts by days-overdue (open tab) or paid date (paid tab);
+// Amount sorts by the same value the column displays (remaining balance for open, full amount for paid).
+let OPE_SORT_KEY=null, OPE_SORT_DIR='desc';
+function toggleOpeSort(key){
+  if(OPE_SORT_KEY===key){ OPE_SORT_DIR=OPE_SORT_DIR==='desc'?'asc':'desc'; }
+  else { OPE_SORT_KEY=key; OPE_SORT_DIR='desc'; }
+  renderOutstandingEntityRows();
+}
+function opeSortHeader(label,key){
+  const arrow=OPE_SORT_KEY===key?(OPE_SORT_DIR==='desc'?' ▼':' ▲'):'';
+  return `<span onclick="toggleOpeSort('${key}')" style="cursor:pointer;user-select:none">${label}${arrow}</span>`;
+}
 function openOutstandingDetail(scopeType,value,tab){
   OPE_ID=value; OPE_SCOPE_TYPE=scopeType; OPE_TAB=tab=tab||'open';
   OPE_ROWS=computeOpeRows(scopeType,value,tab);
@@ -4196,9 +4209,9 @@ function openOutstandingDetail(scopeType,value,tab){
     +thFilterable('Invoice Date','inv',`${dt('opef-inv-from','From')}${dt('opef-inv-to','To')}`)
     +thFilterable('Due Date','due',`${dt('opef-due-from','From')}${dt('opef-due-to','To')}`)
     +(tab==='open'
-      ? thFilterable('Status','status',`<select id="opef-status" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${['All','Overdue','Due today','Not yet due'].map(o=>`<option value="${o}">${o}</option>`).join('')}</select>`)
-      : '<th>Status</th>')
-    +thFilterable('Amount (IDR)','amt',`${num('opef-amt-min','Min')}${num('opef-amt-max','Max')}`)
+      ? thFilterable(opeSortHeader('Status','status'),'status',`<select id="opef-status" style="width:100%;padding:6px 8px;font-size:12px" onchange="renderOutstandingEntityRows()">${['All','Overdue','Due today','Not yet due'].map(o=>`<option value="${o}">${o}</option>`).join('')}</select>`)
+      : `<th>${opeSortHeader('Status','status')}</th>`)
+    +thFilterable(opeSortHeader('Amount (IDR)','amt'),'amt',`${num('opef-amt-min','Min')}${num('opef-amt-max','Max')}`)
     +`<th>Document</th><th></th></tr></thead><tbody id="opeBody"></tbody></table></div>`;
   showModal(`${title} — Outstanding Liability`,h,true);
   renderOutstandingEntityRows();
@@ -4251,6 +4264,19 @@ function renderOutstandingEntityRows(){
     if(amtMax && o.amt>Number(amtMax)) return false;
     return true;
   });
+  if(OPE_SORT_KEY==='amt'){
+    filtered.sort((a,b)=>{
+      const av=OPE_TAB==='open'?a.remaining:a.amt, bv=OPE_TAB==='open'?b.remaining:b.amt;
+      return OPE_SORT_DIR==='desc'?bv-av:av-bv;
+    });
+  } else if(OPE_SORT_KEY==='status'){
+    filtered.sort((a,b)=>{
+      const av=OPE_TAB==='open'?daysOverdue(a.due):(a.paidDate||''), bv=OPE_TAB==='open'?daysOverdue(b.due):(b.paidDate||'');
+      if(av<bv) return OPE_SORT_DIR==='desc'?1:-1;
+      if(av>bv) return OPE_SORT_DIR==='desc'?-1:1;
+      return 0;
+    });
+  }
   const tot=filtered.reduce((s,o)=>s+(OPE_TAB==='open'?o.remaining:o.amt),0);
   body.innerHTML=(filtered.length?filtered.map(outstandingRowHtml).join(''):`<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px">No ${OPE_TAB} payables match these filters</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="8"><strong>TOTAL${filtered.length!==OPE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td><td></td></tr>`;
