@@ -4172,8 +4172,10 @@ function toggleOpeSort(key){
   renderOutstandingEntityRows();
 }
 function opeSortHeader(label,key){
-  const arrow=OPE_SORT_KEY===key?(OPE_SORT_DIR==='desc'?' ▼':' ▲'):'';
-  return `<span onclick="toggleOpeSort('${key}')" style="cursor:pointer;user-select:none">${label}${arrow}</span>`;
+  const active=OPE_SORT_KEY===key;
+  const arrow=active?(OPE_SORT_DIR==='desc'?' ▼':' ▲'):' ⇅';
+  const color=active?'color:var(--ink,#1a1f36)':'color:var(--muted);opacity:.55';
+  return `<span onclick="toggleOpeSort('${key}')" style="cursor:pointer;user-select:none" title="Click to sort">${label}<span style="${color};font-size:10px">${arrow}</span></span>`;
 }
 function openOutstandingDetail(scopeType,value,tab){
   OPE_ID=value; OPE_SCOPE_TYPE=scopeType; OPE_TAB=tab=tab||'open';
