@@ -4520,11 +4520,31 @@ function renderFcdPreview(){
   };
 }
 function vendorSelectHtml(id,current,extraStyle){
-  return `<select id="${id}" style="width:100%;padding:8px 10px;box-sizing:border-box${extraStyle?';'+extraStyle:''}">`
+  return `<select id="${id}" data-prev="${escH(current||'')}" onchange="onVendorSelectChange(this)" style="width:100%;padding:8px 10px;box-sizing:border-box${extraStyle?';'+extraStyle:''}">`
     +`<option value=""${current?'':' selected'}>No vendor</option>`
     +VENDORS_G.map(v=>`<option value="${escH(v)}"${v===current?' selected':''}>${escH(v)}</option>`).join('')
     +(current&&!VENDORS_G.includes(current)?`<option value="${escH(current)}" selected>${escH(current)} (not in vendor list)</option>`:'')
+    +`<option value="__add_new__">+ Add new vendor…</option>`
     +`</select>`;
+}
+// Shared onchange handler for every vendor <select> (transaction/outstanding/fixed-cost edit forms
+// and the two single-entry add forms) — lets a one-off vendor be registered inline instead of
+// forcing a separate trip to Manage Vendors first, without weakening the lock for regular vendors.
+async function onVendorSelectChange(sel){
+  if(sel.value!=='__add_new__'){ sel.dataset.prev=sel.value; return; }
+  const name=(prompt('New vendor name:')||'').trim();
+  if(!name){ sel.value=sel.dataset.prev||''; return; }
+  try{
+    await addVendor(name);
+    await ensureVendorsG();
+    const opt=document.createElement('option');
+    opt.value=name; opt.textContent=name;
+    sel.insertBefore(opt, sel.querySelector('option[value="__add_new__"]'));
+    sel.value=name; sel.dataset.prev=name;
+  }catch(e){
+    alert('Failed to add vendor: '+e.message);
+    sel.value=sel.dataset.prev||'';
+  }
 }
 async function renameVendor(oldName,newName){
   newName=(newName||'').trim();
@@ -6319,7 +6339,7 @@ async function renderEntryBody(){
       +'<select id="opd-cat" style="'+inp+'">'+opexCats.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
       +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option><option value="PRG">PRG — By Progress</option></select>'
       +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
-      +'<select id="opd-vendor" style="'+inp+'"><option value="">No vendor</option>'+VENDORS_G.map(v=>'<option value="'+escH(v)+'">'+escH(v)+'</option>').join('')+'</select>'
+      +'<select id="opd-vendor" data-prev="" onchange="onVendorSelectChange(this)" style="'+inp+'"><option value="">No vendor</option>'+VENDORS_G.map(v=>'<option value="'+escH(v)+'">'+escH(v)+'</option>').join('')+'<option value="__add_new__">+ Add new vendor…</option></select>'
       +'<input id="opd-inv" type="date" aria-label="Invoice date" style="'+inp+'">'
       +'<input id="opd-due" type="date" aria-label="Due date" style="'+inp+'">'
       +'<input id="opd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
@@ -6357,7 +6377,7 @@ async function renderEntryBody(){
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="fcd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<select id="fcd-cat" style="'+inp+'">'+opexCatsFc.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
-      +'<select id="fcd-vendor" style="'+inp+'"><option value="">No vendor</option>'+VENDORS_G.map(v=>'<option value="'+escH(v)+'">'+escH(v)+'</option>').join('')+'</select>'
+      +'<select id="fcd-vendor" data-prev="" onchange="onVendorSelectChange(this)" style="'+inp+'"><option value="">No vendor</option>'+VENDORS_G.map(v=>'<option value="'+escH(v)+'">'+escH(v)+'</option>').join('')+'<option value="__add_new__">+ Add new vendor…</option></select>'
       +'<input id="fcd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
       +'</div>'
       +'<input id="fcd-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
