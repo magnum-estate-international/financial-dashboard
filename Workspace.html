@@ -4173,9 +4173,9 @@ function toggleOpeSort(key){
 }
 function opeSortHeader(label,key){
   const active=OPE_SORT_KEY===key;
-  const arrow=active?(OPE_SORT_DIR==='desc'?' ▼':' ▲'):' ⇅';
+  const arrow=active?(OPE_SORT_DIR==='desc'?'▼':'▲'):'⇅';
   const color=active?'color:var(--ink,#1a1f36)':'color:var(--muted);opacity:.55';
-  return `<span onclick="toggleOpeSort('${key}')" style="cursor:pointer;user-select:none" title="Click to sort">${label}<span style="${color};font-size:10px">${arrow}</span></span>`;
+  return `<span onclick="toggleOpeSort('${key}')" style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:3px" title="Click to sort"><span>${label}</span><span style="${color};font-size:10px;flex-shrink:0">${arrow}</span></span>`;
 }
 function openOutstandingDetail(scopeType,value,tab){
   OPE_ID=value; OPE_SCOPE_TYPE=scopeType; OPE_TAB=tab=tab||'open';
