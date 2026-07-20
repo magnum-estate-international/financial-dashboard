@@ -4460,6 +4460,16 @@ function findCategoryG(name){
   if(syn && (OPEX_CATS_G||[]).includes(syn)) return syn;
   return null;
 }
+// Duplicate-detection for bulk-import "New" rows (blank ID) — same safety idea as Replace Period
+// Import's diff preview, applied here: a re-upload that forgot to keep the ID column would
+// otherwise insert a silent duplicate. Matches on entity+category+vendor+amount+description
+// (case-insensitive) against the currently loaded dataset; a warning only, never blocks import.
+function findDuplicateRow(list,r){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return list.find(o=>o.e===r.entityMatch && norm(o.cat)===norm(r.category||r.catMatch)
+    && norm(o.vendor)===norm(r.vendor||r.vendorMatch) && Math.round(o.amt)===Math.round(r.amt||0)
+    && norm(o.desc)===norm(r.desc));
+}
 // Defaults to OTP for blank/unrecognized values — Frequency is a soft classification aid, not
 // something worth hard-blocking an import over (unlike Entity/Category/Vendor matches).
 function normalizeFreq(v){
@@ -4507,6 +4517,7 @@ function computeOpdRow(r){
   r.error=error;
   r.category=r.catMatch||r.catRaw||'';
   r.vendor=r.vendorMatch||r.vendorRaw||'';
+  r.dup=(!error && !r.id)?findDuplicateRow(OUTSTANDING,r):null;
 }
 function fixOpdField(i,field,value){
   const r=OPD_ROWS[i]; if(!r) return;
@@ -4537,7 +4548,9 @@ function renderOpdPreview(){
   const valid=OPD_ROWS.filter(r=>!r.error);
   let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Frequency</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
   OPD_ROWS.forEach((r,i)=>{
-    h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+    const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
+    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate of #'+r.dup.id:'OK');
+    h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:11px;font-weight:700;color:'+(r.id?'#4550d8':'#2b7a4b')+'">'+(r.id?('Update #'+r.id):'New')+'</td>'
       +'<td style="font-size:12px">'+opdEntityCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+escH(r.invNo||'—')+'</td>'
@@ -4548,11 +4561,13 @@ function renderOpdPreview(){
       +'<td style="font-size:12px;white-space:nowrap">'+(r.due||'—')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
       +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
-      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
   });
   h+='</tbody></table></div>';
-  const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length;
-  h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+OPD_ROWS.length+' row(s) ready ('+toInsertN+' new, '+toUpdateN+' update)'+(OPD_ROWS.length>valid.length?' — fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
+  const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length, dupN=valid.filter(r=>r.dup).length;
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+toInsertN+' new</b> outstanding liabilit'+(toInsertN===1?'y':'ies')+' and <b>update '+toUpdateN+' existing</b> — '+valid.length+' of '+OPD_ROWS.length+' row(s) ready'
+    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved entry (same entity, category, vendor, amount &amp; description) — review before importing':'')
+    +(OPD_ROWS.length>valid.length?'. Fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
   h+='<button id="opd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' outstanding '+(valid.length===1?'liability':'liabilities')+'</button>';
   h+='<div id="opd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
@@ -4590,6 +4605,7 @@ function computeFcdRow(r){
   r.error=error;
   r.category=r.catMatch||r.catRaw||'';
   r.vendor=r.vendorMatch||null;
+  r.dup=(!error && !r.id)?findDuplicateRow(FIXCOST,r):null;
 }
 function fixFcdField(i,field,value){
   const r=FCD_ROWS[i]; if(!r) return;
@@ -4615,18 +4631,22 @@ function renderFcdPreview(){
   const valid=FCD_ROWS.filter(r=>!r.error);
   let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
   FCD_ROWS.forEach((r,i)=>{
-    h+='<tr style="'+(r.error?'background:#fbe9e7':'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+    const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
+    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate of #'+r.dup.id:'OK');
+    h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:11px;font-weight:700;color:'+(r.id?'#4550d8':'#2b7a4b')+'">'+(r.id?('Update #'+r.id):'New')+'</td>'
       +'<td style="font-size:12px">'+fcdEntityCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+fcdCatCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+fcdVendorCell(r,i)+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
       +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
-      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+(r.error||'OK')+'</td></tr>';
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
   });
   h+='</tbody></table></div>';
-  const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length;
-  h+='<div style="margin-top:10px;font-size:12.5px;color:#3a4254">'+valid.length+' of '+FCD_ROWS.length+' row(s) ready ('+toInsertN+' new, '+toUpdateN+' update)'+(FCD_ROWS.length>valid.length?' — fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
+  const toInsertN=valid.filter(r=>!r.id).length, toUpdateN=valid.filter(r=>r.id).length, dupN=valid.filter(r=>r.dup).length;
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+toInsertN+' new</b> fixed cost item'+(toInsertN===1?'':'s')+' and <b>update '+toUpdateN+' existing</b> — '+valid.length+' of '+FCD_ROWS.length+' row(s) ready'
+    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved entry (same entity, category, vendor, amount &amp; description) — review before importing':'')
+    +(FCD_ROWS.length>valid.length?'. Fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
   h+='<button id="fcd-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' fixed cost item'+(valid.length===1?'':'s')+'</button>';
   h+='<div id="fcd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
