@@ -3305,8 +3305,18 @@ function closeModal(){document.getElementById('overlay').classList.remove('show'
 // Sourced from categories.parent_group (set via the "Manage Categories" panel), not hardcoded —
 // OPEX_CAT_TO_GROUP is populated in loadFromSupabase() and refreshed on any category CRUD.
 let OPEX_CAT_TO_GROUP={};
-function opexRowsGrouped(items,total,cls,drillFn){
+function opexRowsGrouped(items,total,cls,drillFn,tableId){
   drillFn=drillFn||(k=>`openBDItem('opex','${encodeURIComponent(k)}')`);
+  // Grouping and sorting are mutually exclusive display modes: once an amount sort is active for
+  // tableId, show a flat sorted list (bypassing the parent-group rows) so the requested order is
+  // actually visible — a sorted-within-group arrangement would still look grouped-by-default.
+  if(tableId && sortActiveKey(tableId)==='amt'){
+    const sorted=sortApply(tableId,items,([,v])=>v);
+    return sorted.map(([k,v])=>{
+      const pct=total>0?(v/total*100).toFixed(1):'0.0';
+      return `<tr style="cursor:pointer" onclick="${drillFn(k)}"><td style="font-size:12.5px">${k} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num ${cls}">${fmt(v)}</td><td class="num">${pct}%</td></tr>`;
+    }).join('');
+  }
   const byGroup={},ungrouped=[];
   items.forEach(([k,v])=>{
     const g=OPEX_CAT_TO_GROUP[k];
@@ -3347,13 +3357,16 @@ function toggleOpexGroup(gid){
 }
 function bdTableHtml(obj,total,cls){
   const type=cls==='pos'?'rev':'opex';
-  const items=Object.entries(obj).sort((x,y)=>y[1]-x[1]);
+  const tableId=type==='opex'?'opexcat':'revcat';
+  SORT_RERENDER[tableId]=()=>{ if(type==='opex') openOpexBreakdown('category'); else openDetail('rev'); };
+  let items=Object.entries(obj).sort((x,y)=>y[1]-x[1]);
   if(!items.length) return `<p style="color:var(--muted);font-size:13px">No items in this scope.</p>`;
   let h=`<div class="pn-sub" style="margin-bottom:8px">Click an item to see per-entity amounts &amp; transaction detail</div>`;
-  h+=`<table><thead><tr><th>Item</th><th class="num">Amount (IDR)</th><th class="num">%</th></tr></thead><tbody>`;
+  h+=`<table><thead><tr><th>Item</th><th class="num">${sortHeader(tableId,'Amount (IDR)','amt')}</th><th class="num">%</th></tr></thead><tbody>`;
   if(type==='opex'){
-    h+=opexRowsGrouped(items,total,cls);
+    h+=opexRowsGrouped(items,total,cls,undefined,tableId);
   } else {
+    items=sortApply(tableId,items,([,v])=>v);
     items.forEach(([k,v])=>{h+=`<tr style="cursor:pointer" onclick="openBDItem('${type}','${encodeURIComponent(k)}')"><td style="font-size:12.5px">${k} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num ${cls}">${fmt(v)}</td><td class="num">${total>0?(v/total*100).toFixed(1):'0.0'}%</td></tr>`;});
   }
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(total)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
@@ -3419,6 +3432,8 @@ function opexVendorBreakdown(){
 }
 function openOpexBreakdown(view){
   view=OPEX_BD_VIEW=view||OPEX_BD_VIEW||'category';
+  SORT_RERENDER['opexent']=()=>openOpexBreakdown('entity');
+  SORT_RERENDER['opexvendor']=()=>openOpexBreakdown('vendor');
   const a=agg();
   const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openOpexBreakdown('${v}')">${label}</button>`;
   let h=`<div style="display:flex;gap:8px;margin-bottom:14px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}</div>`;
@@ -3429,9 +3444,10 @@ function openOpexBreakdown(view){
     const cur=Object.values(byVendor).reduce((s,v)=>s+v,0);
     const gap=Math.round(a.opex-cur);
     if(gap>0.5) byVendor['Other expense (no vendor detail)']=(byVendor['Other expense (no vendor detail)']||0)+gap;
-    const items=Object.entries(byVendor).sort((x,y)=>y[1]-x[1]);
+    let items=Object.entries(byVendor).sort((x,y)=>y[1]-x[1]);
+    items=sortApply('opexvendor',items,([,v])=>v);
     h+=`<div class="pn-sub" style="margin-bottom:8px">Click a vendor to see transaction detail</div>`;
-    h+=`<table><thead><tr><th>Vendor</th><th class="num">Amount (IDR)</th><th class="num">%</th></tr></thead><tbody>`;
+    h+=`<table><thead><tr><th>Vendor</th><th class="num">${sortHeader('opexvendor','Amount (IDR)','amt')}</th><th class="num">%</th></tr></thead><tbody>`;
     if(items.length){
       items.forEach(([v,amt])=>{
         const pct=a.opex>0?(amt/a.opex*100).toFixed(1):'0.0';
@@ -3442,9 +3458,10 @@ function openOpexBreakdown(view){
     }
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   } else {
-    const rows=scopeIds().map(id=>({id,tot:(eff(id)||{}).opex||0})).filter(r=>r.tot>0.5).sort((x,y)=>y.tot-x.tot);
+    let rows=scopeIds().map(id=>({id,tot:(eff(id)||{}).opex||0})).filter(r=>r.tot>0.5).sort((x,y)=>y.tot-x.tot);
+    rows=sortApply('opexent',rows,r=>r.tot);
     h+=`<div class="pn-sub" style="margin-bottom:8px">Click an entity to see its category breakdown</div>`;
-    h+=`<table><thead><tr><th>Entity</th><th class="num">Amount (IDR)</th><th class="num">%</th></tr></thead><tbody>`;
+    h+=`<table><thead><tr><th>Entity</th><th class="num">${sortHeader('opexent','Amount (IDR)','amt')}</th><th class="num">%</th></tr></thead><tbody>`;
     if(rows.length){
       rows.forEach(r=>{
         const pct=a.opex>0?(r.tot/a.opex*100).toFixed(1):'0.0';
@@ -3477,6 +3494,7 @@ function openOpexVendor(encVendor){
   showModal(`${escH(vendor)} — Operating Expenses`,h,true);
 }
 function openOpexEntity(id){
+  SORT_RERENDER['opexentcat']=()=>openOpexEntity(id);
   const catMap=opexEntityBreakdown(id);
   const items=Object.entries(catMap).sort((x,y)=>y[1]-x[1]);
   const total=items.reduce((s,[,v])=>s+v,0);
@@ -3486,17 +3504,20 @@ function openOpexEntity(id){
     h+=`<p style="color:var(--muted);font-size:13px">No operating expenses in scope for this entity.</p>`;
   } else {
     h+=`<div class="pn-sub" style="margin-bottom:8px">Click a category to see transaction detail</div>`;
-    h+=`<table><thead><tr><th>Category</th><th class="num">Amount (IDR)</th><th class="num">%</th></tr></thead><tbody>`;
-    h+=opexRowsGrouped(items,total,'neg',k=>`openCatEntity('opex','${encodeURIComponent(k)}','${id}',true)`);
+    h+=`<table><thead><tr><th>Category</th><th class="num">${sortHeader('opexentcat','Amount (IDR)','amt')}</th><th class="num">%</th></tr></thead><tbody>`;
+    h+=opexRowsGrouped(items,total,'neg',k=>`openCatEntity('opex','${encodeURIComponent(k)}','${id}',true)`,'opexentcat');
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(total)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   }
   showModal(`${ENT[id]?ENT[id].name:id} — Operating Expenses`,h,true);
 }
 function finTableHtml(key){
-  const ids=scopeIds();
+  const tableId='fin-'+key;
+  SORT_RERENDER[tableId]=()=>openDetail(key==='finIn'?'finin':'finout');
+  let ids=scopeIds();
   // For Apr/Jun (non-May), per-line financing labels aren't in the source — show per-entity total instead
   if(MONTH!=='MAY'){
-    let h=`<table><thead><tr><th>Entity</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`,tot=0,any=false;
+    ids=sortApply(tableId,ids,id=>eff(id)[key==='finIn'?'finIn':'finOut']);
+    let h=`<table><thead><tr><th>Entity</th><th class="num">${sortHeader(tableId,'Amount (IDR)','amt')}</th></tr></thead><tbody>`,tot=0,any=false;
     ids.forEach(id=>{const v=eff(id)[key==='finIn'?'finIn':'finOut'];
       if(v>0){any=true;tot+=v;
         h+=`<tr class="clickable" style="cursor:pointer" onclick="openFinEntity('${key}','${id}')"><td>${pill(id)} <span style="color:var(--blue-500);font-size:11px">›</span></td><td class="num">${fmt(v)}</td></tr>`;
@@ -3512,11 +3533,11 @@ function finTableHtml(key){
     Object.entries(ENT[id][key]).forEach(([k,v])=>{any=true;tot+=v; (byId[id]=byId[id]||[]).push([k,v]);});
   });
   if(!any) return `<p style="color:var(--muted);font-size:13px">No flows in this scope.</p>`;
-  h=`<table><thead><tr><th>Entity</th><th>Flow</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
-  Object.entries(byId).forEach(([id,list])=>{
-    list.forEach(([k,v])=>{
-      h+=`<tr class="clickable" style="cursor:pointer" onclick="openFinEntity('${key}','${id}')"><td>${pill(id)} <span style="color:var(--blue-500);font-size:11px">›</span></td><td style="font-size:12.5px">${k}</td><td class="num">${fmt(v)}</td></tr>`;
-    });
+  let flat=[]; Object.entries(byId).forEach(([id,list])=>{ list.forEach(([k,v])=>flat.push({id,k,v})); });
+  flat=sortApply(tableId,flat,r=>r.v);
+  h=`<table><thead><tr><th>Entity</th><th>Flow</th><th class="num">${sortHeader(tableId,'Amount (IDR)','amt')}</th></tr></thead><tbody>`;
+  flat.forEach(r=>{
+    h+=`<tr class="clickable" style="cursor:pointer" onclick="openFinEntity('${key}','${r.id}')"><td>${pill(r.id)} <span style="color:var(--blue-500);font-size:11px">›</span></td><td style="font-size:12.5px">${r.k}</td><td class="num">${fmt(r.v)}</td></tr>`;
   });
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="2"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr></tbody></table>`;
   h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click a row to see its transactions.</p>`;
@@ -3584,14 +3605,16 @@ function openDetail(kind){
   if(kind==='rev') showModal('Operating Revenue — Breakdown',bdTableHtml(a.revBD,a.rev,'pos'));
   else if(kind==='opex') openOpexBreakdown(OPEX_BD_VIEW);
   else if(kind==='cashpos'){
-    const ids=scopeIds().filter(id=>CASHPOS[id]).sort((x,y)=>CASHPOS[y].cash-CASHPOS[x].cash);
+    SORT_RERENDER['cashpos']=()=>openDetail('cashpos');
+    let ids=scopeIds().filter(id=>CASHPOS[id]).sort((x,y)=>CASHPOS[y].cash-CASHPOS[x].cash);
+    ids=sortApply('cashpos',ids,id=>CASHPOS[id].cash);
     const missing=scopeIds().filter(id=>!CASHPOS[id]);
     let h;
     if(!ids.length){
       h=`<p style="color:var(--muted);font-size:12.5px">No cash position logged yet for this scope — add it via <b>Update Data → Update Cash Position</b>.</p>`;
     } else {
       let tot=0;
-      h=`<table><thead><tr><th>Entity</th><th class="num">Cash Position (IDR)</th><th>As of</th></tr></thead><tbody>`;
+      h=`<table><thead><tr><th>Entity</th><th class="num">${sortHeader('cashpos','Cash Position (IDR)','amt')}</th><th>As of</th></tr></thead><tbody>`;
       ids.forEach(id=>{ const c=CASHPOS[id]; tot+=c.cash;
         h+=`<tr><td>${pill(id)}</td><td class="num">${fmt(c.cash)}</td><td style="font-size:12px;color:var(--muted)">${new Date(c.at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td></tr>`;});
       h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table>`;
@@ -3616,8 +3639,11 @@ function openDetail(kind){
   }
   else if(kind==='finout') showModal('Financing & Non-Op Outflows — Detail',finTableHtml('finOut'));
   else if(kind==='opnet'){
-    const ids=scopeIds();
-    let h=`<table><thead><tr><th>Entity</th><th class="num">Revenue</th><th class="num">OpEx</th><th class="num">Operating Net</th></tr></thead><tbody>`;
+    SORT_RERENDER['opnet']=()=>openDetail('opnet');
+    let ids=scopeIds();
+    const opnetKeyFn={rev:id=>eff(id).rev,opex:id=>eff(id).opex,net:id=>eff(id).rev-eff(id).opex}[sortActiveKey('opnet')];
+    if(opnetKeyFn) ids=sortApply('opnet',ids,opnetKeyFn);
+    let h=`<table><thead><tr><th>Entity</th><th class="num">${sortHeader('opnet','Revenue','rev')}</th><th class="num">${sortHeader('opnet','OpEx','opex')}</th><th class="num">${sortHeader('opnet','Operating Net','net')}</th></tr></thead><tbody>`;
     ids.forEach(id=>{const ef=eff(id),r=ef.rev,o=ef.opex,n=r-o;
       h+=`<tr><td>${pill(id)}</td><td class="num pos">${fmt(r)}</td><td class="num neg">${fmt(o)}</td><td class="num ${n>=0?'pos':'neg'}">${n>=0?'+':''} ${fmt(n)}</td></tr>`;});
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num pos"><strong>${fmt(a.rev)}</strong></td><td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num ${a.opNet>=0?'pos':'neg'}"><strong>${a.opNet>=0?'+':''} ${fmt(a.opNet)}</strong></td></tr></tbody></table>`;
@@ -4331,6 +4357,33 @@ function opeSortHeader(label,key){
   const color=active?'color:var(--ink,#1a1f36)':'color:var(--muted);opacity:.55';
   return `<span onclick="toggleOpeSort('${key}')" style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:3px" title="Click to sort"><span>${label}</span><span style="${color};font-size:10px;flex-shrink:0">${arrow}</span></span>`;
 }
+// ── Generic sortable-amount-column pattern, reused across every other amount table in the
+// dashboard (Fixed Cost, Fix Cost vs Actual, Operating Expenses/Revenue Breakdown, Cash Position,
+// Net Operating Result, etc.) — same idea as OPE_SORT_KEY/opeSortHeader above, but keyed by a
+// tableId so unrelated tables don't share sort state, and driven by a registered re-render
+// function per tableId instead of a hardcoded render call.
+let SORT_STATE={}, SORT_RERENDER={};
+function sortToggle(tableId,key){
+  const s=SORT_STATE[tableId]=SORT_STATE[tableId]||{key:null,dir:'desc'};
+  if(s.key===key){ s.dir=s.dir==='desc'?'asc':'desc'; } else { s.key=key; s.dir='desc'; }
+  if(SORT_RERENDER[tableId]) SORT_RERENDER[tableId]();
+}
+function sortHeader(tableId,label,key){
+  const s=SORT_STATE[tableId]||{};
+  const active=s.key===key;
+  const arrow=active?(s.dir==='desc'?'▼':'▲'):'⇅';
+  const color=active?'color:var(--ink,#1a1f36)':'color:var(--muted);opacity:.55';
+  return `<span onclick="sortToggle('${tableId}','${key}')" style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:3px" title="Click to sort"><span>${label}</span><span style="${color};font-size:10px;flex-shrink:0">${arrow}</span></span>`;
+}
+// Returns rows re-ordered by the active sort for tableId (numeric keyFn(row) ascending/descending),
+// or the original array unchanged if no sort is active for that table yet.
+function sortApply(tableId,rows,keyFn){
+  const s=SORT_STATE[tableId];
+  if(!s||!s.key) return rows;
+  const arr=rows.slice().sort((a,b)=>keyFn(a)-keyFn(b));
+  return s.dir==='desc'?arr.reverse():arr;
+}
+function sortActiveKey(tableId){ return (SORT_STATE[tableId]||{}).key||null; }
 function openOutstandingDetail(scopeType,value,tab){
   OPE_ID=value; OPE_SCOPE_TYPE=scopeType; OPE_TAB=tab=tab||'open';
   OPE_ROWS=computeOpeRows(scopeType,value,tab);
@@ -4953,15 +5006,17 @@ function fixCostCatRowsGrouped(grouped){
 }
 function openFixCost(view){
   view=FC_VIEW=view||FC_VIEW||'entity';
+  SORT_RERENDER['fixcost']=()=>openFixCost(FC_VIEW);
   const rows=fixCostInScope();
   const tot=rows.reduce((s,f)=>s+f.amt,0);
   const keyOf=view==='entity'?(f=>f.e):view==='vendor'?(f=>f.vendor||'—'):(f=>f.cat||'—');
   const byGroup={}; rows.forEach(f=>{const k=keyOf(f); const g=byGroup[k]=byGroup[k]||{tot:0,n:0}; g.tot+=f.amt; g.n++;});
   const searchText=k=>view==='entity'?(ENT[k]?ENT[k].name:k):k;
   const q=FC_SEARCH.trim().toLowerCase();
-  const grouped=Object.entries(byGroup)
+  let grouped=Object.entries(byGroup)
     .filter(([k])=>!q||searchText(k).toLowerCase().includes(q))
     .sort((a,b)=>b[1].tot-a[1].tot);
+  grouped=sortApply('fixcost',grouped,([,v])=>v.tot);
   const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openFixCost('${v}')">${label}</button>`;
   let h=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">`
     +`<div style="display:flex;gap:8px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}</div>`
@@ -4971,8 +5026,9 @@ function openFixCost(view){
   const colLabel=view==='entity'?'Entity':view==='vendor'?'Vendor':'Cost Category';
   const rowLabel=k=>view==='entity'?pill(k):escH(k);
   const rowOnclick=k=>view==='entity'?`openFixCostEntity('${k}')`:view==='vendor'?`openFixCostVendor('${encodeURIComponent(k)}')`:`openFixCostCategory('${encodeURIComponent(k)}')`;
-  h+=`<table><thead><tr><th>${colLabel}</th><th class="num" style="text-align:right">Items</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
-    +(grouped.length?(view==='category'?fixCostCatRowsGrouped(grouped):grouped.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join(''))
+  const isSorted=!!sortActiveKey('fixcost');
+  h+=`<table><thead><tr><th>${colLabel}</th><th class="num" style="text-align:right">Items</th><th class="num" style="text-align:right">${sortHeader('fixcost','Amount (IDR)','amt')}</th></tr></thead><tbody>`
+    +(grouped.length?((view==='category'&&!isSorted)?fixCostCatRowsGrouped(grouped):grouped.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join(''))
       :`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':''} fixed cost in this scope</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${rows.length}</td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr>`
     +`</tbody></table>`;
@@ -4987,15 +5043,18 @@ function onFcSearchInput(v){ FC_SEARCH=v; FC_SEARCH_FOCUS=true; openFixCost(FC_V
 // scope is currently selected on the dashboard, so this comparison doesn't shift under the reader
 // depending on a filter elsewhere, and doesn't compare fix cost against a partial April/June scope.
 function fixCostVsActualHtml(){
+  SORT_RERENDER['fcva']=()=>openFixCostVsActual();
   const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
   const fcByEnt={}; FIXCOST.filter(f=>ids.includes(f.e)).forEach(f=>{fcByEnt[f.e]=(fcByEnt[f.e]||0)+f.amt;});
   const varColor=v=>v>0?'var(--red)':(v<0?'#1f8a61':'var(--muted)');
   const pctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
-  const rows=ids.map(id=>{const fc=fcByEnt[id]||0, act=(effMonth(id,'MAY')||{}).opex||0; return {id,fc,act,varr:act-fc};})
+  let rows=ids.map(id=>{const fc=fcByEnt[id]||0, act=(effMonth(id,'MAY')||{}).opex||0; return {id,fc,act,varr:act-fc};})
     .filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
+  const fcvaKeyFn={fc:r=>r.fc,act:r=>r.act,varr:r=>r.varr}[sortActiveKey('fcva')];
+  if(fcvaKeyFn) rows=sortApply('fcva',rows,fcvaKeyFn);
   const totFc=rows.reduce((s,r)=>s+r.fc,0), totAct=rows.reduce((s,r)=>s+r.act,0), totVar=totAct-totFc;
   let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is always <b>May 2026</b>, the last full month, regardless of the dashboard's month filter. Red = over budget, green = under.</div>`;
-  h+=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">Fix Cost (IDR)</th><th class="num" style="text-align:right">Actual Opex (IDR)</th><th class="num" style="text-align:right">Variance</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
+  h+=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">${sortHeader('fcva','Fix Cost (IDR)','fc')}</th><th class="num" style="text-align:right">${sortHeader('fcva','Actual Opex (IDR)','act')}</th><th class="num" style="text-align:right">${sortHeader('fcva','Variance','varr')}</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
   if(rows.length){
     rows.forEach(r=>{
       h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostVsActualEntity('${r.id}')"><td>${pill(r.id)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
@@ -5013,18 +5072,21 @@ function fixCostVsActualHtml(){
 }
 function openFixCostVsActual(){ showModal('Fix Cost vs Actual (May)',fixCostVsActualHtml(),true); }
 function openFixCostVsActualEntity(id){
+  SORT_RERENDER['fcvaent']=()=>openFixCostVsActualEntity(id);
   const fcByCat={}; FIXCOST.filter(f=>f.e===id).forEach(f=>{const c=f.cat||'—'; fcByCat[c]=(fcByCat[c]||0)+f.amt;});
   const actByCat=opexEntityBreakdownMay(id);
   const varColor=v=>v>0?'var(--red)':(v<0?'#1f8a61':'var(--muted)');
   const pctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
-  const cats=Array.from(new Set(Object.keys(fcByCat).concat(Object.keys(actByCat))))
+  let cats=Array.from(new Set(Object.keys(fcByCat).concat(Object.keys(actByCat))))
     .sort((a,b)=>(actByCat[b]||0)-(actByCat[a]||0));
+  const fcvaEntKeyFn={fc:c=>fcByCat[c]||0,act:c=>actByCat[c]||0,varr:c=>(actByCat[c]||0)-(fcByCat[c]||0)}[sortActiveKey('fcvaent')];
+  if(fcvaEntKeyFn) cats=sortApply('fcvaent',cats,fcvaEntKeyFn);
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCostVsActual()">‹ Back to breakdown</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id]?ENT[id].name:id} — Fix Cost vs Actual</h4>`;
   if(!cats.length){
     h+=`<p style="color:var(--muted);font-size:13px">No fixed cost or actual expense in this scope for this entity.</p>`;
   } else {
-    h+=`<table><thead><tr><th>Category</th><th class="num" style="text-align:right">Fix Cost (IDR)</th><th class="num" style="text-align:right">Actual (IDR)</th><th class="num" style="text-align:right">Variance</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
+    h+=`<table><thead><tr><th>Category</th><th class="num" style="text-align:right">${sortHeader('fcvaent','Fix Cost (IDR)','fc')}</th><th class="num" style="text-align:right">${sortHeader('fcvaent','Actual (IDR)','act')}</th><th class="num" style="text-align:right">${sortHeader('fcvaent','Variance','varr')}</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
     let totFc=0,totAct=0;
     cats.forEach(c=>{
       const fc=fcByCat[c]||0, act=actByCat[c]||0, varr=act-fc;
@@ -5153,13 +5215,14 @@ function openFixCostDetailView(scopeType,value){
     +thFilterableFc('Category','cat',fcTxt('fcef-cat','Filter category…'))
     +thFilterableFc('Vendor','vendor',fcTxt('fcef-vendor','Filter vendor…'))
     +thFilterableFc('Description','desc',fcTxt('fcef-desc','Filter description…'))
-    +thFilterableFc('Amount (IDR)','amt',fcNum('fcef-amt-min','Min')+fcNum('fcef-amt-max','Max'))
+    +thFilterableFc(sortHeader('fixcostdetail','Amount (IDR)','amt'),'amt',fcNum('fcef-amt-min','Min')+fcNum('fcef-amt-max','Max'))
     +`<th></th></tr></thead><tbody id="fceBody"></tbody></table></div>`;
   showModal(`${title} — Monthly Fix Cost`,h,true);
   renderFixCostRows();
 }
 function renderFixCostRows(){
   const body=document.getElementById('fceBody'); if(!body) return;
+  SORT_RERENDER['fixcostdetail']=renderFixCostRows;
   const g=id=>{const el=document.getElementById(id); return el?el.value:'';};
   const entQ=g('fcef-ent').toLowerCase(), catQ=g('fcef-cat').toLowerCase(), vendorQ=g('fcef-vendor').toLowerCase(), descQ=g('fcef-desc').toLowerCase();
   const amtMinS=g('fcef-amt-min'), amtMaxS=g('fcef-amt-max');
@@ -5174,8 +5237,9 @@ function renderFixCostRows(){
     return true;
   });
   const tot=filtered.reduce((s,f)=>s+f.amt,0);
+  const sorted=sortApply('fixcostdetail',filtered,f=>f.amt);
   const totColspan=FCE_SCOPE_TYPE!=='entity'?4:3;
-  body.innerHTML=(filtered.length?filtered.map(fixCostRowHtml).join(''):`<tr><td colspan="${totColspan+2}" style="text-align:center;color:var(--muted);padding:20px">No fixed cost items match these filters</td></tr>`)
+  body.innerHTML=(sorted.length?sorted.map(fixCostRowHtml).join(''):`<tr><td colspan="${totColspan+2}" style="text-align:center;color:var(--muted);padding:20px">No fixed cost items match these filters</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${totColspan}"><strong>TOTAL${filtered.length!==FCE_ROWS.length?' (filtered)':''}</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td><td></td></tr>`;
   updateFcFilterIndicators();
 }
