@@ -4493,13 +4493,11 @@ function parseFlexDate(v){
   }
   return null;
 }
-// Renders a plain value when matched, or an inline "pick one" dropdown when not — so a flagged
-// row can be fixed right in the preview instead of forcing a re-upload.
-function fixPickCellHtml(onFixCall,options,placeholder){
-  return `<select onchange="${onFixCall}" style="font-size:11px;padding:3px 4px;border:1px solid #f6c9c3;border-radius:6px;max-width:170px">`
-    +`<option value="">${escH(placeholder)}</option>`
-    +options.map(o=>`<option value="${escH(o)}">${escH(o)}</option>`).join('')
-    +`</select>`;
+// Renders a plain value when matched, or an inline searchable "pick one" cell when not — so a
+// flagged row can be fixed right in the preview instead of forcing a re-upload. `id` must be
+// unique per cell (row index + field) since the searchable component caches its option list by id.
+function fixPickCellHtml(id,onFixCall,options,placeholder){
+  return searchableSelectHtml(id,options,'',{placeholder,style:'font-size:11px;padding:3px 4px;max-width:170px',onchange:onFixCall});
 }
 let OPD_ROWS=[];
 function computeOpdRow(r){
@@ -4527,20 +4525,17 @@ function fixOpdField(i,field,value){
   computeOpdRow(r);
   renderOpdPreview();
 }
-function entityPickCellHtml(onFixCall){
-  return `<select onchange="${onFixCall}" style="font-size:11px;padding:3px 4px;border:1px solid #f6c9c3;border-radius:6px;max-width:170px">`
-    +`<option value="">— pick entity —</option>`
-    +EIDS.map(id=>`<option value="${id}">${escH(ENT[id].name)}</option>`).join('')
-    +`</select>`;
+function entityPickCellHtml(id,onFixCall){
+  return searchableSelectHtml(id,EIDS.map(e=>({value:e,label:ENT[e].name})),'',{placeholder:'— pick entity —',style:'font-size:11px;padding:3px 4px;max-width:170px',onchange:onFixCall});
 }
 function opdEntityCell(r,i){
-  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml(`fixOpdField(${i},'entity',this.value)`);
+  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('opd-fix-ent-'+i,`fixOpdField(${i},'entity',this.value)`);
 }
 function opdCatCell(r,i){
-  return r.catMatch?escH(r.catMatch):fixPickCellHtml(`fixOpdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —');
+  return r.catMatch?escH(r.catMatch):fixPickCellHtml('opd-fix-cat-'+i,`fixOpdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —');
 }
 function opdVendorCell(r,i){
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml(`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('opd-fix-vendor-'+i,`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
 }
 function renderOpdPreview(){
   const el=document.getElementById('opd-preview'); if(!el) return;
@@ -4616,14 +4611,14 @@ function fixFcdField(i,field,value){
   renderFcdPreview();
 }
 function fcdEntityCell(r,i){
-  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml(`fixFcdField(${i},'entity',this.value)`);
+  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('fcd-fix-ent-'+i,`fixFcdField(${i},'entity',this.value)`);
 }
 function fcdCatCell(r,i){
-  return r.catMatch?escH(r.catMatch):fixPickCellHtml(`fixFcdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —');
+  return r.catMatch?escH(r.catMatch):fixPickCellHtml('fcd-fix-cat-'+i,`fixFcdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —');
 }
 function fcdVendorCell(r,i){
   if(!r.vendorRaw) return '—';
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml(`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('fcd-fix-vendor-'+i,`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
 }
 function renderFcdPreview(){
   const el=document.getElementById('fcd-preview'); if(!el) return;
@@ -4680,54 +4675,60 @@ function renderFcdPreview(){
 // last valid selection on blur (or clears if the field was empty) — Category/Vendor stay locked to
 // real values, never free text, matching the "lock the vendor list" design from earlier this session.
 window.SS_OPTIONS={};
+// `options` is either an array of strings (value===label — Category/Vendor) or an array of
+// {value,label} pairs (code !== display text — Entity, where value is the entity code but the
+// searchable text/list shows the entity name).
+function ssNorm(options){ return (options||[]).map(o=>typeof o==='string'?{value:o,label:o}:o); }
 function searchableSelectHtml(id,options,current,opts){
   opts=opts||{};
-  window.SS_OPTIONS[id]=options||[];
-  const cur=current||'';
+  const norm=ssNorm(options);
+  window.SS_OPTIONS[id]=norm;
+  const curObj=norm.find(o=>o.value===current);
+  const curLabel=curObj?curObj.label:(current||'');
   return `<div style="position:relative">`
-    +`<input id="${id}-q" type="text" autocomplete="off" placeholder="${escH(opts.placeholder||'Search…')}" value="${escH(cur)}" `
+    +`<input id="${id}-q" type="text" autocomplete="off" placeholder="${escH(opts.placeholder||'Search…')}" value="${escH(curLabel)}" `
     +`style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d7dae3;border-radius:8px;font-size:13px${opts.style?';'+opts.style:''}" `
     +`oninput="searchableSelectFilter('${id}')" onfocus="searchableSelectFilter('${id}')" onblur="setTimeout(function(){searchableSelectBlur('${id}')},150)">`
-    +`<input type="hidden" id="${id}" value="${escH(cur)}"${opts.onchange?` onchange="${escH(opts.onchange)}"`:''}>`
+    +`<input type="hidden" id="${id}" value="${escH(current||'')}"${opts.onchange?` onchange="${escH(opts.onchange)}"`:''}>`
     +`<div id="${id}-list" data-allow-create="${opts.allowCreate?'1':'0'}" style="display:none;position:absolute;z-index:1000;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 10px 24px -8px rgba(20,27,45,.25);max-height:220px;overflow:auto;margin-top:2px"></div>`
     +`</div>`;
 }
 function searchableSelectFilter(id){
   const q=document.getElementById(id+'-q'), list=document.getElementById(id+'-list');
   if(!q||!list) return;
-  const opts=window.SS_OPTIONS[id]||[];
+  const norm=window.SS_OPTIONS[id]||[];
   const term=q.value.trim(), termLc=term.toLowerCase();
-  const filtered=termLc?opts.filter(o=>o.toLowerCase().includes(termLc)):opts;
-  const exact=termLc && opts.some(o=>o.toLowerCase()===termLc);
+  const filtered=termLc?norm.filter(o=>o.label.toLowerCase().includes(termLc)):norm;
+  const exact=termLc && norm.some(o=>o.label.toLowerCase()===termLc);
   let html='';
   if(list.dataset.allowCreate==='1' && term && !exact){
     html+=`<div onmousedown="searchableVendorCreate('${id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:#4550d8;font-weight:700;border-bottom:1px solid #eef2f7">+ Add "${escH(term)}" as new vendor</div>`;
   }
   if(filtered.length){
-    html+=filtered.slice(0,200).map(o=>`<div onmousedown="searchableSelectPick('${id}','${encodeURIComponent(o)}')" style="padding:7px 10px;font-size:13px;cursor:pointer" onmouseover="this.style.background='#f2f4fd'" onmouseout="this.style.background=''">${escH(o)}</div>`).join('');
+    html+=filtered.slice(0,200).map(o=>`<div onmousedown="searchableSelectPick('${id}','${encodeURIComponent(o.value)}','${encodeURIComponent(o.label)}')" style="padding:7px 10px;font-size:13px;cursor:pointer" onmouseover="this.style.background='#f2f4fd'" onmouseout="this.style.background=''">${escH(o.label)}</div>`).join('');
   } else if(!html){
     html='<div style="padding:7px 10px;font-size:12px;color:#8892a6">No match</div>';
   }
   list.innerHTML=html;
   list.style.display='block';
 }
-function searchableSelectPick(id,encVal){
-  const val=decodeURIComponent(encVal);
+function searchableSelectPick(id,encVal,encLabel){
+  const val=decodeURIComponent(encVal), label=encLabel?decodeURIComponent(encLabel):val;
   const q=document.getElementById(id+'-q'), hidden=document.getElementById(id), list=document.getElementById(id+'-list');
   if(!q||!hidden) return;
-  q.value=val; hidden.value=val; if(list) list.style.display='none';
+  q.value=label; hidden.value=val; if(list) list.style.display='none';
   hidden.dispatchEvent(new Event('change',{bubbles:true}));
 }
 function searchableSelectBlur(id){
   const list=document.getElementById(id+'-list'); if(list) list.style.display='none';
   const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
   if(!q||!hidden) return;
-  const opts=window.SS_OPTIONS[id]||[];
+  const norm=window.SS_OPTIONS[id]||[];
   const typed=q.value.trim();
   if(!typed){ hidden.value=''; return; }
-  const match=opts.find(o=>o.toLowerCase()===typed.toLowerCase());
-  if(match){ q.value=match; if(hidden.value!==match){ hidden.value=match; hidden.dispatchEvent(new Event('change',{bubbles:true})); } }
-  else { q.value=hidden.value||''; }
+  const match=norm.find(o=>o.label.toLowerCase()===typed.toLowerCase());
+  if(match){ q.value=match.label; if(hidden.value!==match.value){ hidden.value=match.value; hidden.dispatchEvent(new Event('change',{bubbles:true})); } }
+  else { const cur=norm.find(o=>o.value===hidden.value); q.value=cur?cur.label:(hidden.value||''); }
 }
 // "+ Add new vendor" row inside the searchable vendor picker — registers the typed name via the
 // existing addVendor() (same cascade-safe path Manage Vendors uses) instead of a separate prompt().
@@ -4737,7 +4738,7 @@ async function searchableVendorCreate(id){
   try{
     await addVendor(name);
     await ensureVendorsG();
-    window.SS_OPTIONS[id]=VENDORS_G.slice();
+    window.SS_OPTIONS[id]=ssNorm(VENDORS_G);
     q.value=name; hidden.value=name;
     const list=document.getElementById(id+'-list'); if(list) list.style.display='none';
     hidden.dispatchEvent(new Event('change',{bubbles:true}));
