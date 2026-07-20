@@ -6325,8 +6325,12 @@ function dayLbl(iso){ return iso.slice(8,10)+' '+MON3[parseInt(iso.slice(5,7),10
 // ── Template downloads with in-cell dropdowns (Entity/Category/Vendor/Frequency) — built with
 // ExcelJS instead of SheetJS/xlsx, since the community xlsx build used for reading/exporting
 // elsewhere in this file cannot WRITE Excel data-validation dropdowns. The allowed-values lists
-// live on a hidden "Lists" sheet (long lists don't fit Excel's ~255-char inline-list limit); the
-// dropdown is applied down to row 500 so pasting many rows still gets validation.
+// live on a "Lists" sheet (long lists don't fit Excel's ~255-char inline-list limit); the dropdown
+// is applied down to row 500 so pasting many rows still gets validation.
+// The Lists sheet is merely `hidden` (right-click "Unhide" reveals it), not `veryHidden` —
+// veryHidden sheets and their cross-sheet dataValidation references are dropped or ignored by
+// some non-Excel-Desktop readers (e.g. importing into Google Sheets), which would silently break
+// the dropdown for anyone not opening the file in Excel itself.
 async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,colValidations){
   const wb=new ExcelJS.Workbook();
   const ws=wb.addWorksheet(sheetName);
@@ -6334,7 +6338,7 @@ async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,co
   ws.addRow(sampleRow);
   const maxRow=500;
   if(colValidations && colValidations.length){
-    const listsWs=wb.addWorksheet('Lists',{state:'veryHidden'});
+    const listsWs=wb.addWorksheet('Lists',{state:'hidden'});
     colValidations.forEach((cv,i)=>{
       const listCol=String.fromCharCode(65+i);
       cv.values.forEach((v,ri)=>{ listsWs.getCell(listCol+(ri+1)).value=v; });
