@@ -7,6 +7,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- SheetJS (xlsx) can't write Excel dropdown data validation — used only for the template
+     downloads below (Outstanding Liability / Fixed Cost), which need in-cell Entity/Category/
+     Vendor dropdowns so filling the sheet doesn't require checking the dashboard first. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
 :root{
   --blue-900:#141b2d;--blue-700:#3a4358;--blue-500:#5b67f1;--blue-300:#aab3f8;--blue-100:#e3e6fd;--blue-50:#eef0fe;
@@ -6298,6 +6302,34 @@ function xlsNum(v){
 }
 const MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function dayLbl(iso){ return iso.slice(8,10)+' '+MON3[parseInt(iso.slice(5,7),10)-1]; }
+// ── Template downloads with in-cell dropdowns (Entity/Category/Vendor/Frequency) — built with
+// ExcelJS instead of SheetJS/xlsx, since the community xlsx build used for reading/exporting
+// elsewhere in this file cannot WRITE Excel data-validation dropdowns. The allowed-values lists
+// live on a hidden "Lists" sheet (long lists don't fit Excel's ~255-char inline-list limit); the
+// dropdown is applied down to row 500 so pasting many rows still gets validation.
+async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,colValidations){
+  const wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet(sheetName);
+  ws.addRow(headers);
+  ws.addRow(sampleRow);
+  const maxRow=500;
+  if(colValidations && colValidations.length){
+    const listsWs=wb.addWorksheet('Lists',{state:'veryHidden'});
+    colValidations.forEach((cv,i)=>{
+      const listCol=String.fromCharCode(65+i);
+      cv.values.forEach((v,ri)=>{ listsWs.getCell(listCol+(ri+1)).value=v; });
+      const ref=`Lists!$${listCol}$1:$${listCol}$${cv.values.length}`;
+      for(let r=2;r<=maxRow;r++){
+        ws.getCell(cv.col+r).dataValidation={type:'list',allowBlank:true,formulae:[ref]};
+      }
+    });
+  }
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
 async function parseBankFiles(from,to,myEntityName){
   if(typeof XLSX==='undefined') return null;
   await loadEntityNameRx();
@@ -7143,12 +7175,15 @@ async function renderEntryBody(){
     };
     const opexCats2=cats.filter(c=>c.kind==='opex');
     const tplBtn=document.getElementById('opd-template');
-    if(tplBtn) tplBtn.onclick=()=>{
-      const rows=[['Entity','Invoice #','Vendor','Category','Frequency','Invoice Date','Due Date','Amount','Description','Document Link'],
-        [eName(EIDS[0]),'INV-0001','Sample Vendor',opexCats2[0]?opexCats2[0].name:'Other Operating Expense','OTP','2026-07-01','2026-07-31',1000000,'Sample transaction description','https://drive.google.com/…']];
-      const wb=XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
-      XLSX.writeFile(wb,'outstanding_payables_template.xlsx');
+    if(tplBtn) tplBtn.onclick=async()=>{
+      tplBtn.disabled=true;
+      try{
+        await ensureVendorsG();
+        await downloadValidatedTemplate('outstanding_payables_template.xlsx','Outstanding',
+          ['Entity','Invoice #','Vendor','Category','Frequency','Invoice Date','Due Date','Amount','Description','Document Link'],
+          [eName(EIDS[0]),'INV-0001','Sample Vendor',opexCats2[0]?opexCats2[0].name:'Other Operating Expense','OTP','2026-07-01','2026-07-31',1000000,'Sample transaction description','https://drive.google.com/…'],
+          [{col:'A',values:EIDS.map(eName)},{col:'C',values:VENDORS_G||[]},{col:'D',values:opexCats2.map(c=>c.name)},{col:'E',values:['OTP','REC','PRG']}]);
+      } finally { tplBtn.disabled=false; }
     };
     const fileInp=document.getElementById('opd-file');
     if(fileInp) fileInp.onchange=async()=>{
@@ -7236,12 +7271,15 @@ async function renderEntryBody(){
     };
     const opexCatsFc2=cats.filter(c=>c.kind==='opex');
     const tplBtnFc=document.getElementById('fcd-template');
-    if(tplBtnFc) tplBtnFc.onclick=()=>{
-      const rows=[['Entity','Category','Vendor','Description','Amount'],
-        [eName(EIDS[0]),opexCatsFc2[0]?opexCatsFc2[0].name:'Other Operating Expense','Sample Vendor','Sample recurring cost description',1000000]];
-      const wb=XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'FixedCost');
-      XLSX.writeFile(wb,'fixed_cost_template.xlsx');
+    if(tplBtnFc) tplBtnFc.onclick=async()=>{
+      tplBtnFc.disabled=true;
+      try{
+        await ensureVendorsG();
+        await downloadValidatedTemplate('fixed_cost_template.xlsx','FixedCost',
+          ['Entity','Category','Vendor','Description','Amount'],
+          [eName(EIDS[0]),opexCatsFc2[0]?opexCatsFc2[0].name:'Other Operating Expense','Sample Vendor','Sample recurring cost description',1000000],
+          [{col:'A',values:EIDS.map(eName)},{col:'B',values:opexCatsFc2.map(c=>c.name)},{col:'C',values:VENDORS_G||[]}]);
+      } finally { tplBtnFc.disabled=false; }
     };
     const fileInpFc=document.getElementById('fcd-file');
     if(fileInpFc) fileInpFc.onchange=async()=>{
