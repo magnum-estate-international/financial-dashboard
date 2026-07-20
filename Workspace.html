@@ -2895,7 +2895,7 @@ function cashPositionCard(){
     </div>`;
 }
 function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi3'; kc.innerHTML=cashPositionCard()+fixCostCard()+outstandingCard(); }
+  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi4'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard(); }
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
@@ -3008,6 +3008,21 @@ function fixCostCard(){
 async function refreshFixCost(){
   try{ FIXCOST=(await sbFetch('entity_fixed_costs?select=*&order=id')).map(mkFixCost); }catch(e){}
   renderKpiCash();
+}
+// Fix cost is a flat monthly baseline (entity/group-scoped, not month-scoped); actual is always
+// pinned to May (the last full, stable month) — see fixCostVsActualHtml() for the detail view.
+function fixCostVsActualCard(){
+  const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
+  const fc=FIXCOST.filter(f=>ids.includes(f.e)).reduce((s,f)=>s+f.amt,0);
+  const act=ids.reduce((s,id)=>s+((effMonth(id,'MAY')||{}).opex||0),0);
+  const varr=act-fc;
+  const color=varr>0?'var(--red)':(varr<0?'#1f8a61':'var(--muted)');
+  return `<div class="pcard clickable" onclick="openFixCostVsActual()">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="lab">Fix Cost vs Actual (May)</div>
+      <div class="big" style="color:${(fc>0||act>0)?color:'var(--muted)'}">${(fc>0||act>0)?(varr>=0?'+':'')+fmt(varr):'—'}</div>
+      <div class="meta">${(fc>0||act>0)?`Fix cost ${fmt(fc)} vs actual ${fmt(act)} — click to view`:'No fixed cost or May actuals in this scope'}</div>
+    </div>`;
 }
 function renderLiabTopVendor(){
   const el=document.getElementById('liabTopVendor'); if(!el) return;
@@ -4806,14 +4821,9 @@ function openFixCost(view){
     .sort((a,b)=>b[1].tot-a[1].tot);
   const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openFixCost('${v}')">${label}</button>`;
   let h=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">`
-    +`<div style="display:flex;gap:8px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}${tabBtn('compare','vs Actual')}</div>`
-    +(view!=='compare'?`<input id="fc-search" type="text" placeholder="🔍 Search…" value="${escH(FC_SEARCH)}" oninput="onFcSearchInput(this.value)" style="margin-left:auto;padding:7px 13px;border:1px solid #e4e7ef;border-radius:999px;font-size:12.5px;min-width:170px;box-sizing:border-box">`:'')
+    +`<div style="display:flex;gap:8px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}</div>`
+    +`<input id="fc-search" type="text" placeholder="🔍 Search…" value="${escH(FC_SEARCH)}" oninput="onFcSearchInput(this.value)" style="margin-left:auto;padding:7px 13px;border:1px solid #e4e7ef;border-radius:999px;font-size:12.5px;min-width:170px;box-sizing:border-box">`
     +`</div>`;
-  if(view==='compare'){
-    h+=fixCostVsActualHtml();
-    showModal('Monthly Fix Cost — vs Actual',h);
-    return;
-  }
   h+=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total monthly fix cost in this scope: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${rows.length} item${rows.length===1?'':'s'})</div>`;
   const colLabel=view==='entity'?'Entity':view==='vendor'?'Vendor':'Cost Category';
   const rowLabel=k=>view==='entity'?pill(k):escH(k);
@@ -4841,7 +4851,7 @@ function fixCostVsActualHtml(){
   const rows=ids.map(id=>{const fc=fcByEnt[id]||0, act=(effMonth(id,'MAY')||{}).opex||0; return {id,fc,act,varr:act-fc};})
     .filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
   const totFc=rows.reduce((s,r)=>s+r.fc,0), totAct=rows.reduce((s,r)=>s+r.act,0), totVar=totAct-totFc;
-  let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is always <b>May 2026</b>, the last full month, regardless of the month filter selected above. Red = over budget, green = under.</div>`;
+  let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is always <b>May 2026</b>, the last full month, regardless of the dashboard's month filter. Red = over budget, green = under.</div>`;
   h+=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">Fix Cost (IDR)</th><th class="num" style="text-align:right">Actual Opex (IDR)</th><th class="num" style="text-align:right">Variance</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
   if(rows.length){
     rows.forEach(r=>{
@@ -4858,6 +4868,7 @@ function fixCostVsActualHtml(){
     +`<td class="num" style="text-align:right;color:${varColor(totVar)}">${pctStr(totVar,totFc)}</td></tr></tbody></table>`;
   return h;
 }
+function openFixCostVsActual(){ showModal('Fix Cost vs Actual (May)',fixCostVsActualHtml(),true); }
 function openFixCostVsActualEntity(id){
   const fcByCat={}; FIXCOST.filter(f=>f.e===id).forEach(f=>{const c=f.cat||'—'; fcByCat[c]=(fcByCat[c]||0)+f.amt;});
   const actByCat=opexEntityBreakdownMay(id);
@@ -4865,7 +4876,7 @@ function openFixCostVsActualEntity(id){
   const pctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
   const cats=Array.from(new Set(Object.keys(fcByCat).concat(Object.keys(actByCat))))
     .sort((a,b)=>(actByCat[b]||0)-(actByCat[a]||0));
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCost('compare')">‹ Back to breakdown</button>`;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCostVsActual()">‹ Back to breakdown</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id]?ENT[id].name:id} — Fix Cost vs Actual</h4>`;
   if(!cats.length){
     h+=`<p style="color:var(--muted);font-size:13px">No fixed cost or actual expense in this scope for this entity.</p>`;
