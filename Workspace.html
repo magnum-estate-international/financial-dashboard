@@ -6296,6 +6296,157 @@ function attChips(s){
   return '<div style="margin-top:5px">'+a.map(x=>
     '<button class="att" data-p="'+escH(x.path)+'" title="'+escH(x.name)+'" style="border:1px solid #d4d9fb;background:#f4f5fe;color:#4550d8;border-radius:12px;padding:2.5px 10px;font-size:11px;font-weight:600;cursor:pointer;margin:2px 4px 0 0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">📎 '+escH(DT_LBL[x.doc_type]||'Doc')+' · '+escH(x.name)+'</button>').join('')+'</div>';
 }
+/* ── Replace Period Import (admin) ──────────────────────────────────────────
+   Standalone sheet parser mirroring parseBankFiles' inner loop, but scoped to a single File
+   (not the entry panel's EN_FILES) and without dedup — this tool always replaces the whole
+   entity+period, so there's nothing to dedup against. Reuses the same header-detection and
+   classification helpers (xlsDate/xlsNum/financingCanon/FIN_RX/REFUND_RX/EXCLUDE_RX) parseBankFiles
+   already relies on, so a file classifies identically whichever import path it goes through. */
+async function rpiParseSheet(file, myEntityName){
+  await loadEntityNameRx();
+  const rows=[];
+  let wb; try{ wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){ throw new Error('Could not read file: '+e.message); }
+  wb.SheetNames.forEach(sn=>{
+    if(/^(sheet1$|categories$|_|jr_|microsoft)/i.test(sn.trim())) return;
+    let raw; try{ raw=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true}); }catch(e){ return; }
+    let hdr=-1; const cols={};
+    for(let i=0;i<Math.min(raw.length,10);i++){
+      const vals=(raw[i]||[]).map(c=>String(c==null?'':c).trim().toUpperCase());
+      if(vals.indexOf('DATE')>=0 && vals.indexOf('DEBIT')>=0){
+        hdr=i;
+        vals.forEach((v,j)=>{
+          if(v==='DATE')cols.date=j;
+          else if(v==='REMARK'||v==='DESCRIPTION')cols.desc=j;
+          else if(v==='CATEGORIES')cols.cat=j;
+          else if(v==='DEBIT')cols.debit=j;
+          else if(v==='CREDIT'||v==='KREDIT')cols.credit=j;
+        });
+        break;
+      }
+    }
+    if(hdr<0||cols.date==null) return;
+    for(let i=hdr+1;i<raw.length;i++){
+      const row=raw[i]||[];
+      const dt=xlsDate(row[cols.date]);
+      const desc=String(cols.desc!=null&&row[cols.desc]!=null?row[cols.desc]:'').trim();
+      if(!dt||!desc) continue;
+      if(/^opening balance/i.test(desc)) continue;
+      const inn=Math.round(xlsNum(cols.debit!=null?row[cols.debit]:0));
+      const outv=Math.round(xlsNum(cols.credit!=null?row[cols.credit]:0));
+      if(!inn && !outv) continue;
+      const catRaw=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'').trim();
+      const tag=catRaw+' '+desc;
+      if(EXCLUDE_RX.test(tag)) continue;
+      const genericFin=FIN_RX.test(tag);
+      if(inn){
+        const canonIn=financingCanon(tag,'in',myEntityName);
+        const fin=genericFin||!!canonIn;
+        const refund=!fin && REFUND_RX.test(tag);
+        rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw,canon:fin?canonIn:null,shName:canonIn==='Shareholder Capital Deposit (Stan & Igor)'?shareholderName(desc):null});
+      }
+      if(outv){
+        const canonOut=financingCanon(tag,'out',myEntityName);
+        const fin=genericFin||!!canonOut;
+        rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw,canon:fin?canonOut:null});
+      }
+    }
+  });
+  return rows;
+}
+function rpiFlowKey(r){ return r.fin?(r.dir==='in'?'fin_in':'fin_out'):((r.dir==='in'&&!r.refund)?'rev':'opex'); }
+let RPI_ROWS=null;
+function wireReplacePeriodImport(){
+  const entSel=document.getElementById('rpi-ent'), perSel=document.getElementById('rpi-per'),
+    cutoffInp=document.getElementById('rpi-cutoff'), fileInp=document.getElementById('rpi-file'),
+    fnameSpan=document.getElementById('rpi-filename'), previewBtn=document.getElementById('rpi-preview-btn'),
+    previewBox=document.getElementById('rpi-preview');
+  if(!entSel) return;
+  let rpiFile=null;
+  const reset=()=>{ previewBox.innerHTML=''; RPI_ROWS=null; };
+  fileInp.onchange=()=>{ rpiFile=fileInp.files[0]||null; fnameSpan.textContent=rpiFile?rpiFile.name:''; previewBtn.disabled=!rpiFile; reset(); };
+  entSel.onchange=reset; perSel.onchange=reset; cutoffInp.onchange=reset;
+  previewBtn.onclick=async()=>{
+    if(!rpiFile) return;
+    const entity=entSel.value, period=perSel.value, cutoff=cutoffInp.value;
+    if(!cutoff){ previewBox.innerHTML='<p style="color:#b3261e;font-size:12.5px">Set a cutoff date first — data through what date should this import cover?</p>'; return; }
+    previewBtn.disabled=true; previewBtn.textContent='Reading file…';
+    try{
+      const myEntityName=(ENT[entity]&&ENT[entity].name)||'';
+      let parsed=await rpiParseSheet(rpiFile,myEntityName);
+      const before=parsed.length;
+      parsed=parsed.filter(r=>r.date<=cutoff);
+      const excludedByCutoff=before-parsed.length;
+      await categorizeRows(parsed);
+      RPI_ROWS=parsed;
+      const existing=await sbFetch('transactions?entity_code=eq.'+entity+'&period_code=eq.'+period+'&select=id,day_label,description,raw_label,amount_idr,flow');
+      // multiset match on flow+amount, for display only — classifies rows as added/removed/
+      // unchanged so the reviewer isn't staring at 100 "removed" + 100 "added" rows that are
+      // actually the same data. The commit step below always deletes+reinserts everything
+      // regardless of this classification, so a false "unchanged" match can't hide a real change.
+      const pool={};
+      existing.forEach(t=>{const k=t.flow+'|'+Math.round(t.amount_idr); (pool[k]=pool[k]||[]).push(t);});
+      const added=[], unchanged=[];
+      parsed.forEach(r=>{
+        const k=rpiFlowKey(r)+'|'+Math.round(r.amt);
+        const arr=pool[k];
+        if(arr&&arr.length){ unchanged.push(r); arr.pop(); }
+        else added.push(r);
+      });
+      const removed=Object.values(pool).flat();
+      const fmt2=n=>Math.round(n).toLocaleString('id-ID');
+      const rowHtml=(d,desc,amt)=>'<tr><td style="font-size:11.5px;color:#667085;white-space:nowrap;padding:4px 8px 4px 0">'+escH(d)+'</td><td style="font-size:12px;padding:4px 8px">'+escH(desc)+'</td><td style="text-align:right;font-size:12px;font-family:ui-monospace,monospace;padding:4px 0">'+fmt2(amt)+'</td></tr>';
+      let ph='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:12px"><b>This will delete all '+existing.length+' existing transaction'+(existing.length===1?'':'s')+'</b> for '+escH(myEntityName)+' in this period, and insert '+parsed.length+' row'+(parsed.length===1?'':'s')+' from the file'+(excludedByCutoff?' ('+excludedByCutoff+' row'+(excludedByCutoff===1?'':'s')+' excluded — dated after the cutoff)':'')+'.</div>'
+        +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px">'
+        +'<div>🟢 <b>'+added.length+'</b> added</div><div>🔴 <b>'+removed.length+'</b> removed</div><div>⚪ <b>'+unchanged.length+'</b> unchanged (matched by amount)</div>'
+        +'</div>';
+      if(added.length) ph+='<div style="font-weight:700;font-size:12.5px;margin:10px 0 4px">Added ('+added.length+')</div><div style="max-height:220px;overflow:auto"><table style="width:100%;border-collapse:collapse"><tbody>'+added.map(r=>rowHtml(dayLbl(r.date),r.desc,r.amt)).join('')+'</tbody></table></div>';
+      if(removed.length) ph+='<div style="font-weight:700;font-size:12.5px;margin:10px 0 4px">Removed ('+removed.length+')</div><div style="max-height:220px;overflow:auto"><table style="width:100%;border-collapse:collapse"><tbody>'+removed.map(t=>rowHtml(t.day_label,t.description,t.amount_idr)).join('')+'</tbody></table></div>';
+      ph+='<button id="rpi-confirm-btn" type="button" style="margin-top:14px;border:0;border-radius:12px;background:#c0392b;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Confirm &amp; Replace</button>'
+        +'<div id="rpi-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+      previewBox.innerHTML=ph;
+      document.getElementById('rpi-confirm-btn').onclick=()=>rpiConfirm(entity,period,myEntityName);
+    }catch(e){ previewBox.innerHTML='<p style="color:#b3261e;font-size:12.5px">'+escH(e.message)+'</p>'; }
+    previewBtn.disabled=false; previewBtn.textContent='Preview changes';
+  };
+}
+async function rpiConfirm(entity,period,myEntityName){
+  const btn=document.getElementById('rpi-confirm-btn'), msg=document.getElementById('rpi-msg');
+  if(!RPI_ROWS) return;
+  btn.disabled=true; btn.textContent='Replacing…';
+  try{
+    await adminDel('transactions?entity_code=eq.'+entity+'&period_code=eq.'+period);
+    const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
+    const baseOrd=Math.floor(Date.now()/1000);
+    const txRows=RPI_ROWS.map((r,i)=>({
+      source:'TX_MULTI',ord:baseOrd+i,period_code:period,flow:rpiFlowKey(r),
+      entity_code:entity,day_label:dayLbl(r.date),
+      description:String(r.desc||'').slice(0,200),raw_label:(r.canon||'Replace period import'),
+      source_label:'Replace period import',upload_batch:batchId,amount_idr:(r.refund?-r.amt:r.amt),contra:false}));
+    if(txRows.length) await adminAddBatch('transactions',txRows);
+    // recompute this entity+period's headline totals to exactly match the freshly inserted detail —
+    // no gap-fill guesswork, unlike the bank-book flow's EN_DEDUP path
+    const sums={revenue:0,opex:0,financing_in:0,financing_out:0};
+    const FLN={rev:'revenue',opex:'opex',fin_in:'financing_in',fin_out:'financing_out'};
+    RPI_ROWS.forEach(r=>{
+      if(r.canon==='Shareholder Capital Deposit (Stan & Igor)') return; // tracked via loan_flows only
+      FLN[rpiFlowKey(r)] && (sums[FLN[rpiFlowKey(r)]]+=(r.refund?-r.amt:r.amt));
+    });
+    const rt=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify({entity_code:entity,period_code:period,revenue:sums.revenue,opex:sums.opex,financing_in:sums.financing_in,financing_out:sums.financing_out})});
+    if(!rt.ok) throw new Error((await rt.text())||('HTTP '+rt.status));
+    // shareholder capital deposits also feed the dedicated card via loan_flows (not entity_period_totals) —
+    // same convention as the bank-book flow; full-replace this entity+period's deposits too
+    await adminDel('loan_flows?period_code=eq.'+period+'&flow_type=eq.Capital deposit&to_label=eq.'+encodeURIComponent(myEntityName));
+    const loanRows=RPI_ROWS.filter(r=>r.dir==='in'&&r.canon==='Shareholder Capital Deposit (Stan & Igor)').map(r=>({
+      period_code:period, from_label:r.shName||'Shareholder (Stan & Igor)', to_label:myEntityName,
+      flow_type:'Capital deposit', amount_idr:r.amt, from_group:null, to_group:(ENT[entity]&&ENT[entity].grp)||null}));
+    if(loanRows.length) await adminAdd('loan_flows',loanRows);
+    ENTRY_DIRTY=true;
+    msg.style.color='#2b7a4b';
+    msg.innerHTML='✅ Replaced — '+txRows.length+' transactions saved. The page refreshes when you close this panel.';
+    btn.textContent='Replaced ✓';
+  }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed: '+e.message; btn.disabled=false; btn.textContent='Confirm & Replace'; }
+}
 async function openEntryPanel(){
   const old=document.getElementById('mag-entry'); if(old) old.remove();
   const wrap=document.createElement('div'); wrap.id='mag-entry';
@@ -6488,6 +6639,30 @@ async function renderEntryBody(){
       +'<span id="fcd-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
       +'<div id="fcd-preview" style="margin-top:12px"></div>'
       +'</div>'
+      +'</div></details>';
+  }
+  // ── Replace Period Import (admin) — wholesale replace of a single entity's transactions for a
+  // single period, instead of the bank-book flow's "append + heuristic dedup" (which is what let a
+  // re-uploaded file insert the same row twice — see the June duplicate-payment incident). Deletes
+  // every existing transaction for that entity+period and inserts the freshly parsed file in one
+  // atomic step, so a re-upload can never produce a duplicate — and a "data through" cutoff date
+  // keeps a file that runs past the intended period from silently extending it (the second incident
+  // that same day: mei/ssvd/kso ended up with data past the shared 22-Jun cutoff other entities used).
+  if(IS_ADMIN){
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">🔁 Replace Period Import (Transactions)</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">For fixing/re-importing one PT\'s transactions for one period. Deletes <b>every</b> existing transaction for that PT+period and replaces them with the uploaded file — no partial dedup guesswork, so a re-upload can never create duplicates. Set a cutoff date so the file can\'t silently extend the period past what you intend. <b>Not available for May</b> — May\'s headline figures come from a separate entry, not this table.</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
+      +'<select id="rpi-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<select id="rpi-per" style="'+inp+'">'+pers.filter(p=>p.code!=='MAY').map(p=>'<option value="'+p.code+'">'+escH(p.label)+'</option>').join('')+'</select>'
+      +'<input id="rpi-cutoff" type="date" aria-label="Data through this date" style="'+inp+'">'
+      +'</div>'
+      +'<div style="font-size:11.5px;color:#667085;margin-bottom:10px">Rows dated after the cutoff are excluded from the import (shown in the preview).</div>'
+      +'<div><label for="rpi-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose bank file (.xlsx/.xls/.csv)</label>'
+      +'<input id="rpi-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'<span id="rpi-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
+      +'<div style="margin-top:10px"><button id="rpi-preview-btn" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer">Preview changes</button></div>'
+      +'<div id="rpi-preview" style="margin-top:14px"></div>'
       +'</div></details>';
   }
   // ── Record a payment against an outstanding payable (supports partial payments) ──
@@ -7034,6 +7209,8 @@ async function renderEntryBody(){
       cposBtn.disabled=false; cposBtn.textContent='Save cash position';
     };
   }
+  // ── Wire the "Replace Period Import" box ──
+  if(IS_ADMIN) wireReplacePeriodImport();
   wireOppPicker(inp);
   if(IS_ADMIN){ renderCategoriesBody(); renderVendorsBody(); }
   document.getElementById('en-send').onclick=async()=>{
