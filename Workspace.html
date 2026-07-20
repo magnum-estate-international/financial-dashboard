@@ -3286,7 +3286,8 @@ function closeModal(){document.getElementById('overlay').classList.remove('show'
 // Sourced from categories.parent_group (set via the "Manage Categories" panel), not hardcoded —
 // OPEX_CAT_TO_GROUP is populated in loadFromSupabase() and refreshed on any category CRUD.
 let OPEX_CAT_TO_GROUP={};
-function opexRowsGrouped(items,total,cls){
+function opexRowsGrouped(items,total,cls,drillFn){
+  drillFn=drillFn||(k=>`openBDItem('opex','${encodeURIComponent(k)}')`);
   const byGroup={},ungrouped=[];
   items.forEach(([k,v])=>{
     const g=OPEX_CAT_TO_GROUP[k];
@@ -3306,12 +3307,12 @@ function opexRowsGrouped(items,total,cls){
         <td class="num ${cls}">${fmt(entry.total)}</td><td class="num">${pct}%</td></tr>`;
       entry.items.forEach(([k,v])=>{
         const p2=total>0?(v/total*100).toFixed(1):'0.0';
-        h+=`<tr class="${gid}_row" style="display:none;cursor:pointer" onclick="openBDItem('opex','${encodeURIComponent(k)}')">
+        h+=`<tr class="${gid}_row" style="display:none;cursor:pointer" onclick="${drillFn(k)}">
           <td style="font-size:12px;color:var(--muted);padding-left:28px">↳ ${k} <span style="color:var(--blue-300);font-weight:700">›</span></td>
           <td class="num ${cls}">${fmt(v)}</td><td class="num">${p2}%</td></tr>`;
       });
     } else {
-      h+=`<tr style="cursor:pointer" onclick="openBDItem('opex','${encodeURIComponent(entry.name)}')">
+      h+=`<tr style="cursor:pointer" onclick="${drillFn(entry.name)}">
         <td style="font-size:12.5px">${entry.name} <span style="color:var(--blue-300);font-weight:700">›</span></td>
         <td class="num ${cls}">${fmt(entry.total)}</td><td class="num">${pct}%</td></tr>`;
     }
@@ -3338,6 +3339,71 @@ function bdTableHtml(obj,total,cls){
   }
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(total)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   return h;
+}
+// Per-entity opex category map, mirroring agg()'s addRaw/addTX breakdown logic but scoped to one
+// entity id instead of the whole in-scope set. The un-itemised gap vs eff(id).opex is added as the
+// same "Other expense (month total, detail not itemised)" line agg() uses, so the entity's category
+// total always reconciles to its headline opex figure.
+function opexEntityBreakdown(id){
+  const catMap={};
+  const addRaw=()=>{ Object.entries(ENT[id].opex).forEach(([k,v])=>{const c=canon(k); catMap[c]=(catMap[c]||0)+v;}); };
+  const addTX=mo=>{ TX.filter(t=>(t.mo||'MAY')===mo && t.e===id && t.type==='opex').forEach(t=>{const c=canon(t.k); catMap[c]=(catMap[c]||0)+t.amt;}); };
+  if(MONTH==='MAY'){
+    if(effMonth(id,'MAY')!==null) addRaw();
+  } else if(MONTH==='Q2'||MONTH==='CUSTOM'){
+    const span=activeMonths();
+    if(span.includes('MAY') && effMonth(id,'MAY')!==null) addRaw();
+    span.filter(mo=>mo!=='MAY').forEach(addTX);
+  } else {
+    addTX(MONTH);
+  }
+  const ef=eff(id);
+  if(ef){
+    const cur=Object.values(catMap).reduce((s,v)=>s+v,0);
+    const gap=Math.round((ef.opex||0)-cur);
+    if(gap>0.5) catMap['Other expense (month total, detail not itemised)']=(catMap['Other expense (month total, detail not itemised)']||0)+gap;
+  }
+  return catMap;
+}
+let OPEX_BD_VIEW='category';
+function openOpexBreakdown(view){
+  view=OPEX_BD_VIEW=view||OPEX_BD_VIEW||'category';
+  const a=agg();
+  const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openOpexBreakdown('${v}')">${label}</button>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:14px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}</div>`;
+  if(view==='category'){
+    h+=bdTableHtml(a.opexBD,a.opex,'neg');
+  } else {
+    const rows=scopeIds().map(id=>({id,tot:(eff(id)||{}).opex||0})).filter(r=>r.tot>0.5).sort((x,y)=>y.tot-x.tot);
+    h+=`<div class="pn-sub" style="margin-bottom:8px">Click an entity to see its category breakdown</div>`;
+    h+=`<table><thead><tr><th>Entity</th><th class="num">Amount (IDR)</th><th class="num">%</th></tr></thead><tbody>`;
+    if(rows.length){
+      rows.forEach(r=>{
+        const pct=a.opex>0?(r.tot/a.opex*100).toFixed(1):'0.0';
+        h+=`<tr style="cursor:pointer" onclick="openOpexEntity('${r.id}')"><td>${pill(r.id)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num neg">${fmt(r.tot)}</td><td class="num">${pct}%</td></tr>`;
+      });
+    } else {
+      h+=`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No entities with expenses in scope</td></tr>`;
+    }
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
+  }
+  showModal('Operating Expenses — Breakdown',h);
+}
+function openOpexEntity(id){
+  const catMap=opexEntityBreakdown(id);
+  const items=Object.entries(catMap).sort((x,y)=>y[1]-x[1]);
+  const total=items.reduce((s,[,v])=>s+v,0);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOpexBreakdown('entity')">‹ Back to breakdown</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${ENT[id]?ENT[id].name:id} — Operating Expenses</h4>`;
+  if(!items.length){
+    h+=`<p style="color:var(--muted);font-size:13px">No operating expenses in scope for this entity.</p>`;
+  } else {
+    h+=`<div class="pn-sub" style="margin-bottom:8px">Click a category to see transaction detail</div>`;
+    h+=`<table><thead><tr><th>Category</th><th class="num">Amount (IDR)</th><th class="num">%</th></tr></thead><tbody>`;
+    h+=opexRowsGrouped(items,total,'neg',k=>`openCatEntity('opex','${encodeURIComponent(k)}','${id}',true)`);
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(total)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
+  }
+  showModal(`${ENT[id]?ENT[id].name:id} — Operating Expenses`,h,true);
 }
 function finTableHtml(key){
   const ids=scopeIds();
@@ -3429,7 +3495,7 @@ function openCapDepPerson(encPerson){
 function openDetail(kind){
   const a=agg();
   if(kind==='rev') showModal('Operating Revenue — Breakdown',bdTableHtml(a.revBD,a.rev,'pos'));
-  else if(kind==='opex') showModal('Operating Expenses — Breakdown',bdTableHtml(a.opexBD,a.opex,'neg'));
+  else if(kind==='opex') openOpexBreakdown(OPEX_BD_VIEW);
   else if(kind==='cashpos'){
     const ids=scopeIds().filter(id=>CASHPOS[id]).sort((x,y)=>CASHPOS[y].cash-CASHPOS[x].cash);
     const missing=scopeIds().filter(id=>!CASHPOS[id]);
@@ -3546,7 +3612,7 @@ function openBDItem(type,encKey){
   showModal((isRev?'Revenue — ':'OpEx Category — ')+key,h,true);
   if(tx.length||hasResidual){ TXD_APPLY_CTX={tableId:'txd-table-bd',totalId:'txd-total-bd'}; updateTxdFilterIndicators(); }
 }
-function openCatEntity(type,encKey,id){
+function openCatEntity(type,encKey,id,fromEntity){
   const key=decodeURIComponent(encKey), isRev=type==='rev', fld=isRev?'rev':'opex', cls=isRev?'pos':'neg';
   let val=0, lbl='';
   if(MONTH==='MAY'){
@@ -3562,10 +3628,11 @@ function openCatEntity(type,encKey,id){
     TX.filter(x=>(x.mo||'MAY')===MONTH&&x.type===type&&canon(x.k)===key&&x.e===id).forEach(x=>{val+=x.amt;});
   }
   const tx=TX.filter(x=>activeMonths().includes(x.mo||'MAY')&&x.e===id&&x.type===type&&canon(x.k)===key);
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openBDItem('${type}','${encKey}')">‹ Back to breakdown</button>`;
+  const backTo=fromEntity?`openOpexEntity('${id}')`:`openBDItem('${type}','${encKey}')`;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backTo}">‹ Back to ${fromEntity?(ENT[id]?ENT[id].name:id):'breakdown'}</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">${ENT[id].name} — ${key}${lbl?` <span style="font-weight:400;color:var(--muted);font-size:11px">(${lbl})</span>`:''}</h4>`;
   let s=0;
-  const backCallCE=`openCatEntity('${type}','${encKey}','${id}')`;
+  const backCallCE=`openCatEntity('${type}','${encKey}','${id}',${fromEntity?'true':'false'})`;
   if(tx.length){
     const catOpts=Array.from(new Set(tx.map(x=>x.k).filter(Boolean))).sort();
     const inp='padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:100%;box-sizing:border-box';
