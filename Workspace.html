@@ -3819,7 +3819,7 @@ async function openTxEdit(id,backCall){
       // x.k may be a legacy/unlisted label not in the live category list — keep it selectable
       // (as the pre-selected option) instead of silently swapping it for the first live category.
       const opts=catOpts.includes(x.k)||!x.k?catOpts:[x.k,...catOpts];
-      return `<select id="txe-cat" style="width:100%;padding:8px 10px;box-sizing:border-box">${opts.map(c=>`<option value="${escH(c)}"${c===x.k?' selected':''}>${escH(c)}</option>`).join('')}</select>`;
+      return searchableSelectHtml('txe-cat',opts,x.k||'',{placeholder:'Search category…'});
     })())
     +opeField('Date',`<input id="txe-date" value="${escH(x.d)}" placeholder="e.g. 30 Apr" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Amount (IDR)',`<input id="txe-amt" type="number" min="0" step="1" value="${Math.abs(x.amt)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
@@ -4669,32 +4669,86 @@ function renderFcdPreview(){
     }
   };
 }
-function vendorSelectHtml(id,current,extraStyle){
-  return `<select id="${id}" data-prev="${escH(current||'')}" onchange="onVendorSelectChange(this)" style="width:100%;padding:8px 10px;box-sizing:border-box${extraStyle?';'+extraStyle:''}">`
-    +`<option value=""${current?'':' selected'}>No vendor</option>`
-    +VENDORS_G.map(v=>`<option value="${escH(v)}"${v===current?' selected':''}>${escH(v)}</option>`).join('')
-    +(current&&!VENDORS_G.includes(current)?`<option value="${escH(current)}" selected>${escH(current)} (not in vendor list)</option>`:'')
-    +`<option value="__add_new__">+ Add new vendor…</option>`
-    +`</select>`;
+// ── Searchable dropdown (Category/Vendor pickers) ───────────────────────────────────────────
+// Native <select> can't have a search box injected — every Category/Vendor list here runs to the
+// tens or hundreds of entries (see the long-list screenshot that prompted this), so a plain
+// dropdown means scrolling to find one. This renders a text input + filtered results list, backed
+// by a hidden input carrying the SAME id the field always had — every existing `.value` read/write
+// and onchange listener elsewhere in the code keeps working unchanged; only the visible picker UI
+// is new. Selecting a row (or typing an exact match, or blurring on an exact match) sets the hidden
+// value and dispatches a real `change` event; typing something that matches nothing reverts to the
+// last valid selection on blur (or clears if the field was empty) — Category/Vendor stay locked to
+// real values, never free text, matching the "lock the vendor list" design from earlier this session.
+window.SS_OPTIONS={};
+function searchableSelectHtml(id,options,current,opts){
+  opts=opts||{};
+  window.SS_OPTIONS[id]=options||[];
+  const cur=current||'';
+  return `<div style="position:relative">`
+    +`<input id="${id}-q" type="text" autocomplete="off" placeholder="${escH(opts.placeholder||'Search…')}" value="${escH(cur)}" `
+    +`style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d7dae3;border-radius:8px;font-size:13px${opts.style?';'+opts.style:''}" `
+    +`oninput="searchableSelectFilter('${id}')" onfocus="searchableSelectFilter('${id}')" onblur="setTimeout(function(){searchableSelectBlur('${id}')},150)">`
+    +`<input type="hidden" id="${id}" value="${escH(cur)}"${opts.onchange?` onchange="${escH(opts.onchange)}"`:''}>`
+    +`<div id="${id}-list" data-allow-create="${opts.allowCreate?'1':'0'}" style="display:none;position:absolute;z-index:1000;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 10px 24px -8px rgba(20,27,45,.25);max-height:220px;overflow:auto;margin-top:2px"></div>`
+    +`</div>`;
 }
-// Shared onchange handler for every vendor <select> (transaction/outstanding/fixed-cost edit forms
-// and the two single-entry add forms) — lets a one-off vendor be registered inline instead of
-// forcing a separate trip to Manage Vendors first, without weakening the lock for regular vendors.
-async function onVendorSelectChange(sel){
-  if(sel.value!=='__add_new__'){ sel.dataset.prev=sel.value; return; }
-  const name=(prompt('New vendor name:')||'').trim();
-  if(!name){ sel.value=sel.dataset.prev||''; return; }
+function searchableSelectFilter(id){
+  const q=document.getElementById(id+'-q'), list=document.getElementById(id+'-list');
+  if(!q||!list) return;
+  const opts=window.SS_OPTIONS[id]||[];
+  const term=q.value.trim(), termLc=term.toLowerCase();
+  const filtered=termLc?opts.filter(o=>o.toLowerCase().includes(termLc)):opts;
+  const exact=termLc && opts.some(o=>o.toLowerCase()===termLc);
+  let html='';
+  if(list.dataset.allowCreate==='1' && term && !exact){
+    html+=`<div onmousedown="searchableVendorCreate('${id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:#4550d8;font-weight:700;border-bottom:1px solid #eef2f7">+ Add "${escH(term)}" as new vendor</div>`;
+  }
+  if(filtered.length){
+    html+=filtered.slice(0,200).map(o=>`<div onmousedown="searchableSelectPick('${id}','${encodeURIComponent(o)}')" style="padding:7px 10px;font-size:13px;cursor:pointer" onmouseover="this.style.background='#f2f4fd'" onmouseout="this.style.background=''">${escH(o)}</div>`).join('');
+  } else if(!html){
+    html='<div style="padding:7px 10px;font-size:12px;color:#8892a6">No match</div>';
+  }
+  list.innerHTML=html;
+  list.style.display='block';
+}
+function searchableSelectPick(id,encVal){
+  const val=decodeURIComponent(encVal);
+  const q=document.getElementById(id+'-q'), hidden=document.getElementById(id), list=document.getElementById(id+'-list');
+  if(!q||!hidden) return;
+  q.value=val; hidden.value=val; if(list) list.style.display='none';
+  hidden.dispatchEvent(new Event('change',{bubbles:true}));
+}
+function searchableSelectBlur(id){
+  const list=document.getElementById(id+'-list'); if(list) list.style.display='none';
+  const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
+  if(!q||!hidden) return;
+  const opts=window.SS_OPTIONS[id]||[];
+  const typed=q.value.trim();
+  if(!typed){ hidden.value=''; return; }
+  const match=opts.find(o=>o.toLowerCase()===typed.toLowerCase());
+  if(match){ q.value=match; if(hidden.value!==match){ hidden.value=match; hidden.dispatchEvent(new Event('change',{bubbles:true})); } }
+  else { q.value=hidden.value||''; }
+}
+// "+ Add new vendor" row inside the searchable vendor picker — registers the typed name via the
+// existing addVendor() (same cascade-safe path Manage Vendors uses) instead of a separate prompt().
+async function searchableVendorCreate(id){
+  const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
+  const name=(q&&q.value||'').trim(); if(!name) return;
   try{
     await addVendor(name);
     await ensureVendorsG();
-    const opt=document.createElement('option');
-    opt.value=name; opt.textContent=name;
-    sel.insertBefore(opt, sel.querySelector('option[value="__add_new__"]'));
-    sel.value=name; sel.dataset.prev=name;
-  }catch(e){
-    alert('Failed to add vendor: '+e.message);
-    sel.value=sel.dataset.prev||'';
-  }
+    window.SS_OPTIONS[id]=VENDORS_G.slice();
+    q.value=name; hidden.value=name;
+    const list=document.getElementById(id+'-list'); if(list) list.style.display='none';
+    hidden.dispatchEvent(new Event('change',{bubbles:true}));
+  }catch(e){ alert('Failed to add vendor: '+e.message); }
+}
+function clearSearchableSelect(id){
+  const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
+  if(q) q.value=''; if(hidden) hidden.value='';
+}
+function vendorSelectHtml(id,current,extraStyle){
+  return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search or add vendor…',style:extraStyle||'',allowCreate:true});
 }
 async function renameVendor(oldName,newName){
   newName=(newName||'').trim();
@@ -5092,7 +5146,7 @@ async function openFixCostEdit(id){
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Fixed Cost</h4>`;
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
     +opeField('Entity',`<select id="fce-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===f.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
-    +opeField('Cost category',`<select id="fce-cat" style="width:100%;padding:8px 10px">${cats.map(c=>`<option value="${escH(c)}"${c===f.cat?' selected':''}>${escH(c)}</option>`).join('')}</select>`)
+    +opeField('Cost category',searchableSelectHtml('fce-cat',cats,f.cat||'',{placeholder:'Search category…'}))
     +opeField('Vendor',vendorSelectHtml('fce-vendor',f.vendor||null))
     +opeField('Amount (IDR)',`<input id="fce-amt" type="number" min="1" value="${f.amt}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +`</div>`
@@ -5138,7 +5192,7 @@ async function openOutstandingEdit(id,entityId,tab){
   if(o.paidAmt>0) h+=`<div style="font-size:12.5px;color:#8a6d1a;background:var(--amber-bg);border-radius:10px;padding:8px 12px;margin-bottom:12px">This invoice already has <b>${fmt(o.paidAmt)}</b> recorded in payments — the amount can't be edited below that without first undoing a payment.</div>`;
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
     +opeField('Entity',`<select id="ope-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===o.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
-    +opeField('Cost category',`<select id="ope-cat" style="width:100%;padding:8px 10px">${cats.map(c=>`<option value="${escH(c)}"${c===o.cat?' selected':''}>${escH(c)}</option>`).join('')}</select>`)
+    +opeField('Cost category',searchableSelectHtml('ope-cat',cats,o.cat||'',{placeholder:'Search category…'}))
     +opeField('Frequency',`<select id="ope-freq" style="width:100%;padding:8px 10px">${['OTP','REC','PRG'].map(f=>`<option value="${f}"${f===o.freq?' selected':''}>${f} — ${FREQ_LABEL[f]}</option>`).join('')}</select>`)
     +opeField('Invoice #',`<input id="ope-invno" value="${escH(o.invNo||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +opeField('Vendor',vendorSelectHtml('ope-vendor',o.vendor||null))
@@ -6768,10 +6822,10 @@ async function renderEntryBody(){
       +'<div id="opd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<select id="opd-cat" style="'+inp+'">'+opexCats.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
+      +searchableSelectHtml('opd-cat',opexCats.map(c=>c.name),'',{placeholder:'Search category…',style:inp})
       +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option><option value="PRG">PRG — By Progress</option></select>'
       +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
-      +'<select id="opd-vendor" data-prev="" onchange="onVendorSelectChange(this)" style="'+inp+'"><option value="">No vendor</option>'+VENDORS_G.map(v=>'<option value="'+escH(v)+'">'+escH(v)+'</option>').join('')+'<option value="__add_new__">+ Add new vendor…</option></select>'
+      +vendorSelectHtml('opd-vendor','',inp)
       +'<input id="opd-inv" type="date" aria-label="Invoice date" style="'+inp+'">'
       +'<input id="opd-due" type="date" aria-label="Due date" style="'+inp+'">'
       +'<input id="opd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
@@ -6808,8 +6862,8 @@ async function renderEntryBody(){
       +'<div id="fcd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="fcd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<select id="fcd-cat" style="'+inp+'">'+opexCatsFc.map(c=>'<option value="'+escH(c.name)+'">'+escH(c.name)+'</option>').join('')+'</select>'
-      +'<select id="fcd-vendor" data-prev="" onchange="onVendorSelectChange(this)" style="'+inp+'"><option value="">No vendor</option>'+VENDORS_G.map(v=>'<option value="'+escH(v)+'">'+escH(v)+'</option>').join('')+'<option value="__add_new__">+ Add new vendor…</option></select>'
+      +searchableSelectHtml('fcd-cat',opexCatsFc.map(c=>c.name),'',{placeholder:'Search category…',style:inp})
+      +vendorSelectHtml('fcd-vendor','',inp)
       +'<input id="fcd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
       +'</div>'
       +'<input id="fcd-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
@@ -7169,7 +7223,8 @@ async function renderEntryBody(){
       OUTSTANDING=fresh.map(mkOutstanding);
       renderKpiFin(agg());
       setMsg('opd-msg','✓ Saved.',true);
-      ['opd-invno','opd-vendor','opd-desc','opd-amt','opd-docurl'].forEach(id=>{document.getElementById(id).value='';});
+      ['opd-invno','opd-desc','opd-amt','opd-docurl'].forEach(id=>{document.getElementById(id).value='';});
+      clearSearchableSelect('opd-vendor');
     }catch(e){ setMsg('opd-msg','Failed to save: '+e.message); }
     opdSend.disabled=false; opdSend.textContent='Save outstanding';
   };
@@ -7265,7 +7320,8 @@ async function renderEntryBody(){
       await adminAddBatch('entity_fixed_costs',[{entity_code:entity,category,vendor:vendor||null,description:desc,amount_idr:amt}]);
       await refreshFixCost();
       setMsg('fcd-msg','✓ Saved.',true);
-      ['fcd-vendor','fcd-desc','fcd-amt'].forEach(id=>{document.getElementById(id).value='';});
+      ['fcd-desc','fcd-amt'].forEach(id=>{document.getElementById(id).value='';});
+      clearSearchableSelect('fcd-vendor');
     }catch(e){ setMsg('fcd-msg','Failed to save: '+e.message); }
     fcdSend.disabled=false; fcdSend.textContent='Save fixed cost';
   };
