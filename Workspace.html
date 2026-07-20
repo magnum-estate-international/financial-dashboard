@@ -3365,6 +3365,22 @@ function opexEntityBreakdown(id){
   }
   return catMap;
 }
+// Same shape as opexEntityBreakdown() but always reads May's raw ENT category labels, ignoring
+// whatever month is currently selected on the dashboard — used by the Fix Cost vs Actual comparison,
+// which always compares against May (the last full, stable month).
+function opexEntityBreakdownMay(id){
+  const catMap={};
+  if(effMonth(id,'MAY')!==null){
+    Object.entries(ENT[id].opex).forEach(([k,v])=>{const c=canon(k); catMap[c]=(catMap[c]||0)+v;});
+  }
+  const ef=effMonth(id,'MAY');
+  if(ef){
+    const cur=Object.values(catMap).reduce((s,v)=>s+v,0);
+    const gap=Math.round((ef.opex||0)-cur);
+    if(gap>0.5) catMap['Other expense (month total, detail not itemised)']=(catMap['Other expense (month total, detail not itemised)']||0)+gap;
+  }
+  return catMap;
+}
 let OPEX_BD_VIEW='category';
 function openOpexBreakdown(view){
   view=OPEX_BD_VIEW=view||OPEX_BD_VIEW||'category';
@@ -4814,15 +4830,18 @@ function openFixCost(view){
 function onFcSearchInput(v){ FC_SEARCH=v; FC_SEARCH_FOCUS=true; openFixCost(FC_VIEW); }
 // ── Fix Cost vs Actual — budget-vs-actual comparison, reusing fixCostInScope() (the flat monthly
 // baseline) against eff(id).opex / opexEntityBreakdown(id) (this month's real transactions) ──
+// Actual is always pinned to May — the last full, stable month — regardless of whichever month/
+// scope is currently selected on the dashboard, so this comparison doesn't shift under the reader
+// depending on a filter elsewhere, and doesn't compare fix cost against a partial April/June scope.
 function fixCostVsActualHtml(){
-  const ids=scopeIds();
-  const fcByEnt={}; fixCostInScope().forEach(f=>{fcByEnt[f.e]=(fcByEnt[f.e]||0)+f.amt;});
+  const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
+  const fcByEnt={}; FIXCOST.filter(f=>ids.includes(f.e)).forEach(f=>{fcByEnt[f.e]=(fcByEnt[f.e]||0)+f.amt;});
   const varColor=v=>v>0?'var(--red)':(v<0?'#1f8a61':'var(--muted)');
   const pctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
-  const rows=ids.map(id=>{const fc=fcByEnt[id]||0, act=(eff(id)||{}).opex||0; return {id,fc,act,varr:act-fc};})
+  const rows=ids.map(id=>{const fc=fcByEnt[id]||0, act=(effMonth(id,'MAY')||{}).opex||0; return {id,fc,act,varr:act-fc};})
     .filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
   const totFc=rows.reduce((s,r)=>s+r.fc,0), totAct=rows.reduce((s,r)=>s+r.act,0), totVar=totAct-totFc;
-  let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is this scope's opex for ${escH(MONTHS[MONTH]||MONTH)}. Red = over budget, green = under.</div>`;
+  let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is always <b>May 2026</b>, the last full month, regardless of the month filter selected above. Red = over budget, green = under.</div>`;
   h+=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">Fix Cost (IDR)</th><th class="num" style="text-align:right">Actual Opex (IDR)</th><th class="num" style="text-align:right">Variance</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
   if(rows.length){
     rows.forEach(r=>{
@@ -4840,8 +4859,8 @@ function fixCostVsActualHtml(){
   return h;
 }
 function openFixCostVsActualEntity(id){
-  const fcByCat={}; fixCostInScope().filter(f=>f.e===id).forEach(f=>{const c=f.cat||'—'; fcByCat[c]=(fcByCat[c]||0)+f.amt;});
-  const actByCat=opexEntityBreakdown(id);
+  const fcByCat={}; FIXCOST.filter(f=>f.e===id).forEach(f=>{const c=f.cat||'—'; fcByCat[c]=(fcByCat[c]||0)+f.amt;});
+  const actByCat=opexEntityBreakdownMay(id);
   const varColor=v=>v>0?'var(--red)':(v<0?'#1f8a61':'var(--muted)');
   const pctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
   const cats=Array.from(new Set(Object.keys(fcByCat).concat(Object.keys(actByCat))))
