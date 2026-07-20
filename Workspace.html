@@ -4688,29 +4688,41 @@ function searchableSelectHtml(id,options,current,opts){
   return `<div style="position:relative">`
     +`<input id="${id}-q" type="text" autocomplete="off" placeholder="${escH(opts.placeholder||'Search…')}" value="${escH(curLabel)}" `
     +`style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d7dae3;border-radius:8px;font-size:13px${opts.style?';'+opts.style:''}" `
-    +`oninput="searchableSelectFilter('${id}')" onfocus="searchableSelectFilter('${id}')" onblur="setTimeout(function(){searchableSelectBlur('${id}')},150)">`
+    +`oninput="searchableSelectFilter('${id}')" onfocus="searchableSelectOpen('${id}')" onblur="setTimeout(function(){searchableSelectBlur('${id}')},150)">`
     +`<input type="hidden" id="${id}" value="${escH(current||'')}"${opts.onchange?` onchange="${escH(opts.onchange)}"`:''}>`
     +`<div id="${id}-list" data-allow-create="${opts.allowCreate?'1':'0'}" style="display:none;position:absolute;z-index:1000;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 10px 24px -8px rgba(20,27,45,.25);max-height:220px;overflow:auto;margin-top:2px"></div>`
     +`</div>`;
 }
-function searchableSelectFilter(id){
-  const q=document.getElementById(id+'-q'), list=document.getElementById(id+'-list');
-  if(!q||!list) return;
+// Renders the dropdown body for a given typed term. `term===''` (focus/open) always shows every
+// option, unfiltered — so opening the picker on a field that already has a value (e.g. editing an
+// existing row) shows the full list to pick a different one from, not just whatever happens to
+// match the current text. The "+ Add new…" row sits at the BOTTOM of the list, after the matches.
+function ssRenderList(id,term){
+  const list=document.getElementById(id+'-list');
+  if(!list) return;
   const norm=window.SS_OPTIONS[id]||[];
-  const term=q.value.trim(), termLc=term.toLowerCase();
+  const termLc=term.toLowerCase();
   const filtered=termLc?norm.filter(o=>o.label.toLowerCase().includes(termLc)):norm;
   const exact=termLc && norm.some(o=>o.label.toLowerCase()===termLc);
   let html='';
-  if(list.dataset.allowCreate==='1' && term && !exact){
-    html+=`<div onmousedown="searchableVendorCreate('${id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:#4550d8;font-weight:700;border-bottom:1px solid #eef2f7">+ Add "${escH(term)}" as new vendor</div>`;
-  }
   if(filtered.length){
     html+=filtered.slice(0,200).map(o=>`<div onmousedown="searchableSelectPick('${id}','${encodeURIComponent(o.value)}','${encodeURIComponent(o.label)}')" style="padding:7px 10px;font-size:13px;cursor:pointer" onmouseover="this.style.background='#f2f4fd'" onmouseout="this.style.background=''">${escH(o.label)}</div>`).join('');
-  } else if(!html){
-    html='<div style="padding:7px 10px;font-size:12px;color:#8892a6">No match</div>';
+  } else if(term){
+    html+='<div style="padding:7px 10px;font-size:12px;color:#8892a6">No match</div>';
+  }
+  if(list.dataset.allowCreate==='1' && term && !exact){
+    html+=`<div onmousedown="searchableVendorCreate('${id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:#4550d8;font-weight:700;border-top:1px solid #eef2f7">+ Add "${escH(term)}" as new vendor</div>`;
   }
   list.innerHTML=html;
-  list.style.display='block';
+  list.style.display=html?'block':'none';
+}
+function searchableSelectOpen(id){
+  const q=document.getElementById(id+'-q'); if(!q) return;
+  ssRenderList(id,'');
+}
+function searchableSelectFilter(id){
+  const q=document.getElementById(id+'-q'); if(!q) return;
+  ssRenderList(id,q.value.trim());
 }
 function searchableSelectPick(id,encVal,encLabel){
   const val=decodeURIComponent(encVal), label=encLabel?decodeURIComponent(encLabel):val;
