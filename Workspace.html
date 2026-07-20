@@ -3897,7 +3897,7 @@ async function openTxEdit(id,backCall){
       // x.k may be a legacy/unlisted label not in the live category list — keep it selectable
       // (as the pre-selected option) instead of silently swapping it for the first live category.
       const opts=catOpts.includes(x.k)||!x.k?catOpts:[x.k,...catOpts];
-      return searchableSelectHtml('txe-cat',opts,x.k||'',{placeholder:'Search category…'});
+      return categorySelectHtml('txe-cat',opts,x.k||'');
     })())
     +opeField('Date',`<input id="txe-date" value="${escH(x.d)}" placeholder="e.g. 30 Apr" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Amount (IDR)',`<input id="txe-amt" type="number" min="0" step="1" value="${Math.abs(x.amt)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
@@ -4601,8 +4601,8 @@ function parseFlexDate(v){
 // Renders a plain value when matched, or an inline searchable "pick one" cell when not — so a
 // flagged row can be fixed right in the preview instead of forcing a re-upload. `id` must be
 // unique per cell (row index + field) since the searchable component caches its option list by id.
-function fixPickCellHtml(id,onFixCall,options,placeholder){
-  return searchableSelectHtml(id,options,'',{placeholder,style:'font-size:11px;padding:3px 4px;max-width:170px',onchange:onFixCall});
+function fixPickCellHtml(id,onFixCall,options,placeholder,allowCreate){
+  return searchableSelectHtml(id,options,'',{placeholder,style:'font-size:11px;padding:3px 4px;max-width:170px',onchange:onFixCall,allowCreate:allowCreate||''});
 }
 let OPD_ROWS=[];
 function computeOpdRow(r){
@@ -4637,10 +4637,10 @@ function opdEntityCell(r,i){
   return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('opd-fix-ent-'+i,`fixOpdField(${i},'entity',this.value)`);
 }
 function opdCatCell(r,i){
-  return r.catMatch?escH(r.catMatch):fixPickCellHtml('opd-fix-cat-'+i,`fixOpdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —');
+  return r.catMatch?escH(r.catMatch):fixPickCellHtml('opd-fix-cat-'+i,`fixOpdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —','category');
 }
 function opdVendorCell(r,i){
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('opd-fix-vendor-'+i,`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('opd-fix-vendor-'+i,`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
 }
 function renderOpdPreview(){
   const el=document.getElementById('opd-preview'); if(!el) return;
@@ -4719,11 +4719,11 @@ function fcdEntityCell(r,i){
   return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('fcd-fix-ent-'+i,`fixFcdField(${i},'entity',this.value)`);
 }
 function fcdCatCell(r,i){
-  return r.catMatch?escH(r.catMatch):fixPickCellHtml('fcd-fix-cat-'+i,`fixFcdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —');
+  return r.catMatch?escH(r.catMatch):fixPickCellHtml('fcd-fix-cat-'+i,`fixFcdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —','category');
 }
 function fcdVendorCell(r,i){
   if(!r.vendorRaw) return '—';
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('fcd-fix-vendor-'+i,`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('fcd-fix-vendor-'+i,`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
 }
 function renderFcdPreview(){
   const el=document.getElementById('fcd-preview'); if(!el) return;
@@ -4795,7 +4795,7 @@ function searchableSelectHtml(id,options,current,opts){
     +`style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d7dae3;border-radius:8px;font-size:13px${opts.style?';'+opts.style:''}" `
     +`oninput="searchableSelectFilter('${id}')" onfocus="searchableSelectOpen('${id}')" onblur="setTimeout(function(){searchableSelectBlur('${id}')},150)">`
     +`<input type="hidden" id="${id}" value="${escH(current||'')}"${opts.onchange?` onchange="${escH(opts.onchange)}"`:''}>`
-    +`<div id="${id}-list" data-allow-create="${opts.allowCreate?'1':'0'}" style="display:none;position:absolute;z-index:1000;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 10px 24px -8px rgba(20,27,45,.25);max-height:220px;overflow:auto;margin-top:2px"></div>`
+    +`<div id="${id}-list" data-create-type="${opts.allowCreate===true?'vendor':(opts.allowCreate||'')}" style="display:none;position:absolute;z-index:1000;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 10px 24px -8px rgba(20,27,45,.25);max-height:220px;overflow:auto;margin-top:2px"></div>`
     +`</div>`;
 }
 // Renders the dropdown body for a given typed term. `term===''` (focus/open) always shows every
@@ -4815,8 +4815,9 @@ function ssRenderList(id,term){
   } else if(term){
     html+='<div style="padding:7px 10px;font-size:12px;color:#8892a6">No match</div>';
   }
-  if(list.dataset.allowCreate==='1' && term && !exact){
-    html+=`<div onmousedown="searchableVendorCreate('${id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:#4550d8;font-weight:700;border-top:1px solid #eef2f7">+ Add "${escH(term)}" as new vendor</div>`;
+  const createType=list.dataset.createType;
+  if(createType && term && !exact){
+    html+=`<div onmousedown="searchableCreate('${id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:#4550d8;font-weight:700;border-top:1px solid #eef2f7">+ Add "${escH(term)}" as new ${createType}</div>`;
   }
   list.innerHTML=html;
   list.style.display=html?'block':'none';
@@ -4847,26 +4848,39 @@ function searchableSelectBlur(id){
   if(match){ q.value=match.label; if(hidden.value!==match.value){ hidden.value=match.value; hidden.dispatchEvent(new Event('change',{bubbles:true})); } }
   else { const cur=norm.find(o=>o.value===hidden.value); q.value=cur?cur.label:(hidden.value||''); }
 }
-// "+ Add new vendor" row inside the searchable vendor picker — registers the typed name via the
-// existing addVendor() (same cascade-safe path Manage Vendors uses) instead of a separate prompt().
-async function searchableVendorCreate(id){
+// "+ Add new…" row inside any searchable picker with allowCreate set — registers the typed name
+// via the same cascade-safe path Manage Vendors/Manage Categories use, instead of a separate
+// prompt(). New categories are created as ungrouped opex categories; assign a parent group
+// afterwards via Manage Categories if needed.
+async function searchableCreate(id){
+  const list=document.getElementById(id+'-list');
+  const createType=list&&list.dataset.createType;
   const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
-  const name=(q&&q.value||'').trim(); if(!name) return;
+  const name=(q&&q.value||'').trim(); if(!name||!createType) return;
   try{
-    await addVendor(name);
-    await ensureVendorsG();
-    window.SS_OPTIONS[id]=ssNorm(VENDORS_G);
+    if(createType==='vendor'){
+      await addVendor(name);
+      await ensureVendorsG();
+      window.SS_OPTIONS[id]=ssNorm(VENDORS_G);
+    } else if(createType==='category'){
+      await addCategory(name,'opex',null);
+      await ensureOpexCatsG();
+      window.SS_OPTIONS[id]=ssNorm(OPEX_CATS_G);
+    }
     q.value=name; hidden.value=name;
-    const list=document.getElementById(id+'-list'); if(list) list.style.display='none';
+    if(list) list.style.display='none';
     hidden.dispatchEvent(new Event('change',{bubbles:true}));
-  }catch(e){ alert('Failed to add vendor: '+e.message); }
+  }catch(e){ alert('Failed to add '+createType+': '+e.message); }
 }
 function clearSearchableSelect(id){
   const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
   if(q) q.value=''; if(hidden) hidden.value='';
 }
 function vendorSelectHtml(id,current,extraStyle){
-  return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search or add vendor…',style:extraStyle||'',allowCreate:true});
+  return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search or add vendor…',style:extraStyle||'',allowCreate:'vendor'});
+}
+function categorySelectHtml(id,options,current,extraStyle){
+  return searchableSelectHtml(id,options,current||'',{placeholder:'Search or add category…',style:extraStyle||'',allowCreate:'category'});
 }
 async function renameVendor(oldName,newName){
   newName=(newName||'').trim();
@@ -5275,7 +5289,7 @@ async function openFixCostEdit(id){
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Fixed Cost</h4>`;
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
     +opeField('Entity',`<select id="fce-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===f.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
-    +opeField('Cost category',searchableSelectHtml('fce-cat',cats,f.cat||'',{placeholder:'Search category…'}))
+    +opeField('Cost category',categorySelectHtml('fce-cat',cats,f.cat||''))
     +opeField('Vendor',vendorSelectHtml('fce-vendor',f.vendor||null))
     +opeField('Amount (IDR)',`<input id="fce-amt" type="number" min="1" value="${f.amt}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +`</div>`
@@ -5321,7 +5335,7 @@ async function openOutstandingEdit(id,entityId,tab){
   if(o.paidAmt>0) h+=`<div style="font-size:12.5px;color:#8a6d1a;background:var(--amber-bg);border-radius:10px;padding:8px 12px;margin-bottom:12px">This invoice already has <b>${fmt(o.paidAmt)}</b> recorded in payments — the amount can't be edited below that without first undoing a payment.</div>`;
   h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">`
     +opeField('Entity',`<select id="ope-ent" style="width:100%;padding:8px 10px">${EIDS.map(id2=>`<option value="${id2}"${id2===o.e?' selected':''}>${escH(ENT[id2].name)}</option>`).join('')}</select>`)
-    +opeField('Cost category',searchableSelectHtml('ope-cat',cats,o.cat||'',{placeholder:'Search category…'}))
+    +opeField('Cost category',categorySelectHtml('ope-cat',cats,o.cat||''))
     +opeField('Frequency',`<select id="ope-freq" style="width:100%;padding:8px 10px">${['OTP','REC','PRG'].map(f=>`<option value="${f}"${f===o.freq?' selected':''}>${f} — ${FREQ_LABEL[f]}</option>`).join('')}</select>`)
     +opeField('Invoice #',`<input id="ope-invno" value="${escH(o.invNo||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +opeField('Vendor',vendorSelectHtml('ope-vendor',o.vendor||null))
@@ -6951,7 +6965,7 @@ async function renderEntryBody(){
       +'<div id="opd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +searchableSelectHtml('opd-cat',opexCats.map(c=>c.name),'',{placeholder:'Search category…',style:inp})
+      +categorySelectHtml('opd-cat',opexCats.map(c=>c.name),'',inp)
       +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option><option value="PRG">PRG — By Progress</option></select>'
       +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
       +vendorSelectHtml('opd-vendor','',inp)
@@ -6991,7 +7005,7 @@ async function renderEntryBody(){
       +'<div id="fcd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="fcd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +searchableSelectHtml('fcd-cat',opexCatsFc.map(c=>c.name),'',{placeholder:'Search category…',style:inp})
+      +categorySelectHtml('fcd-cat',opexCatsFc.map(c=>c.name),'',inp)
       +vendorSelectHtml('fcd-vendor','',inp)
       +'<input id="fcd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
       +'</div>'
