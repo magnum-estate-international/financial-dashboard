@@ -4886,7 +4886,7 @@ function openFixCostVsActualEntity(id){
     cats.forEach(c=>{
       const fc=fcByCat[c]||0, act=actByCat[c]||0, varr=act-fc;
       totFc+=fc; totAct+=act;
-      h+=`<tr><td style="font-size:12.5px">${escH(c)}</td><td class="num" style="text-align:right">${fc?fmt(fc):'—'}</td><td class="num" style="text-align:right">${act?fmt(act):'—'}</td>`
+      h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostVsActualCategory('${id}','${encodeURIComponent(c)}')"><td style="font-size:12.5px">${escH(c)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${fc?fmt(fc):'—'}</td><td class="num" style="text-align:right">${act?fmt(act):'—'}</td>`
         +`<td class="num" style="text-align:right;color:${varColor(varr)};font-weight:700">${varr>=0?'+':''}${fmt(varr)}</td>`
         +`<td class="num" style="text-align:right;color:${varColor(varr)}">${pctStr(varr,fc)}</td></tr>`;
     });
@@ -4896,6 +4896,46 @@ function openFixCostVsActualEntity(id){
       +`<td class="num" style="text-align:right;color:${varColor(totVar)}">${pctStr(totVar,totFc)}</td></tr></tbody></table>`;
   }
   showModal(`${ENT[id]?ENT[id].name:id} — Fix Cost vs Actual`,h,true);
+}
+function openFixCostVsActualCategory(id,catEnc){
+  const cat=decodeURIComponent(catEnc);
+  const fcItems=FIXCOST.filter(f=>f.e===id&&(f.cat||'—')===cat).sort((a,b)=>b.amt-a.amt);
+  const fcTotal=fcItems.reduce((s,f)=>s+f.amt,0);
+  // actual is always May — see fixCostVsActualHtml()/opexEntityBreakdownMay() for why
+  const tx=TX.filter(t=>(t.mo||'MAY')==='MAY'&&t.e===id&&t.type==='opex'&&canon(t.k)===cat);
+  const txSum=tx.reduce((s,t)=>s+t.amt,0);
+  const actTotal=opexEntityBreakdownMay(id)[cat]||0;
+  const residual=actTotal-txSum;
+  const cls='neg';
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCostVsActualEntity('${id}')">‹ Back to ${escH(ENT[id]?ENT[id].name:id)}</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(ENT[id]?ENT[id].name:id)} — ${escH(cat)}</h4>`;
+  h+=`<h5 style="font-size:12.5px;font-weight:700;color:var(--blue-900);margin:0 0 8px">Monthly Fix Cost items</h5>`;
+  if(fcItems.length){
+    h+=`<table><thead><tr><th>Vendor</th><th>Description</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`;
+    fcItems.forEach(f=>{
+      h+=`<tr><td style="font-size:12px">${escH(f.vendor||'—')}</td><td style="font-size:12.5px">${escH(f.desc||'—')}</td><td class="num neg" style="text-align:right">${fmt(f.amt)}</td></tr>`;
+    });
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="2"><strong>TOTAL</strong></td><td class="num neg" style="text-align:right"><strong>${fmt(fcTotal)}</strong></td></tr></tbody></table>`;
+  } else {
+    h+=`<p style="color:var(--muted);font-size:12.5px">No fixed cost item for this category.</p>`;
+  }
+  h+=`<h5 style="font-size:12.5px;font-weight:700;color:var(--blue-900);margin:18px 0 8px">Actual transactions — May 2026</h5>`;
+  if(tx.length||Math.abs(residual)>0.5){
+    let s=0;
+    const backCall=`openFixCostVsActualCategory('${id}','${catEnc}')`;
+    h+=`<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Date</th><th>Category</th><th>Vendor</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+    tx.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex',cls,false,false,backCall);});
+    if(Math.abs(residual)>0.5){
+      s+=residual;
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">May 2026</td><td style="font-size:12px;color:var(--muted)">—</td><td style="font-size:12px;color:var(--muted)">—</td>`
+        +`<td style="font-size:12.5px;color:var(--muted)">Consolidated from the bank-report category total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td>`
+        +`<td class="num ${cls}">${fmt(residual)}</td><td></td></tr>`;
+    }
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
+  } else {
+    h+=`<p style="color:var(--muted);font-size:12.5px">No actual transactions for this category in May.</p>`;
+  }
+  showModal(`${ENT[id]?ENT[id].name:id} — ${cat}`,h,true);
 }
 function openFixCostEntity(id){ openFixCostDetailView('entity',id); }
 function openFixCostCategory(catEnc){ openFixCostDetailView('category',decodeURIComponent(catEnc)); }
