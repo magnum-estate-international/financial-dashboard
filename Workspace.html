@@ -3401,13 +3401,46 @@ function opexEntityBreakdownMay(id){
   return catMap;
 }
 let OPEX_BD_VIEW='category';
+// Vendor breakdown reads TX detail directly (transactions.vendor, falling back to the
+// description-guess via displayVendor()) rather than the raw ENT category dict May uses for
+// By Category/Entity — there's no per-vendor equivalent of that aggregate. Any gap versus the
+// headline a.opex total (entities/months only carrying a category-level aggregate, no itemized
+// transaction rows) is rolled into a labelled residual bucket, same convention as the category view.
+function opexVendorBreakdown(){
+  const ids=new Set(scopeIds());
+  const byVendor={};
+  activeMonths().forEach(mo=>{
+    TX.filter(t=>(t.mo||'MAY')===mo && ids.has(t.e) && t.type==='opex').forEach(t=>{
+      const v=displayVendor(t)||'—';
+      byVendor[v]=(byVendor[v]||0)+t.amt;
+    });
+  });
+  return byVendor;
+}
 function openOpexBreakdown(view){
   view=OPEX_BD_VIEW=view||OPEX_BD_VIEW||'category';
   const a=agg();
   const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openOpexBreakdown('${v}')">${label}</button>`;
-  let h=`<div style="display:flex;gap:8px;margin-bottom:14px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}</div>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:14px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}</div>`;
   if(view==='category'){
     h+=bdTableHtml(a.opexBD,a.opex,'neg');
+  } else if(view==='vendor'){
+    const byVendor=opexVendorBreakdown();
+    const cur=Object.values(byVendor).reduce((s,v)=>s+v,0);
+    const gap=Math.round(a.opex-cur);
+    if(gap>0.5) byVendor['Other expense (no vendor detail)']=(byVendor['Other expense (no vendor detail)']||0)+gap;
+    const items=Object.entries(byVendor).sort((x,y)=>y[1]-x[1]);
+    h+=`<div class="pn-sub" style="margin-bottom:8px">Click a vendor to see transaction detail</div>`;
+    h+=`<table><thead><tr><th>Vendor</th><th class="num">Amount (IDR)</th><th class="num">%</th></tr></thead><tbody>`;
+    if(items.length){
+      items.forEach(([v,amt])=>{
+        const pct=a.opex>0?(amt/a.opex*100).toFixed(1):'0.0';
+        h+=`<tr style="cursor:pointer" onclick="openOpexVendor('${encodeURIComponent(v)}')"><td>${escH(v)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num neg">${fmt(amt)}</td><td class="num">${pct}%</td></tr>`;
+      });
+    } else {
+      h+=`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No vendor detail in scope</td></tr>`;
+    }
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   } else {
     const rows=scopeIds().map(id=>({id,tot:(eff(id)||{}).opex||0})).filter(r=>r.tot>0.5).sort((x,y)=>y.tot-x.tot);
     h+=`<div class="pn-sub" style="margin-bottom:8px">Click an entity to see its category breakdown</div>`;
@@ -3423,6 +3456,25 @@ function openOpexBreakdown(view){
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   }
   showModal('Operating Expenses — Breakdown',h);
+}
+function openOpexVendor(encVendor){
+  const vendor=decodeURIComponent(encVendor);
+  const ids=scopeIds();
+  const tx=TX.filter(t=>activeMonths().includes(t.mo||'MAY')&&ids.includes(t.e)&&t.type==='opex'&&displayVendor(t)===vendor);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOpexBreakdown('vendor')">‹ Back to breakdown</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">${escH(vendor)} — Operating Expenses</h4>`;
+  let s=0;
+  const backCall=`openOpexVendor('${encVendor}')`;
+  if(tx.length){
+    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Entity</th><th>Category</th><th>Vendor</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+    tx.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex','neg',false,true,backCall);});
+  } else {
+    h+=`<table><tbody>`;
+  }
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?5:1}"><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(s)}</strong></td><td></td></tr></tbody></table>`;
+  if(tx.length) h+=`</div>`;
+  if(!tx.length) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No itemized transactions for this vendor in scope — it's part of the "Other expense (no vendor detail)" residual.</p>`;
+  showModal(`${escH(vendor)} — Operating Expenses`,h,true);
 }
 function openOpexEntity(id){
   const catMap=opexEntityBreakdown(id);
