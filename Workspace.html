@@ -317,21 +317,6 @@ a{color:#4550d8}
 <div class="divlabel" id="secFinLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Financing Activity — May 2026</div>
 <div class="kpi4" id="kpiFin"></div>
 
-<div id="secHealthWrap" style="display:none">
-  <div class="divlabel" id="secHealthLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Data Health — Itemization &amp; Reconciliation Check</div>
-  <div id="healthSummary" style="margin-bottom:10px"></div>
-  <details class="fold" id="healthDetails">
-    <summary><span><span class="chev">▸</span>&nbsp; Show details</span><span class="hint">click a row for transaction detail</span></summary>
-    <div class="fold-body">
-      <div class="pn-sub" style="margin-bottom:10px">Compares each entity/month/category's official total against its itemized transactions. <b>❌ Tidak cocok</b> means itemized detail exceeds the total (a possible double-count — check first). <b>⚠️ Sebagian</b> means the total is correct but not all transactions have been itemized yet. Click a row to see the transactions behind it.</div>
-      <div class="table-scroll" style="max-height:420px"><table>
-        <thead><tr><th>Entity</th><th>Month</th><th>Category</th><th class="num" style="text-align:right">Official total</th><th class="num" style="text-align:right">Itemized</th><th class="num" style="text-align:right">Residual</th><th>Status</th></tr></thead>
-        <tbody id="healthBody"></tbody>
-      </table></div>
-    </div>
-  </details>
-</div>
-
 <div class="divlabel" id="secRecoLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Management Alert</div>
 <div id="recoGrid" class="reco-grid"></div>
 
@@ -3890,7 +3875,7 @@ async function openTxEdit(id,backCall){
   const curVendor=(x.vendor!=null && x.vendor!=='')?x.vendor:null;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Edit Transaction</h4>`;
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Amount adjusts this entity's itemized total for ${MONTHS[MONTH]||MONTH} without touching the monthly total shown on the KPI cards — if this is a real correction (not a typo fix), also update the total via the Update Entity Balance box so Data Health stays reconciled.</div>`
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Amount adjusts this entity's itemized total for ${MONTHS[MONTH]||MONTH} without touching the monthly total shown on the KPI cards — if this is a real correction (not a typo fix), also update the total via the Update Entity Balance box so the two stay reconciled.</div>`
     +opeField('Description',`<input id="txe-desc" value="${escH(x.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Vendor',vendorSelectHtml('txe-vendor',curVendor,'margin-bottom:10px'))
     +opeField('Category',(()=>{
@@ -3995,7 +3980,7 @@ async function openTxHistory(id,backCall){
 }
 async function deleteTxRow(id,backCall){
   backCall=decodeURIComponent(backCall);
-  if(!confirm('Delete this transaction? This removes it from the itemized detail but does NOT change the monthly total shown on the dashboard — deleting will likely create a new Data Health mismatch unless the total is corrected too. This cannot be undone.')) return;
+  if(!confirm('Delete this transaction? This removes it from the itemized detail but does NOT change the monthly total shown on the dashboard — correct the total too via Update Entity Balance if this is a real deletion, not just a typo fix. This cannot be undone.')) return;
   try{
     const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'DELETE'});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
@@ -4089,84 +4074,6 @@ function renderRecos(a){
     +'<h4>'+r.title+'</h4>'
     +'<p>'+r.body+'</p></div>').join('')
     : '<div class="reco good"><div class="reco-top"><div class="ric">'+RECO_ICONS.good+'</div><span class="rtag">On track</span></div><h4>No pressing issues for this view</h4><p>Figures for this scope and period look balanced. Switch scope or month to check other entities.</p></div>';
-}
-
-// ─── DATA HEALTH (itemization completeness & double-count check) ────────────
-const HEALTH_FLOWS=[
-  {key:'rev',   label:'Revenue',        txType:'rev'},
-  {key:'opex',  label:'Opex',           txType:'opex'},
-  {key:'finIn', label:'Financing In',   txType:'fin_in'},
-  {key:'finOut',label:'Financing Out',  txType:'fin_out'},
-];
-function healthItemized(id,mo,txType){
-  return TX.filter(x=>x.e===id && x.type===txType && (x.mo||'MAY')===mo
-    && x.k!=='Shareholder Capital Deposit (Stan & Igor)').reduce((s,x)=>s+x.amt,0);
-}
-function dataHealthRows(){
-  const rows=[];
-  scopeIds().forEach(id=>{
-    Q2_MONTHS.forEach(mo=>{
-      const m=effMonth(id,mo); if(!m) return;
-      HEALTH_FLOWS.forEach(f=>{
-        const total=m[f.key]||0; if(Math.abs(total)<1) return;
-        const itemized=healthItemized(id,mo,f.txType);
-        const residual=total-itemized;
-        const status=Math.abs(residual)<=1000?'ok':(residual>0?'partial':'mismatch');
-        rows.push({id,mo,flow:f,total,itemized,residual,status});
-      });
-    });
-  });
-  return rows;
-}
-function openHealthCell(id,mo,txType,label){
-  const tx=TX.filter(x=>x.e===id && x.type===txType && (x.mo||'MAY')===mo
-    && x.k!=='Shareholder Capital Deposit (Stan & Igor)');
-  const total=(effMonth(id,mo)||{})[HEALTH_FLOWS.find(f=>f.txType===txType).key]||0;
-  let s=0;
-  let h=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">${ENT[id].name} — ${label} — ${MONTHS[mo]||mo}</h4>`;
-  if(tx.length){
-    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Description</th><th>Vendor</th><th>Category</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
-    tx.forEach(x=>{s+=x.amt;
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${x.d}</td><td style="font-size:12.5px">${x.desc}</td><td style="font-size:12px;color:var(--muted)">${escH(displayVendor(x))}</td><td style="font-size:12px;color:var(--muted)">${x.k&&!/^Bank book/.test(x.k)?x.k:'—'}</td><td class="num">${fmt(x.amt)}</td></tr>`;});
-  } else { h+=`<table><tbody>`; }
-  const residual=total-s;
-  if(Math.abs(residual)>1000){
-    const neg=residual<0;
-    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${MONTHS[mo]||mo}</td><td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized detail exceeds the official total — investigate for a possible double-count':'Consolidated from the bank-report total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td><td></td><td></td><td class="num" style="color:${neg?'var(--red)':'inherit'}">${fmt(residual)}</td></tr>`;
-  }
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?4:1}"><strong>OFFICIAL TOTAL</strong></td><td class="num"><strong>${fmt(total)}</strong></td></tr></tbody></table>`;
-  if(tx.length) h+=`</div>`;
-  showModal(`${ENT[id].name} — ${label} — ${MONTHS[mo]||mo}`,h);
-}
-function renderDataHealth(){
-  const wrap=document.getElementById('secHealthWrap'); if(!wrap) return;
-  const show=MY_ROLE==='editor';
-  wrap.style.display=show?'':'none';
-  if(!show) return;
-  const rows=dataHealthRows();
-  const mismatch=rows.filter(r=>r.status==='mismatch');
-  const partial=rows.filter(r=>r.status==='partial');
-  const ok=rows.filter(r=>r.status==='ok');
-  const summary=document.getElementById('healthSummary');
-  if(summary) summary.innerHTML=
-    `<span class="tag" style="background:#fde8e8;color:var(--red);font-weight:700;padding:4px 10px;border-radius:999px">❌ ${mismatch.length} tidak cocok</span>`+
-    `<span class="tag" style="background:var(--amber-bg);color:var(--amber);font-weight:700;padding:4px 10px;border-radius:999px;margin-left:8px">⚠️ ${partial.length} sebagian</span>`+
-    `<span class="tag" style="background:#e6f7ee;color:var(--green);font-weight:700;padding:4px 10px;border-radius:999px;margin-left:8px">✅ ${ok.length} lengkap</span>`;
-  const body=document.getElementById('healthBody'); if(!body) return;
-  const toShow=[...mismatch,...partial].sort((a,b)=>(a.status==='mismatch'?0:1)-(b.status==='mismatch'?0:1)||Math.abs(b.residual)-Math.abs(a.residual));
-  if(!toShow.length){
-    body.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Semua data pada scope ini sudah lengkap &amp; cocok ✅</td></tr>`;
-    return;
-  }
-  body.innerHTML=toShow.map(r=>{
-    const badge=r.status==='mismatch'
-      ?`<span class="tag" style="background:#fde8e8;color:var(--red)">❌ Tidak cocok</span>`
-      :`<span class="tag" style="background:var(--amber-bg);color:var(--amber)">⚠️ Sebagian</span>`;
-    return `<tr class="clickable" style="cursor:pointer" onclick="openHealthCell('${r.id}','${r.mo}','${r.flow.txType}','${r.flow.label}')">`
-      +`<td>${pill(r.id)}</td><td>${MONTHS[r.mo]||r.mo}</td><td>${r.flow.label}</td>`
-      +`<td class="num">${fmt(r.total)}</td><td class="num">${fmt(r.itemized)}</td>`
-      +`<td class="num" style="color:${r.residual<0?'var(--red)':'inherit'}">${fmt(r.residual)}</td><td>${badge}</td></tr>`;
-  }).join('');
 }
 
 // ─── OUTSTANDING PAYABLES MANAGEMENT ─────────────────────────────────────────
@@ -5659,7 +5566,7 @@ function renderBalances(){
 
 function renderAll(){
   const a=agg();
-  renderBanner();renderKpiCash();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderDataHealth();renderBalances();
+  renderBanner();renderKpiCash();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
@@ -5874,7 +5781,6 @@ async function runDashboard(){
   applyScopeChrome();
   renderAll();
   try{ await checkAdmin(); }catch(e){}
-  renderDataHealth(); // MY_ROLE is only known after checkAdmin resolves, above
   showUserBar();
 }
 
