@@ -5122,8 +5122,12 @@ function openFixCostVsActualCategory(id,catEnc){
     tx.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex',cls,false,false,backCall);});
     if(Math.abs(residual)>0.5){
       s+=residual;
+      // Negative residual = itemized transactions add up to MORE than the category's May total —
+      // a possible double-count (or, as happened here once, a raw_label that didn't match the
+      // category name after a rename) — not "not yet itemized", which only applies when positive.
+      const neg=residual<0;
       h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">May 2026</td><td style="font-size:12px;color:var(--muted)">—</td><td style="font-size:12px;color:var(--muted)">—</td>`
-        +`<td style="font-size:12.5px;color:var(--muted)">Consolidated from the bank-report category total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td>`
+        +`<td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized transactions exceed the category\'s May total — investigate for a possible double-count':'Consolidated from the bank-report category total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td>`
         +`<td class="num ${cls}">${fmt(residual)}</td><td></td></tr>`;
     }
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
