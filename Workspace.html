@@ -4798,8 +4798,12 @@ function ssRenderList(id,term){
     html+='<div style="padding:7px 10px;font-size:12px;color:#8892a6">No match</div>';
   }
   const createType=list.dataset.createType;
-  if(createType && term && !exact){
-    html+=`<div onmousedown="searchableCreate('${id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:#4550d8;font-weight:700;border-top:1px solid #eef2f7">+ Add "${escH(term)}" as new ${createType}</div>`;
+  // Shown at the bottom of every open dropdown, not just after typing a non-match — so the option
+  // to add a new vendor/category is discoverable the moment the list opens, not only once someone
+  // has already typed something that fails to match.
+  if(createType && !exact){
+    const createLabel=term?`+ Add "${escH(term)}" as new ${createType}`:`+ Add new ${createType}…`;
+    html+=`<div onmousedown="searchableCreate('${id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:#4550d8;font-weight:700;border-top:1px solid #eef2f7">${createLabel}</div>`;
   }
   list.innerHTML=html;
   list.style.display=html?'block':'none';
@@ -4838,7 +4842,9 @@ async function searchableCreate(id){
   const list=document.getElementById(id+'-list');
   const createType=list&&list.dataset.createType;
   const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
-  const name=(q&&q.value||'').trim(); if(!name||!createType) return;
+  const name=(q&&q.value||'').trim();
+  if(!createType) return;
+  if(!name){ if(q) q.focus(); return; } // clicked the generic "+ Add new…" row before typing a name — just focus the box
   try{
     if(createType==='vendor'){
       await addVendor(name);
