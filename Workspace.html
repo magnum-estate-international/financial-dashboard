@@ -5056,35 +5056,104 @@ function onFcSearchInput(v){ FC_SEARCH=v; FC_SEARCH_FOCUS=true; openFixCost(FC_V
 // Actual is always pinned to May — the last full, stable month — regardless of whichever month/
 // scope is currently selected on the dashboard, so this comparison doesn't shift under the reader
 // depending on a filter elsewhere, and doesn't compare fix cost against a partial April/June scope.
+const fcvaVarColor=v=>v>0?'var(--red)':(v<0?'#1f8a61':'var(--muted)');
+const fcvaPctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
 function fixCostVsActualHtml(){
-  SORT_RERENDER['fcva']=()=>openFixCostVsActual();
+  SORT_RERENDER['fcva']=()=>openFixCostVsActual('entity');
   const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
   const fcByEnt={}; FIXCOST.filter(f=>ids.includes(f.e)).forEach(f=>{fcByEnt[f.e]=(fcByEnt[f.e]||0)+f.amt;});
-  const varColor=v=>v>0?'var(--red)':(v<0?'#1f8a61':'var(--muted)');
-  const pctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
   let rows=ids.map(id=>{const fc=fcByEnt[id]||0, act=(effMonth(id,'MAY')||{}).opex||0; return {id,fc,act,varr:act-fc};})
     .filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
   const fcvaKeyFn={fc:r=>r.fc,act:r=>r.act,varr:r=>r.varr}[sortActiveKey('fcva')];
   if(fcvaKeyFn) rows=sortApply('fcva',rows,fcvaKeyFn);
   const totFc=rows.reduce((s,r)=>s+r.fc,0), totAct=rows.reduce((s,r)=>s+r.act,0), totVar=totAct-totFc;
-  let h=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is always <b>May 2026</b>, the last full month, regardless of the dashboard's month filter. Red = over budget, green = under.</div>`;
-  h+=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">${sortHeader('fcva','Fix Cost (IDR)','fc')}</th><th class="num" style="text-align:right">${sortHeader('fcva','Actual Opex (IDR)','act')}</th><th class="num" style="text-align:right">${sortHeader('fcva','Variance','varr')}</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
+  let h=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">${sortHeader('fcva','Fix Cost (IDR)','fc')}</th><th class="num" style="text-align:right">${sortHeader('fcva','Actual Opex (IDR)','act')}</th><th class="num" style="text-align:right">${sortHeader('fcva','Variance','varr')}</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
   if(rows.length){
     rows.forEach(r=>{
       h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostVsActualEntity('${r.id}')"><td>${pill(r.id)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
         +`<td class="num" style="text-align:right">${fmt(r.fc)}</td><td class="num" style="text-align:right">${fmt(r.act)}</td>`
-        +`<td class="num" style="text-align:right;color:${varColor(r.varr)};font-weight:700">${r.varr>=0?'+':''}${fmt(r.varr)}</td>`
-        +`<td class="num" style="text-align:right;color:${varColor(r.varr)}">${pctStr(r.varr,r.fc)}</td></tr>`;
+        +`<td class="num" style="text-align:right;color:${fcvaVarColor(r.varr)};font-weight:700">${r.varr>=0?'+':''}${fmt(r.varr)}</td>`
+        +`<td class="num" style="text-align:right;color:${fcvaVarColor(r.varr)}">${fcvaPctStr(r.varr,r.fc)}</td></tr>`;
     });
   } else {
     h+=`<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No fixed cost or actual expense in this scope</td></tr>`;
   }
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${fmt(totFc)}</td><td class="num" style="text-align:right">${fmt(totAct)}</td>`
-    +`<td class="num" style="text-align:right;color:${varColor(totVar)}">${totVar>=0?'+':''}${fmt(totVar)}</td>`
-    +`<td class="num" style="text-align:right;color:${varColor(totVar)}">${pctStr(totVar,totFc)}</td></tr></tbody></table>`;
+    +`<td class="num" style="text-align:right;color:${fcvaVarColor(totVar)}">${totVar>=0?'+':''}${fmt(totVar)}</td>`
+    +`<td class="num" style="text-align:right;color:${fcvaVarColor(totVar)}">${fcvaPctStr(totVar,totFc)}</td></tr></tbody></table>`;
   return h;
 }
-function openFixCostVsActual(){ showModal('Fix Cost vs Actual (May)',fixCostVsActualHtml(),true); }
+// Group-wide category view: fix cost summed by category across every entity in scope, vs actual
+// opex per category summed the same way (opexEntityBreakdownMay per entity, merged). Clicking a
+// category drills into its per-entity breakdown (openFixCostVsActualCategoryAll), which in turn
+// drills into the existing single-entity/category detail view.
+function fixCostVsActualCategoryHtml(){
+  SORT_RERENDER['fcvacat']=()=>openFixCostVsActual('category');
+  const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
+  const fcByCat={}; FIXCOST.filter(f=>ids.includes(f.e)).forEach(f=>{const c=f.cat||'—'; fcByCat[c]=(fcByCat[c]||0)+f.amt;});
+  const actByCat={};
+  ids.forEach(id=>{ Object.entries(opexEntityBreakdownMay(id)).forEach(([c,v])=>{actByCat[c]=(actByCat[c]||0)+v;}); });
+  let cats=Array.from(new Set(Object.keys(fcByCat).concat(Object.keys(actByCat))))
+    .map(c=>({cat:c,fc:fcByCat[c]||0,act:actByCat[c]||0,varr:(actByCat[c]||0)-(fcByCat[c]||0)}))
+    .filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
+  const fcvaCatKeyFn={fc:r=>r.fc,act:r=>r.act,varr:r=>r.varr}[sortActiveKey('fcvacat')];
+  if(fcvaCatKeyFn) cats=sortApply('fcvacat',cats,fcvaCatKeyFn);
+  const totFc=cats.reduce((s,r)=>s+r.fc,0), totAct=cats.reduce((s,r)=>s+r.act,0), totVar=totAct-totFc;
+  let h=`<table><thead><tr><th>Category</th><th class="num" style="text-align:right">${sortHeader('fcvacat','Fix Cost (IDR)','fc')}</th><th class="num" style="text-align:right">${sortHeader('fcvacat','Actual Opex (IDR)','act')}</th><th class="num" style="text-align:right">${sortHeader('fcvacat','Variance','varr')}</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
+  if(cats.length){
+    cats.forEach(r=>{
+      h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostVsActualCategoryAll('${encodeURIComponent(r.cat)}')"><td style="font-size:12.5px">${escH(r.cat)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
+        +`<td class="num" style="text-align:right">${fmt(r.fc)}</td><td class="num" style="text-align:right">${fmt(r.act)}</td>`
+        +`<td class="num" style="text-align:right;color:${fcvaVarColor(r.varr)};font-weight:700">${r.varr>=0?'+':''}${fmt(r.varr)}</td>`
+        +`<td class="num" style="text-align:right;color:${fcvaVarColor(r.varr)}">${fcvaPctStr(r.varr,r.fc)}</td></tr>`;
+    });
+  } else {
+    h+=`<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No fixed cost or actual expense in this scope</td></tr>`;
+  }
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${fmt(totFc)}</td><td class="num" style="text-align:right">${fmt(totAct)}</td>`
+    +`<td class="num" style="text-align:right;color:${fcvaVarColor(totVar)}">${totVar>=0?'+':''}${fmt(totVar)}</td>`
+    +`<td class="num" style="text-align:right;color:${fcvaVarColor(totVar)}">${fcvaPctStr(totVar,totFc)}</td></tr></tbody></table>`;
+  return h;
+}
+let FCVA_VIEW='entity';
+function openFixCostVsActual(view){
+  view=FCVA_VIEW=view||FCVA_VIEW||'entity';
+  const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openFixCostVsActual('${v}')">${label}</button>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:10px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}</div>`;
+  h+=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is always <b>May 2026</b>, the last full month, regardless of the dashboard's month filter. Red = over budget, green = under.</div>`;
+  h+=view==='category'?fixCostVsActualCategoryHtml():fixCostVsActualHtml();
+  showModal('Fix Cost vs Actual (May)',h,true);
+}
+function openFixCostVsActualCategoryAll(catEnc){
+  const cat=decodeURIComponent(catEnc);
+  SORT_RERENDER['fcvacatall']=()=>openFixCostVsActualCategoryAll(catEnc);
+  const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
+  let rows=ids.map(id=>{
+    const fc=FIXCOST.filter(f=>f.e===id&&(f.cat||'—')===cat).reduce((s,f)=>s+f.amt,0);
+    const act=opexEntityBreakdownMay(id)[cat]||0;
+    return {id,fc,act,varr:act-fc};
+  }).filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
+  const fcvaKeyFn={fc:r=>r.fc,act:r=>r.act,varr:r=>r.varr}[sortActiveKey('fcvacatall')];
+  if(fcvaKeyFn) rows=sortApply('fcvacatall',rows,fcvaKeyFn);
+  const totFc=rows.reduce((s,r)=>s+r.fc,0), totAct=rows.reduce((s,r)=>s+r.act,0), totVar=totAct-totFc;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCostVsActual('category')">‹ Back to breakdown</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(cat)} — Fix Cost vs Actual</h4>`;
+  if(!rows.length){
+    h+=`<p style="color:var(--muted);font-size:13px">No fixed cost or actual expense in this scope for this category.</p>`;
+  } else {
+    h+=`<table><thead><tr><th>Entity</th><th class="num" style="text-align:right">${sortHeader('fcvacatall','Fix Cost (IDR)','fc')}</th><th class="num" style="text-align:right">${sortHeader('fcvacatall','Actual (IDR)','act')}</th><th class="num" style="text-align:right">${sortHeader('fcvacatall','Variance','varr')}</th><th class="num" style="text-align:right">Variance %</th></tr></thead><tbody>`;
+    rows.forEach(r=>{
+      h+=`<tr class="clickable" style="cursor:pointer" onclick="openFixCostVsActualCategory('${r.id}','${encodeURIComponent(cat)}')"><td>${pill(r.id)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
+        +`<td class="num" style="text-align:right">${fmt(r.fc)}</td><td class="num" style="text-align:right">${fmt(r.act)}</td>`
+        +`<td class="num" style="text-align:right;color:${fcvaVarColor(r.varr)};font-weight:700">${r.varr>=0?'+':''}${fmt(r.varr)}</td>`
+        +`<td class="num" style="text-align:right;color:${fcvaVarColor(r.varr)}">${fcvaPctStr(r.varr,r.fc)}</td></tr>`;
+    });
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${fmt(totFc)}</td><td class="num" style="text-align:right">${fmt(totAct)}</td>`
+      +`<td class="num" style="text-align:right;color:${fcvaVarColor(totVar)}">${totVar>=0?'+':''}${fmt(totVar)}</td>`
+      +`<td class="num" style="text-align:right;color:${fcvaVarColor(totVar)}">${fcvaPctStr(totVar,totFc)}</td></tr></tbody></table>`;
+  }
+  showModal(`${escH(cat)} — Fix Cost vs Actual`,h,true);
+}
 function openFixCostVsActualEntity(id){
   SORT_RERENDER['fcvaent']=()=>openFixCostVsActualEntity(id);
   const fcByCat={}; FIXCOST.filter(f=>f.e===id).forEach(f=>{const c=f.cat||'—'; fcByCat[c]=(fcByCat[c]||0)+f.amt;});
