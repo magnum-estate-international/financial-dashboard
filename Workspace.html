@@ -3500,15 +3500,26 @@ function openOpexVendor(encVendor){
   let s=0;
   const backCall=`openOpexVendor('${encVendor}')`;
   if(tx.length){
-    h+=`<div class="table-scroll" style="max-height:340px"><table><thead><tr><th>Date</th><th>Entity</th><th>Category</th><th>Vendor</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+    const entOpts=Array.from(new Set(tx.map(t=>t.e))).sort();
+    const catOpts=Array.from(new Set(tx.map(t=>t.k).filter(Boolean))).sort();
+    const inp='padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:100%;box-sizing:border-box';
+    h+=`<div class="table-scroll" style="max-height:340px"><table id="txd-table-ov"><thead><tr>`
+      +thFilterableTx('Date','date',`<input id="txdf-date" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+      +thFilterableTx('Entity','ent',`<select id="txdf-ent" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${entOpts.map(id=>`<option value="${escH(id)}">${escH(ENT[id]?ENT[id].name:id)}</option>`).join('')}</select>`)
+      +thFilterableTx('Category','cat',`<select id="txdf-cat" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${catOpts.map(k=>`<option value="${escH(k)}">${escH(k)}</option>`).join('')}</select>`)
+      +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+      +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+      +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
+      +`<th></th></tr></thead><tbody>`;
     tx.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex','neg',false,true,backCall);});
   } else {
     h+=`<table><tbody>`;
   }
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?5:1}"><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(s)}</strong></td><td></td></tr></tbody></table>`;
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?5:1}"><strong>TOTAL</strong></td><td class="num neg"><strong id="txd-total-ov">${fmt(s)}</strong></td><td></td></tr></tbody></table>`;
   if(tx.length) h+=`</div>`;
   if(!tx.length) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No itemized transactions for this vendor in scope — it's part of the "Other expense (no vendor detail)" residual.</p>`;
   showModal(`${escH(vendor)} — Operating Expenses`,h,true);
+  if(tx.length){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-ov',totalId:'txd-total-ov'}; updateTxdFilterIndicators(); }
 }
 function openOpexEntity(id){
   SORT_RERENDER['opexentcat']=()=>openOpexEntity(id);
@@ -3731,7 +3742,8 @@ function openBDItem(type,encKey){
       +thFilterableTx('Category','cat',`<select id="txdf-cat" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${catOpts.map(k=>`<option value="${escH(k)}">${escH(k)}</option>`).join('')}</select>`)
       +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
-      +`<th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+      +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
+      +`<th></th></tr></thead><tbody>`;
     tx.forEach(x=>{s+=x.amt; h+=txRowHtml(x,type,cls,isRev,true,backCallBD);});
     Object.entries(residual).forEach(([id,r])=>{s+=r; h+=residualRowHtml(pill(id),id,r,cls,isRev,true);});
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="5"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong id="txd-total-bd">${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
@@ -3740,7 +3752,7 @@ function openBDItem(type,encKey){
     h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals — their largest transactions appear under <b>"Key Transactions of the Month"</b>.</p>`;
   }
   showModal((isRev?'Revenue — ':'OpEx Category — ')+key,h,true);
-  if(tx.length||hasResidual){ TXD_APPLY_CTX={tableId:'txd-table-bd',totalId:'txd-total-bd'}; updateTxdFilterIndicators(); }
+  if(tx.length||hasResidual){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-bd',totalId:'txd-total-bd'}; updateTxdFilterIndicators(); }
 }
 function openCatEntity(type,encKey,id,fromEntity){
   const key=decodeURIComponent(encKey), isRev=type==='rev', fld=isRev?'rev':'opex', cls=isRev?'pos':'neg';
@@ -3771,7 +3783,8 @@ function openCatEntity(type,encKey,id,fromEntity){
       +thFilterableTx('Category','cat',`<select id="txdf-cat" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${catOpts.map(k=>`<option value="${escH(k)}">${escH(k)}</option>`).join('')}</select>`)
       +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
-      +`<th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+      +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
+      +`<th></th></tr></thead><tbody>`;
     tx.forEach(x=>{s+=x.amt; h+=txRowHtml(x,type,cls,isRev,false,backCallCE);});
   } else {
     h+=`<table id="txd-table-ce"><tbody>`;
@@ -3784,7 +3797,7 @@ function openCatEntity(type,encKey,id,fromEntity){
   if(tx.length) h+=`</div>`;
   if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this entity in scope.</p>`;
   showModal(`${ENT[id].name} — ${key}`,h,true);
-  if(tx.length){ TXD_APPLY_CTX={tableId:'txd-table-ce',totalId:'txd-total-ce'}; updateTxdFilterIndicators(); }
+  if(tx.length){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-ce',totalId:'txd-total-ce'}; updateTxdFilterIndicators(); }
 }
 function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
 // Renders one transaction (or residual/summary) row for the OpEx/Revenue drill-down tables,
@@ -3853,7 +3866,7 @@ function residualRowHtml(label,entCode,amt,cls,isRev,showEntity){
 // mirroring the Outstanding Liability pattern (thFilterable/toggleOpeFilterPop, reused as-is since
 // only one modal's filter popovers are ever in the DOM at once). The TOTAL row recomputes from
 // each visible row's data-amt as filters change, instead of just hiding rows against a fixed total. ──
-const TXD_FKEY_IDS={date:'txdf-date',ent:'txdf-ent',cat:'txdf-cat',vendor:'txdf-vendor',desc:'txdf-desc'};
+const TXD_FKEY_IDS={date:['txdf-date'],ent:['txdf-ent'],cat:['txdf-cat'],vendor:['txdf-vendor'],desc:['txdf-desc'],amt:['txdf-amt-min','txdf-amt-max']};
 function thFilterableTx(label,fkey,controlsHtml){
   return `<th><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="opef-btn-${fkey}" onclick="toggleOpeFilterPop('${fkey}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
     +`<div id="opef-pop-${fkey}" class="ope-filter-pop" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:10px;z-index:100001;min-width:170px">`
@@ -3861,9 +3874,36 @@ function thFilterableTx(label,fkey,controlsHtml){
     +`<div style="margin-top:6px;text-align:right"><button type="button" class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="clearTxdFilterGroup('${fkey}')">Clear</button></div>`
     +`</div></th>`;
 }
+// Amount filter (min/max, matching the Fixed Cost table's fcNum pattern) — reuses the same
+// input styling/oninput wiring as fcNum but calls applyTxDetailFilters() instead.
+function txdNum(id,ph){ return `<input id="${id}" type="number" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" oninput="applyTxDetailFilters()">`; }
+// Amount sort — click the header to toggle desc/asc. Unlike the string-render tables (which use
+// the generic SORT_STATE/sortHeader/sortApply and re-render from a JS array), these tables filter
+// by mutating existing <tr> elements in place (see applyTxDetailFilters below), so sort does the
+// same: reorder the actual DOM rows via tbody.appendChild rather than rebuilding the table HTML.
+let TXD_SORT_DIR=null;
+function txdSortHeader(label){
+  const arrow=TXD_SORT_DIR==='desc'?'▼':(TXD_SORT_DIR==='asc'?'▲':'⇅');
+  const color=TXD_SORT_DIR?'color:var(--ink,#1a1f36)':'color:var(--muted);opacity:.55';
+  return `<span onclick="toggleTxdSort()" style="cursor:pointer;user-select:none" title="Click to sort">${label} <span id="txd-sort-arrow" style="${color};font-size:10px">${arrow}</span></span>`;
+}
+function toggleTxdSort(){
+  TXD_SORT_DIR=TXD_SORT_DIR==='desc'?'asc':'desc';
+  if(!TXD_APPLY_CTX) return;
+  const table=document.getElementById(TXD_APPLY_CTX.tableId); if(!table) return;
+  const tbody=table.querySelector('tbody');
+  const totalRow=tbody.querySelector('tr:not([data-amt])'); // the TOTAL summary row has no data-amt
+  const rows=[...tbody.querySelectorAll('tr[data-amt]')];
+  rows.sort((a,b)=>Number(a.dataset.amt)-Number(b.dataset.amt));
+  if(TXD_SORT_DIR==='desc') rows.reverse();
+  rows.forEach(r=>tbody.appendChild(r));
+  if(totalRow) tbody.appendChild(totalRow); // keep TOTAL pinned last regardless of sort
+  const arrowEl=document.getElementById('txd-sort-arrow');
+  if(arrowEl){ arrowEl.textContent=TXD_SORT_DIR==='desc'?'▼':'▲'; arrowEl.style.color='var(--ink,#1a1f36)'; arrowEl.style.opacity='1'; }
+}
 let TXD_APPLY_CTX=null; // {tableId,totalId} for whichever Transaction Detail table is currently open
 function clearTxdFilterGroup(fkey){
-  const el=document.getElementById(TXD_FKEY_IDS[fkey]); if(el) el.value='';
+  (TXD_FKEY_IDS[fkey]||[]).forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   applyTxDetailFilters();
 }
 function applyTxDetailFilters(){
@@ -3874,13 +3914,17 @@ function applyTxDetailFilters(){
   const catEl=document.getElementById('txdf-cat'); const catQ=catEl?catEl.value:'';
   const vendQ=(document.getElementById('txdf-vendor')?.value||'').toLowerCase().trim();
   const descQ=(document.getElementById('txdf-desc')?.value||'').toLowerCase().trim();
+  const amtMinS=(document.getElementById('txdf-amt-min')?.value||''), amtMaxS=(document.getElementById('txdf-amt-max')?.value||'');
+  const amtMin=amtMinS?Number(amtMinS):null, amtMax=amtMaxS?Number(amtMaxS):null;
   let total=0;
   table.querySelectorAll('tbody tr[data-amt]').forEach(tr=>{
+    const amtAbs=Math.abs(Number(tr.dataset.amt));
     const ok=(!dateQ||tr.dataset.date.toLowerCase().includes(dateQ))
       &&(!entQ||tr.dataset.ent===entQ)
       &&(!catQ||tr.dataset.cat===catQ)
       &&(!vendQ||tr.dataset.vendor.toLowerCase().includes(vendQ))
-      &&(!descQ||tr.dataset.desc.toLowerCase().includes(descQ));
+      &&(!descQ||tr.dataset.desc.toLowerCase().includes(descQ))
+      &&(amtMin==null||amtAbs>=amtMin)&&(amtMax==null||amtAbs<=amtMax);
     tr.style.display=ok?'':'none';
     if(ok) total+=Number(tr.dataset.amt);
   });
@@ -3889,10 +3933,9 @@ function applyTxDetailFilters(){
   updateTxdFilterIndicators();
 }
 function updateTxdFilterIndicators(){
-  Object.entries(TXD_FKEY_IDS).forEach(([fkey,inpId])=>{
-    const inp=document.getElementById(inpId), btn=document.getElementById('opef-btn-'+fkey);
-    if(!inp||!btn) return;
-    const active=!!inp.value;
+  Object.entries(TXD_FKEY_IDS).forEach(([fkey,ids])=>{
+    const btn=document.getElementById('opef-btn-'+fkey); if(!btn) return;
+    const active=ids.some(id=>{const el=document.getElementById(id); return el&&el.value;});
     btn.style.color=active?'var(--blue-500)':'var(--muted)';
     btn.style.fontWeight=active?'700':'400';
   });
@@ -5150,23 +5193,34 @@ function openFixCostVsActualCategory(id,catEnc){
   if(tx.length||Math.abs(residual)>0.5){
     let s=0;
     const backCall=`openFixCostVsActualCategory('${id}','${catEnc}')`;
-    h+=`<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Date</th><th>Category</th><th>Vendor</th><th>Description</th><th class="num">Amount (IDR)</th><th></th></tr></thead><tbody>`;
+    const catOpts=Array.from(new Set(tx.map(t=>t.k).filter(Boolean))).sort();
+    const inp='padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:100%;box-sizing:border-box';
+    h+=`<div class="table-scroll" style="max-height:300px"><table id="txd-table-fcva"><thead><tr>`
+      +thFilterableTx('Date','date',`<input id="txdf-date" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+      +thFilterableTx('Category','cat',`<select id="txdf-cat" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${catOpts.map(k=>`<option value="${escH(k)}">${escH(k)}</option>`).join('')}</select>`)
+      +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+      +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+      +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
+      +`<th></th></tr></thead><tbody>`;
     tx.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex',cls,false,false,backCall);});
     if(Math.abs(residual)>0.5){
       s+=residual;
       // Negative residual = itemized transactions add up to MORE than the category's May total —
       // a possible double-count (or, as happened here once, a raw_label that didn't match the
       // category name after a rename) — not "not yet itemized", which only applies when positive.
+      // Carries the same data-* attributes as a real row (txRowHtml's contract) so it participates
+      // in filtering/sorting instead of always sitting outside them.
       const neg=residual<0;
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">May 2026</td><td style="font-size:12px;color:var(--muted)">—</td><td style="font-size:12px;color:var(--muted)">—</td>`
+      h+=`<tr data-tx-search="" data-date="May 2026" data-ent="${escH(id)}" data-cat="" data-vendor="" data-desc="" data-amt="${residual}"><td style="white-space:nowrap;color:var(--muted);font-size:12px">May 2026</td><td style="font-size:12px;color:var(--muted)">—</td><td style="font-size:12px;color:var(--muted)">—</td>`
         +`<td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized transactions exceed the category\'s May total — investigate for a possible double-count':'Consolidated from the bank-report category total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td>`
         +`<td class="num ${cls}">${fmt(residual)}</td><td></td></tr>`;
     }
-    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong>${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong id="txd-total-fcva">${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
   } else {
     h+=`<p style="color:var(--muted);font-size:12.5px">No actual transactions for this category in May.</p>`;
   }
   showModal(`${ENT[id]?ENT[id].name:id} — ${cat}`,h,true);
+  if(tx.length||Math.abs(residual)>0.5){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-fcva',totalId:'txd-total-fcva'}; updateTxdFilterIndicators(); }
 }
 function openFixCostEntity(id){ openFixCostDetailView('entity',id); }
 function openFixCostCategory(catEnc){ openFixCostDetailView('category',decodeURIComponent(catEnc)); }
