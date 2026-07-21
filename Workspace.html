@@ -3278,13 +3278,45 @@ function renderOpexChart(a){
 }
 
 // ─── MODALS ──────────────────────────────────────────────────────────────────
+// Scroll-position memory across "Back to X" navigation. showModal() is the single choke point
+// every drill-down/back button in the dashboard goes through (verified: nothing else touches
+// #mBody's content), so hooking scroll capture/restore here covers every table automatically —
+// no need to touch each individual row-click or "‹ Back" handler. Keyed by title: a forward drill
+// (new title, e.g. a specific entity/category name) always starts scrolled to top; returning to a
+// title already visited in this modal session (e.g. clicking "‹ Back to breakdown") restores
+// exactly where the list was scrolled to, so paging back from row 50 doesn't dump you at row 1.
+// Two scroll positions are tracked per title: the outer modal box, and each inner .table-scroll
+// div (long tables scroll independently of the modal itself) by document order.
+let MODAL_SCROLL_BY_TITLE={}, MODAL_CUR_TITLE=null;
 function showModal(title,html,wide){
+  const box=document.getElementById('modalBox');
+  if(MODAL_CUR_TITLE!=null && box){
+    const tables=[...document.querySelectorAll('#mBody .table-scroll')].map(el=>el.scrollTop);
+    MODAL_SCROLL_BY_TITLE[MODAL_CUR_TITLE]={box:box.scrollTop,tables};
+  }
   document.getElementById('mTitle').textContent=title;
   document.getElementById('mBody').innerHTML=html;
   document.getElementById('modalBox').style.maxWidth=wide?'1180px':'';
   document.getElementById('overlay').classList.add('show');
+  MODAL_CUR_TITLE=title;
+  const saved=MODAL_SCROLL_BY_TITLE[title];
+  const applyRestore=()=>{
+    if(box) box.scrollTop=saved?saved.box:0;
+    if(saved&&saved.tables){
+      const els=[...document.querySelectorAll('#mBody .table-scroll')];
+      saved.tables.forEach((v,i)=>{ if(els[i]) els[i].scrollTop=v; });
+    }
+  };
+  // Applied both synchronously (covers the common case immediately, no dependency on rAF timing)
+  // and once more on the next frame (in case the browser hadn't finished layout/clamped scrollTop
+  // to the old content's height yet at the moment of the synchronous call).
+  applyRestore();
+  requestAnimationFrame(applyRestore);
 }
-function closeModal(){document.getElementById('overlay').classList.remove('show');}
+function closeModal(){
+  document.getElementById('overlay').classList.remove('show');
+  MODAL_SCROLL_BY_TITLE={}; MODAL_CUR_TITLE=null;
+}
 // Opex categories rolled up into a handful of parent cost groups for the breakdown modal —
 // purely a display grouping (openBDItem drill-down still keys off the individual category name).
 // Sourced from categories.parent_group (set via the "Manage Categories" panel), not hardcoded —
