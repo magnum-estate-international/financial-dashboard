@@ -7001,7 +7001,7 @@ async function openEntryPanel(){
   wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(20,27,45,.45);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Plus Jakarta Sans,system-ui,sans-serif';
   wrap.innerHTML='<div style="background:#fff;color:#141b2d;max-width:760px;width:100%;border-radius:12px;box-shadow:0 28px 64px -18px rgba(30,45,58,.35);padding:24px 26px;overflow:hidden">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:18px;color:#141b2d">Update data</div><button id="mag-entry-x" style="border:0;background:#eef2f7;border-radius:12px;padding:6px 12px;cursor:pointer;font-size:13px">Close</button></div>'
-    +'<div style="font-size:12.5px;color:#2e3547;margin-bottom:18px;line-height:1.5">Pick your PT and month, attach the documents (bank recap, bank statement, payment vouchers) and save — that\'s it. Amounts are optional; if you add them, they apply to the consolidated numbers immediately. Everything is logged below.</div>'
+    +'<div style="font-size:12.5px;color:#2e3547;margin-bottom:18px;line-height:1.5">Import transactions, balances, outstanding liabilities and fixed costs per PT — each section below downloads its own Excel template, so nothing needs to be typed from scratch.</div>'
     +'<div id="mag-entry-body">Loading…</div></div>';
   document.body.appendChild(wrap);
   document.getElementById('mag-entry-x').onclick=closeEntry;
@@ -7048,21 +7048,20 @@ async function renderEntryBody(){
   // single file can cover many entities and months at once. Same convention as Outstanding
   // Liability/Fixed Cost: download template → fill in Excel → upload → preview flags errors/possible
   // duplicates with fixable dropdowns → confirm import. Insert-only (no per-row "ID"/update mode). ──
-  h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:4px">Import Transactions</div>';
-  h+='<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per transaction, then upload — new rows are added to the consolidated numbers immediately. Existing data can be exported for reference or bulk-editing.</div>';
   const inp='padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px;box-sizing:border-box';
-  h+='<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-    +'<select id="tx-export-ent" style="'+inp+';width:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+  h+='<details open style="margin:4px 0 22px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Transactions</summary>'
+    +'<div style="padding:12px 2px 0">'
+    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per transaction (Date, Entity, Flow, Category, Vendor, Description, Amount), then upload — new rows are added to the consolidated numbers immediately. Rows that don\'t match an existing entity/category/vendor, or that look like a possible duplicate, are flagged in the preview before anything is saved.</div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+    +'<button id="tx-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+    +'<label for="tx-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#e3e6fd;color:#4550d8;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+    +'<input id="tx-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+    +'<select id="tx-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
     +'<button id="tx-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
     +'</div>'
-    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Date, Entity, Flow, Category, Vendor, Description, Amount</b>. Flow is <b>Opex</b> or <b>Revenue</b>. Entity must match a PT name, Category an existing category for that flow, and Vendor an existing vendor name (leave blank for Unknown, or add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
-    +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Possible duplicates</b> (same entity, month, flow, category, vendor, amount &amp; description as an existing transaction) are flagged in the preview, not silently re-added — review before importing.</div>'
-    +'<button id="tx-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
-    +'<div><label for="tx-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
-    +'<input id="tx-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
-    +'<span id="tx-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
+    +'<span id="tx-filename" style="font-size:12px;color:#3a4254"></span>'
     +'<div id="tx-preview" style="margin-top:12px"></div>'
-    +'<div style="margin-bottom:22px"></div>';
+    +'</div></details>';
   // ── Update Entity Balance — a dedicated box for logging opening/closing bank balance per PT
   // per period, decoupled from the file-upload flow above (previously this was only reachable by
   // expanding "Advanced" inside the main entry form). Feeds the Balance Reconciliation section. ──
