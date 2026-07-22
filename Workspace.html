@@ -3464,7 +3464,11 @@ function openOpexBreakdown(view){
   SORT_RERENDER['opexvendor']=()=>openOpexBreakdown('vendor');
   const a=agg();
   const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#5b67f1;color:#fff;border:0':''}" onclick="openOpexBreakdown('${v}')">${label}</button>`;
-  let h=`<div style="display:flex;gap:8px;margin-bottom:14px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}</div>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:14px;justify-content:space-between;align-items:center">
+    <div style="display:flex;gap:8px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}</div>
+    <input type="text" placeholder="Search…" oninput="opexBdSearchFilter(this.value)" style="font-size:12.5px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;width:160px">
+  </div>`;
+  h+=`<div id="opexbd-table">`;
   if(view==='category'){
     h+=bdTableHtml(a.opexBD,a.opex,'neg');
   } else if(view==='vendor'){
@@ -3505,7 +3509,18 @@ function openOpexBreakdown(view){
     }
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   }
+  h+=`</div>`;
   showModal('Operating Expenses — Breakdown',h);
+}
+function opexBdSearchFilter(term){
+  term=(term||'').trim().toLowerCase();
+  const wrap=document.getElementById('opexbd-table');
+  if(!wrap) return;
+  wrap.querySelectorAll('tbody tr').forEach(tr=>{
+    const txt=tr.textContent.toLowerCase();
+    const isTotal=txt.startsWith('total');
+    tr.style.display=(isTotal||!term||txt.includes(term))?'':'none';
+  });
 }
 function openOpexVendor(encVendor){
   const vendor=decodeURIComponent(encVendor);
