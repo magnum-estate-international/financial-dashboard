@@ -2884,7 +2884,7 @@ function cashPositionCard(){
     </div>`;
 }
 function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi4'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard(); }
+  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi5'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard()+paymentPlanCard(); }
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
@@ -2955,7 +2955,7 @@ function renderKpiFin(a){
 function mkOutstanding(o){
   const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
   return {id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,invNo:o.invoice_number,inv:o.invoice_date,due:o.due_date,
-    amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date,docUrl:o.document_url,freq:o.frequency||'OTP'};
+    amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date,docUrl:o.document_url,freq:o.frequency||'OTP',planDate:o.planned_payment_date||null};
 }
 const FREQ_LABEL={OTP:'One Time Payment',REC:'Monthly Payment',PRG:'By Progress'};
 // Only render a value as a clickable link if it's a plain http(s) URL — guards against a
@@ -2975,6 +2975,48 @@ function outstandingCard(){
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
       <div class="meta">${open.length?`${open.length} unpaid invoice${open.length>1?'s':''}${overdueN?`, <span style="color:var(--red)">${overdueN} overdue</span>`:''}`:'No outstanding liabilities — click to add one'}</div>
     </div>`;
+}
+// ─── PLAN PAYMENT PRIORITY — a manually-curated subset of Outstanding Liability: the user picks
+// which open invoices to schedule and when ("Make Payment Plan" in the row's ⋮ menu), sorted
+// soonest-first. Purely a scheduling flag (outstanding_payables.planned_payment_date) — it never
+// changes paid_amount_idr/status/remaining, so marking a plan never affects the outstanding total. ───
+function paymentPlanOpen(){
+  const ids=new Set(scopeIds());
+  return OUTSTANDING.filter(o=>o.status==='open'&&o.planDate&&ids.has(o.e));
+}
+function paymentPlanCard(){
+  const planned=paymentPlanOpen().sort((a,b)=>a.planDate<b.planDate?-1:a.planDate>b.planDate?1:0);
+  const tot=planned.reduce((s,o)=>s+o.remaining,0);
+  const next=planned[0];
+  return `<div class="pcard clickable" onclick="openPaymentPlanPriority()">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="lab">Plan Payment Priority</div>
+      <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
+      <div class="meta">${planned.length?`${planned.length} invoice${planned.length>1?'s':''} scheduled — next ${next.planDate}`:'Nothing scheduled — use "Make Payment Plan" on an invoice'}</div>
+    </div>`;
+}
+function openPaymentPlanPriority(){
+  SORT_RERENDER['ppPriority']=openPaymentPlanPriority;
+  let rows=paymentPlanOpen();
+  rows=sortApply('ppPriority',rows,o=>o.remaining);
+  if(!sortActiveKey('ppPriority')) rows=rows.slice().sort((a,b)=>a.planDate<b.planDate?-1:a.planDate>b.planDate?1:0);
+  const tot=rows.reduce((s,o)=>s+o.remaining,0);
+  let h=`<div class="pn-sub" style="margin-bottom:8px">Invoices you've manually scheduled for payment, soonest first. Setting or changing a plan date never affects the outstanding amount itself — mark it Paid (from Outstanding Liability) once it's actually settled.</div>`;
+  h+=`<table><thead><tr><th>Entity</th><th>Vendor</th><th>Category</th><th>Original Due</th><th>Planned Payment Date</th><th class="num">${sortHeader('ppPriority','Amount (IDR)','amt')}</th><th></th></tr></thead><tbody>`;
+  if(rows.length){
+    rows.forEach(o=>{
+      const od=daysOverdue(o.due);
+      const dueLbl=od>0?`<span style="color:var(--red)">${overdueLabel(o.due,od)}</span>`:o.due;
+      h+=`<tr><td>${pill(o.e)}</td><td>${escH(o.vendor)}</td><td>${escH(o.cat||'—')}</td><td style="white-space:nowrap;color:var(--muted);font-size:12px">${dueLbl}</td>`
+        +`<td style="white-space:nowrap;font-weight:700;color:var(--blue-900)">${o.planDate}</td><td class="num neg">${fmt(o.remaining)}</td>`
+        +`<td style="white-space:nowrap"><button class="btn btn-ghost" style="font-size:11.5px;padding:5px 10px" onclick="openPaymentPlanQuick(${o.id},'${o.e}','open')">Change date</button> `
+        +`<button class="btn btn-ghost" style="font-size:11.5px;padding:5px 10px;color:var(--red)" onclick="removeFromPaymentPlan(${o.id},'${o.e}','open')">Remove</button></td></tr>`;
+    });
+  } else {
+    h+=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No invoices scheduled yet — open Outstanding Liability and use "Make Payment Plan" on any unpaid invoice.</td></tr>`;
+  }
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="5"><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table>`;
+  showModal('Plan Payment Priority',h,true);
 }
 // ─── FIXED COST MANAGEMENT (recurring monthly costs — mirrors Outstanding Liability's shape) ───
 function mkFixCost(f){
@@ -4202,6 +4244,10 @@ function outstandingRowHtml(o){
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${overdueLabel(o.due,od)}</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
     if(canEdit) items.push(menuItem(ICON.dollar()+' Mark Paid',`openMarkPaidQuick(${o.id},'${o.e}','${OPE_TAB}')`));
+    if(canEdit) items.push(o.planDate
+      ? menuItem(ICON.bell()+' Change Payment Plan Date',`openPaymentPlanQuick(${o.id},'${o.e}','${OPE_TAB}')`)
+      : menuItem(ICON.bell()+' Make Payment Plan',`openPaymentPlanQuick(${o.id},'${o.e}','${OPE_TAB}')`));
+    if(canEdit && o.planDate) items.push(menuItem(ICON.undo()+' Remove from Payment Plan',`removeFromPaymentPlan(${o.id},'${o.e}','${OPE_TAB}')`,'var(--red)'));
   }
   if(canEdit){
     items.push(menuItem(ICON.edit()+' Edit',`openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')`));
@@ -5676,6 +5722,43 @@ async function doMarkPaidQuick(id,entityId,tab){
     const updated=OUTSTANDING.find(x=>x.id===id);
     refreshOutstandingRowsInPlace(entityId,(updated&&updated.status==='paid')?'paid':tab,id);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+// ── Payment plan date — purely a scheduling flag on an Outstanding Liability row. Setting it
+// never touches paid_amount_idr/status/remaining; it only marks "I intend to pay this on X date"
+// so it surfaces in the Plan Payment Priority card, sorted soonest-first. ──
+async function openPaymentPlanQuick(id,entityId,tab){
+  const o=OUTSTANDING.find(x=>x.id===id);
+  if(!o) return;
+  const today=new Date().toISOString().slice(0,10);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstandingEntity('${entityId}','${tab}')">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 4px">${o.planDate?'Change Payment Plan Date':'Make Payment Plan'}</h4>`;
+  h+=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(o.vendor)} — ${escH(o.desc)}<br>Remaining: <b style="color:var(--ink)">${fmt(o.remaining)}</b> · this only schedules a planned payment date — it does not record a payment or change the outstanding amount.</div>`;
+  h+=opeField('Planned payment date',`<input id="ppq-date" type="date" value="${o.planDate||today}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button class="btn" style="background:#5b67f1;color:#fff;border:0" onclick="doSavePaymentPlanQuick(${id},'${entityId}','${tab}')">Save plan date</button>`
+    +`<span id="ppq-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal(o.planDate?'Change Payment Plan Date':'Make Payment Plan',h,true);
+}
+async function doSavePaymentPlanQuick(id,entityId,tab){
+  const err=document.getElementById('ppq-err'); err.textContent='';
+  const date=document.getElementById('ppq-date').value;
+  if(!date) return void(err.textContent='Pick a planned payment date.');
+  try{
+    await adminUpdateOne('outstanding_payables',id,{planned_payment_date:date});
+    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+    OUTSTANDING=fresh.map(mkOutstanding);
+    renderKpiCash();
+    refreshOutstandingRowsInPlace(entityId,tab,id);
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function removeFromPaymentPlan(id,entityId,tab){
+  if(!confirm('Remove this invoice from the payment plan? (The outstanding liability itself is unaffected.)')) return;
+  try{
+    await adminUpdateOne('outstanding_payables',id,{planned_payment_date:null});
+    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
+    OUTSTANDING=fresh.map(mkOutstanding);
+    renderKpiCash();
+    refreshOutstandingRowsInPlace(entityId,tab,id);
+  }catch(e){ alert('Failed to remove: '+e.message); }
 }
 async function reopenOutstanding(id,entityId){
   try{
