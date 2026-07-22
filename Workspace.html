@@ -2884,7 +2884,7 @@ function cashPositionCard(){
     </div>`;
 }
 function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi5'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard()+paymentPlanningCard(); }
+  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi4'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard(); }
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
@@ -2997,66 +2997,6 @@ function fixCostCard(){
 async function refreshFixCost(){
   try{ FIXCOST=(await sbFetch('entity_fixed_costs?select=*&order=id')).map(mkFixCost); }catch(e){}
   renderKpiCash();
-}
-// ─── PAYMENT PLANNING — a calendar-style view combining Outstanding Liability (real invoices,
-// each with its own due date) and Fixed Cost (a flat recurring monthly baseline, no due date of its
-// own) so it's clear what needs to be paid soon. Read-only: it doesn't introduce new stored data,
-// just a different grouping of OUTSTANDING/FIXCOST already loaded for the other two cards. ───
-function ppBucketOf(due){
-  const daysUntil=-daysOverdue(due);
-  if(daysUntil<0) return 'overdue';
-  if(daysUntil<=7) return 'week';
-  if(daysUntil<=30) return 'month';
-  return 'later';
-}
-function paymentPlanningCard(){
-  const ids=new Set(scopeIds());
-  const open=OUTSTANDING.filter(o=>o.status==='open'&&ids.has(o.e));
-  const overdue=open.filter(o=>ppBucketOf(o.due)==='overdue');
-  const dueSoon=open.filter(o=>ppBucketOf(o.due)==='week');
-  const dueSoonTot=dueSoon.reduce((s,o)=>s+o.remaining,0);
-  return `<div class="pcard clickable" onclick="openPaymentPlanning()">
-      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Payment Planning</div>
-      <div class="big ${dueSoonTot>0?'neg':''}" style="${dueSoonTot>0?'':'color:var(--muted)'}">${dueSoonTot>0?fmt(dueSoonTot):'—'}</div>
-      <div class="meta">${dueSoon.length?`${dueSoon.length} due in 7 days`:'Nothing due in 7 days'}${overdue.length?`, <span style="color:var(--red)">${overdue.length} overdue</span>`:''}</div>
-    </div>`;
-}
-function ppSectionHtml(tableId,label,color,rows){
-  if(!rows.length) return '';
-  rows=sortApply(tableId,rows,o=>o.remaining);
-  const tot=rows.reduce((s,o)=>s+o.remaining,0);
-  let h=`<div style="margin:16px 0 8px"><span style="font-weight:700;font-size:13.5px;color:${color}">${label}</span> <span style="color:var(--muted);font-size:12px">(${rows.length} · ${fmt(tot)})</span></div>`;
-  h+=`<table><thead><tr><th>Entity</th><th>Vendor</th><th>Category</th><th>Due</th><th class="num">${sortHeader(tableId,'Amount (IDR)','amt')}</th></tr></thead><tbody>`;
-  rows.forEach(o=>{
-    const od=daysOverdue(o.due);
-    const dueLbl=od>0?`<span style="color:var(--red);font-weight:700">${overdueLabel(o.due,od)}</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:o.due);
-    h+=`<tr style="cursor:pointer" onclick="openOutstanding('category')"><td>${pill(o.e)}</td><td>${escH(o.vendor)}</td><td>${escH(o.cat||'')}</td><td style="white-space:nowrap">${dueLbl}</td><td class="num neg">${fmt(o.remaining)}</td></tr>`;
-  });
-  h+='</tbody></table>';
-  return h;
-}
-function openPaymentPlanning(){
-  SORT_RERENDER['ppOverdue']=openPaymentPlanning; SORT_RERENDER['ppWeek']=openPaymentPlanning;
-  SORT_RERENDER['ppMonth']=openPaymentPlanning; SORT_RERENDER['ppLater']=openPaymentPlanning;
-  const ids=new Set(scopeIds());
-  const open=OUTSTANDING.filter(o=>o.status==='open'&&ids.has(o.e));
-  const buckets={overdue:[],week:[],month:[],later:[]};
-  open.forEach(o=>buckets[ppBucketOf(o.due)].push(o));
-  Object.values(buckets).forEach(arr=>arr.sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:0));
-  let h=`<div class="pn-sub" style="margin-bottom:8px">Outstanding invoices grouped by when they're due, plus recurring monthly fixed costs.</div>`;
-  h+=ppSectionHtml('ppOverdue','⚠ Overdue','var(--red)',buckets.overdue);
-  h+=ppSectionHtml('ppWeek','Due within 7 days','var(--amber)',buckets.week);
-  h+=ppSectionHtml('ppMonth','Due within 30 days','var(--blue-900)',buckets.month);
-  h+=ppSectionHtml('ppLater','Due later','var(--muted)',buckets.later);
-  if(!open.length) h+=`<p style="color:var(--muted);font-size:13px">No open outstanding liabilities in this scope.</p>`;
-  const fixRows=fixCostInScope();
-  if(fixRows.length){
-    const fixTot=fixRows.reduce((s,f)=>s+f.amt,0);
-    h+=`<div style="margin:20px 0 8px;border-top:1px solid #eef2f7;padding-top:14px" class="clickable" onclick="openFixCost('vendor')"><span style="font-weight:700;font-size:13.5px">🔁 Recurring Monthly Fixed Costs</span> <span style="color:var(--muted);font-size:12px">(${fixRows.length} item${fixRows.length>1?'s':''} · ${fmt(fixTot)} every month)</span></div>`;
-    h+=`<div class="pn-sub">Not tied to a specific due date — click to see the full Fix Cost breakdown.</div>`;
-  }
-  showModal('Payment Planning',h,true);
 }
 // Fix cost is a flat monthly baseline (entity/group-scoped, not month-scoped); actual is always
 // pinned to May (the last full, stable month) — see fixCostVsActualHtml() for the detail view.
