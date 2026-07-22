@@ -7256,7 +7256,11 @@ async function renderEntryBody(){
       rows.push([isoFromDayLabel(t.d)||t.d,eName(t.e),FLBL[t.type]||t.type,t.k,t.vendor||'',t.desc,t.amt]);
     });
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Transactions');
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    // explicit column widths — the default is narrow enough that 9-10 digit IDR amounts render as
+    // "###" (looks like a blank/missing Amount column at a glance) until the user manually widens it
+    ws['!cols']=[{wch:12},{wch:32},{wch:10},{wch:22},{wch:20},{wch:50},{wch:16}];
+    XLSX.utils.book_append_sheet(wb,ws,'Transactions');
     const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
     XLSX.writeFile(wb,'transactions_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
   };
