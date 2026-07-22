@@ -4705,6 +4705,153 @@ function renderOpdPreview(){
     }
   };
 }
+// ─── Transactions bulk import — same Excel-template + preview + dedup-flag pattern as Outstanding
+// Liability/Fixed Cost, but each row is a full itemized transaction (own Date/Entity/Flow), so one
+// file can cover many entities and months at once. Insert-only: transactions aren't hand-tracked by
+// ID like Outstanding Liability, so there's no "Update #ID" mode — a flagged possible duplicate is a
+// warning, never a block, exactly like the other bulk importers.
+const MCODES_G=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+const MNAMES_G=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function periodFromDateG(v){
+  const p=v.split('-'); const y=parseInt(p[0],10), m=parseInt(p[1],10);
+  return {code:MCODES_G[m-1]+(y===2026?'':String(y).slice(2)), label:MNAMES_G[m-1]+' '+y};
+}
+function isoFromDayLabel(d){
+  if(!d) return '';
+  const parts=d.trim().split(' '); const mi=MON3.indexOf(parts[1]);
+  if(mi<0) return '';
+  return '2026-'+String(mi+1).padStart(2,'0')+'-'+String(parts[0]).padStart(2,'0');
+}
+let TX_ROWS=[];
+function findDuplicateTx(list,r){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return list.find(o=>o.e===r.entityMatch && o.mo===r.period && o.type===r.flowKey
+    && norm(o.k)===norm(r.category) && norm(o.vendor)===norm(r.vendor||r.vendorMatch||'Unknown')
+    && Math.round(o.amt)===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
+}
+function findCategoryByFlow(name,flowKey){
+  if(!name) return null;
+  const n=String(name).trim().toLowerCase();
+  const list=(flowKey==='rev'?(CATS_BY_KIND_G.revenue||[]):(OPEX_CATS_G||[]));
+  const hit=list.find(c=>c.toLowerCase()===n);
+  if(hit) return hit;
+  if(flowKey==='opex'){
+    const syn=CAT_SYNONYMS[n];
+    if(syn && (OPEX_CATS_G||[]).includes(syn)) return syn;
+  }
+  return null;
+}
+function computeTxRow(r){
+  let error=null;
+  if(!r.entityMatch) error='Entity not recognized';
+  else if(!r.date) error='Invalid date';
+  else if(!r.flowKey) error='Flow must be Opex or Revenue';
+  else if(!r.catMatch) error='Category not recognized — pick one, or add it via Manage Categories first';
+  else if(!r.desc) error='Missing description';
+  else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
+  r.error=error;
+  r.category=r.catMatch||r.catRaw||'';
+  r.vendor=r.vendorMatch||r.vendorRaw||'Unknown';
+  if(!error){
+    const P=periodFromDateG(r.date);
+    r.period=P.code; r.periodLabel=P.label;
+    r.dup=findDuplicateTx(TX,r);
+  } else { r.period=null; r.dup=null; }
+}
+function fixTxField(i,field,value){
+  const r=TX_ROWS[i]; if(!r) return;
+  if(field==='entity') r.entityMatch=value||null;
+  else if(field==='flow') r.flowKey=value||null;
+  else if(field==='cat') r.catMatch=value||null;
+  else if(field==='vendor') r.vendorMatch=value||null;
+  computeTxRow(r);
+  renderTxPreview();
+}
+function txEntityCell(r,i){
+  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('tx-fix-ent-'+i,`fixTxField(${i},'entity',this.value)`);
+}
+function txFlowCell(r,i){
+  if(r.flowKey) return r.flowKey==='rev'?'Revenue':'Opex';
+  return `<select id="tx-fix-flow-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'flow',this.value)"><option value="">— pick —</option><option value="opex">Opex</option><option value="rev">Revenue</option></select>`;
+}
+function txCatCell(r,i){
+  if(r.catMatch) return escH(r.catMatch);
+  const opts=r.flowKey==='rev'?(CATS_BY_KIND_G.revenue||[]):(OPEX_CATS_G||[]);
+  return fixPickCellHtml('tx-fix-cat-'+i,`fixTxField(${i},'cat',this.value)`,opts,'— pick category —','category');
+}
+function txVendorCell(r,i){
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+}
+function renderTxPreview(){
+  const el=document.getElementById('tx-preview'); if(!el) return;
+  if(!TX_ROWS.length){ el.innerHTML=''; return; }
+  const valid=TX_ROWS.filter(r=>!r.error);
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Date</th><th>Entity</th><th>Flow</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+  TX_ROWS.forEach((r,i)=>{
+    const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
+    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':'OK');
+    h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+      +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
+      +'<td style="font-size:12px">'+txEntityCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+txFlowCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+txCatCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+txVendorCell(r,i)+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
+      +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  const dupN=valid.filter(r=>r.dup).length;
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> transaction'+(valid.length===1?'':'s')+' — '+valid.length+' of '+TX_ROWS.length+' row(s) ready'
+    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved transaction (same entity, month, flow, category, vendor, amount &amp; description) — review before importing':'')
+    +(TX_ROWS.length>valid.length?'. Fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
+  h+='<button id="tx-import" type="button" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' transaction'+(valid.length===1?'':'s')+'</button>';
+  h+='<div id="tx-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+  el.innerHTML=h;
+  const impBtn=document.getElementById('tx-import');
+  if(impBtn) impBtn.onclick=async()=>{
+    impBtn.disabled=true; impBtn.textContent='Importing…';
+    try{
+      const baseOrd=Math.floor(Date.now()/1000);
+      const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
+      const txRows=valid.map((r,i)=>({
+        source:'TX_MULTI',ord:baseOrd+i,period_code:r.period,flow:r.flowKey,
+        entity_code:r.entityMatch,day_label:dayLbl(r.date),
+        description:String(r.desc||'').slice(0,200),raw_label:r.category,
+        source_label:'Excel import',upload_batch:batchId,amount_idr:r.amt,contra:false}));
+      if(txRows.length) await adminAddBatch('transactions',txRows);
+      // keep entity_period_totals in sync — ADD the new amount on top of whatever total already
+      // exists (never recompute the headline from scratch), since a headline can legitimately be
+      // larger than the sum of itemized detail (un-itemised bank-recap gap) and blindly overwriting
+      // it with sum(detail) would silently erase that gap.
+      const touched={};
+      valid.forEach(r=>{ (touched[r.entityMatch]=touched[r.entityMatch]||new Set()).add(r.period); });
+      for(const ent of Object.keys(touched)){
+        for(const per of touched[ent]){
+          const added=valid.filter(r=>r.entityMatch===ent && r.period===per);
+          const inc={revenue:0,opex:0};
+          added.forEach(r=>{ inc[r.flowKey==='rev'?'revenue':'opex']+=r.amt; });
+          const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
+          const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
+          await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+            headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+            body:JSON.stringify({entity_code:ent,period_code:per,
+              revenue:Number(c.revenue||0)+inc.revenue, opex:Number(c.opex||0)+inc.opex,
+              financing_in:Number(c.financing_in||0), financing_out:Number(c.financing_out||0)})});
+        }
+      }
+      TX_ROWS=[];
+      document.getElementById('tx-import-msg').style.color='#2b7a4b';
+      document.getElementById('tx-import-msg').textContent='✓ Added '+txRows.length+' new transaction'+(txRows.length===1?'':'s')+' — the page refreshes when you close this panel.';
+      impBtn.textContent='Imported ✓';
+      ENTRY_DIRTY=true;
+    }catch(e){
+      document.getElementById('tx-import-msg').style.color='#b3261e';
+      document.getElementById('tx-import-msg').textContent='Import failed: '+e.message;
+      impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' transaction'+(valid.length===1?'':'s');
+    }
+  };
+}
 let FCD_ROWS=[];
 function computeFcdRow(r){
   let error=null;
@@ -6513,7 +6660,6 @@ async function renderAdminBody(){
 }
 /* ── Data entry & approvals (every user submits for their PT; admins review) ── */
 const FLOW_LBL={revenue:'Revenue',opex:'Operating expense',financing_in:'Financing in (loan/capital received)',financing_out:'Financing out (loan given / repayment)'};
-const FLOW_KIND={revenue:'revenue',opex:'opex',financing_in:'financing',financing_out:'financing'};
 const escH=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function fmtIDR(n){ return new Intl.NumberFormat('id-ID').format(Math.round(Number(n)||0)); }
 let ENTRY_DIRTY=false;
@@ -6527,13 +6673,6 @@ async function rpcReview(id,decision,note){
 }
 /* ── Supporting documents (rekap bank, rekening koran, voucher payments) ── */
 const DT_LBL={rekap_bank:'Bank recap',rekening_koran:'Bank statement',voucher:'Payment voucher',other:'Document'};
-let EN_FILES=[];
-let EN_AI=[];            // transactions extracted from PDFs/photos by the ai-extract edge function
-let EN_PARSED_ROWS=[];   // in-range rows from the last parse (xlsx + AI) — saved as per-tx detail
-let EN_DEDUP=null;       // dedup result: which parsed rows are already in the dashboard
-let ENTRY_REFRESH_PARSE=null;
-function fileB64(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(f); }); }
-const AI_FILE_RX=/\.(pdf|jpe?g|png|webp|heic)$/i;
 /* ── Bank-book auto-read: parse uploaded xlsx/csv statements into dashboard figures.
    Sheet format (same as the recap pipeline): a header row containing DATE + DEBIT
    (+ REMARK/DESCRIPTION, CATEGORIES, CREDIT); DEBIT = money in, CREDIT = money out. ── */
@@ -6653,75 +6792,6 @@ async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,co
   const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
-async function parseBankFiles(from,to,myEntityName){
-  if(typeof XLSX==='undefined') return null;
-  await loadEntityNameRx();
-  const out={count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null,rows:[],excluded:0,excludedAmt:0};
-  for(const x of EN_FILES){
-    if(!/\.(xlsx|xls|csv)$/i.test(x.file.name)) continue;
-    let wb; try{ wb=XLSX.read(await x.file.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){ continue; }
-    let used=false;
-    wb.SheetNames.forEach(sn=>{
-      if(/^(sheet1$|categories$|_|jr_|microsoft)/i.test(sn.trim())) return;
-      let rows; try{ rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true}); }catch(e){ return; }
-      let hdr=-1; const cols={};
-      for(let i=0;i<Math.min(rows.length,10);i++){
-        const vals=(rows[i]||[]).map(c=>String(c==null?'':c).trim().toUpperCase());
-        if(vals.indexOf('DATE')>=0 && vals.indexOf('DEBIT')>=0){
-          hdr=i;
-          vals.forEach((v,j)=>{
-            if(v==='DATE')cols.date=j;
-            else if(v==='REMARK'||v==='DESCRIPTION')cols.desc=j;
-            else if(v==='CATEGORIES')cols.cat=j;
-            else if(v==='DEBIT')cols.debit=j;
-            else if(v==='CREDIT'||v==='KREDIT')cols.credit=j;
-          });
-          break;
-        }
-      }
-      if(hdr<0||cols.date==null) return;
-      for(let i=hdr+1;i<rows.length;i++){
-        const row=rows[i]||[];
-        const dt=xlsDate(row[cols.date]);
-        const desc=String(cols.desc!=null&&row[cols.desc]!=null?row[cols.desc]:'').trim();
-        if(!dt||!desc) continue;
-        if(/^opening balance/i.test(desc)) continue;
-        const inn=Math.round(xlsNum(cols.debit!=null?row[cols.debit]:0));
-        const outv=Math.round(xlsNum(cols.credit!=null?row[cols.credit]:0));
-        if(!inn && !outv) continue;
-        out.allCount++; used=true;
-        if(!out.minDate||dt<out.minDate) out.minDate=dt;
-        if(!out.maxDate||dt>out.maxDate) out.maxDate=dt;
-        if(from && dt<from) continue;
-        if(to && dt>to) continue;
-        const catRaw=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'').trim();
-        const tag=catRaw+' '+desc;
-        if(EXCLUDE_RX.test(tag)){ out.excluded++; out.excludedAmt+=(inn||outv); continue; }
-        // canon/fin must be evaluated per the row's OWN direction — computing both hypothetically and
-        // OR-ing them together wrongly flagged plain expenses as financing whenever the inflow-hypothesis
-        // matched (e.g. "Worker salary advance via Mr. Igor" is an outflow, but testing it as an inflow
-        // hits the permissive Stan/Igor-in branch and would wrongly mark this outflow as financing too).
-        const genericFin=FIN_RX.test(tag);
-        if(inn){
-          const canonIn=financingCanon(tag,'in',myEntityName);
-          const fin=genericFin||!!canonIn;
-          const refund=!fin && REFUND_RX.test(tag);
-          if(fin) out.finIn+=inn; else if(refund) out.opex-=inn; else out.rev+=inn;
-          out.rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw,canon:fin?canonIn:null,shName:canonIn==='Shareholder Capital Deposit (Stan & Igor)'?shareholderName(desc):null});
-        }
-        if(outv){
-          const canonOut=financingCanon(tag,'out',myEntityName);
-          const fin=genericFin||!!canonOut;
-          if(fin) out.finOut+=outv; else out.opex+=outv;
-          out.rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw,canon:fin?canonOut:null});
-        }
-        out.count++; used=true;
-      }
-    });
-    if(used) out.files.push(x.file.name);
-  }
-  return out;
-}
 /* ── Per-transaction categorisation: file category → alias map → AI classify ── */
 let CAT_MAP=null;
 async function loadCatMap(){
@@ -6761,13 +6831,6 @@ async function categorizeRows(rows){
   rows.forEach(r=>{ if(!r.fin&&!r.canon) r.canon=(r.dir==='in'&&!r.refund)?'Other Guest Services & Income':'Other Operating Expense'; });
 }
 const subDocUrl=path=>SB_URL+'/storage/v1/object/submission-docs/'+path.split('/').map(encodeURIComponent).join('/');
-async function uploadSubDoc(f,dt){
-  const safe=f.name.replace(/[^A-Za-z0-9._-]+/g,'_').slice(-80);
-  const path=MY_EMAIL+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+safe;
-  const r=await authedFetch(subDocUrl(path),{method:'POST',headers:{'Content-Type':f.type||'application/octet-stream','x-upsert':'false'},body:f});
-  if(!r.ok){ const t=await r.text().catch(()=>''); throw new Error('Upload failed for '+f.name+(t?': '+t:'')); }
-  return {path:path,name:f.name,doc_type:dt,mime:f.type||'',size:f.size};
-}
 async function openSubDoc(path){
   const r=await authedFetch(SB_URL+'/storage/v1/object/sign/submission-docs/'+path.split('/').map(encodeURIComponent).join('/'),
     {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expiresIn:3600})});
@@ -6782,11 +6845,11 @@ function attChips(s){
     '<button class="att" data-p="'+escH(x.path)+'" title="'+escH(x.name)+'" style="border:1px solid #d4d9fb;background:#f4f5fe;color:#4550d8;border-radius:12px;padding:2.5px 10px;font-size:11px;font-weight:600;cursor:pointer;margin:2px 4px 0 0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">📎 '+escH(DT_LBL[x.doc_type]||'Doc')+' · '+escH(x.name)+'</button>').join('')+'</div>';
 }
 /* ── Replace Period Import (admin) ──────────────────────────────────────────
-   Standalone sheet parser mirroring parseBankFiles' inner loop, but scoped to a single File
-   (not the entry panel's EN_FILES) and without dedup — this tool always replaces the whole
-   entity+period, so there's nothing to dedup against. Reuses the same header-detection and
-   classification helpers (xlsDate/xlsNum/financingCanon/FIN_RX/REFUND_RX/EXCLUDE_RX) parseBankFiles
-   already relies on, so a file classifies identically whichever import path it goes through. */
+   Standalone sheet parser for a raw bank-recap file, scoped to a single File and without dedup —
+   this tool always replaces the whole entity+period, so there's nothing to dedup against. Reuses
+   the same header-detection and classification helpers (xlsDate/xlsNum/financingCanon/FIN_RX/
+   REFUND_RX/EXCLUDE_RX) shared with the Excel-template Import Transactions flow, so a file
+   classifies identically whichever import path it goes through. */
 async function rpiParseSheet(file, myEntityName){
   await loadEntityNameRx();
   const rows=[];
@@ -6909,7 +6972,7 @@ async function rpiConfirm(entity,period,myEntityName){
       source_label:'Replace period import',upload_batch:batchId,amount_idr:(r.refund?-r.amt:r.amt),contra:false}));
     if(txRows.length) await adminAddBatch('transactions',txRows);
     // recompute this entity+period's headline totals to exactly match the freshly inserted detail —
-    // no gap-fill guesswork, unlike the bank-book flow's EN_DEDUP path
+    // a full replace, unlike Import Transactions' additive top-up of the existing headline
     const sums={revenue:0,opex:0,financing_in:0,financing_out:0};
     const FLN={rev:'revenue',opex:'opex',fin_in:'financing_in',fin_out:'financing_out'};
     RPI_ROWS.forEach(r=>{
@@ -6980,46 +7043,26 @@ async function renderEntryBody(){
       h+='</tbody></table></div>';
     }
   }
-  // ── Entry form ──
-  h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:4px">Submit an update</div>';
-  h+='<div style="font-size:12px;color:#3a4254;margin-bottom:10px">1. Pick your PT &nbsp;→&nbsp; 2. Drop the file &nbsp;→&nbsp; 3. Save. Dates and amounts are read from the file automatically.</div>';
+  // ── Import Transactions — Excel-template bulk import/export, replacing the old raw-document
+  // attach + auto-parse flow. Each row is a fully itemized transaction (own Date/Entity/Flow), so a
+  // single file can cover many entities and months at once. Same convention as Outstanding
+  // Liability/Fixed Cost: download template → fill in Excel → upload → preview flags errors/possible
+  // duplicates with fixable dropdowns → confirm import. Insert-only (no per-row "ID"/update mode). ──
+  h+='<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:14px;color:#141b2d;margin-bottom:4px">Import Transactions</div>';
+  h+='<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per transaction, then upload — new rows are added to the consolidated numbers immediately. Existing data can be exported for reference or bulk-editing.</div>';
   const inp='padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px;box-sizing:border-box';
-  h+='<div style="margin-bottom:8px">'
-    +'<select id="en-ent" style="'+inp+';width:100%">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<div id="en-entnote" style="font-size:11px;color:#4550d8;font-weight:600;margin-top:3px;min-height:1px"></div></div>'
-    +'<div style="border:1px dashed #c8cdf9;background:#f7f8fd;border-radius:14px;padding:12px 14px;margin-bottom:10px">'
-      +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px;display:flex;align-items:center;gap:6px">'+ICON.clip()+'Documents <span style="font-weight:500;color:#3a4254">— bank recap, bank statement, payment vouchers (PDF/photo/Excel, max 10 MB each)</span></div>'
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-      +'<select id="en-dtype" style="'+inp+';flex:0 1 auto"><option value="rekap_bank">Bank recap</option><option value="rekening_koran">Bank statement (rekening koran)</option><option value="voucher">Payment voucher</option><option value="other">Other document</option></select>'
-      +'<label for="en-file" style="display:inline-block;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">＋ Add files</label>'
-      +'<input id="en-file" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.xls,.xlsx,.csv" style="display:none">'
-      +'<button id="en-aibtn" type="button" style="display:none;border:0;border-radius:12px;background:#141b2d;color:#fff;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">🤖 Read again</button>'
-      +'</div><div id="en-files" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px"></div>'
-      +'<div id="en-permsg" style="font-size:11px;color:#4550d8;font-weight:600;margin-top:6px;min-height:1px"></div></div>'
-    +'<div id="en-parse" style="display:none;border:1px solid #c9e3d4;background:#f2faf5;border-radius:14px;padding:12px 14px;margin-bottom:10px"></div>'
-    +'<details id="en-adv" style="margin:4px 0 12px"><summary style="font-size:12.5px;color:#4550d8;font-weight:700;cursor:pointer">⚙ Advanced — set dates or enter figures manually</summary>'
-    +'<div style="padding:10px 2px 0">'
-    +'<div style="font-size:11px;font-weight:700;color:#3a4254;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Period override (normally auto-detected from the file)</div>'
-    +'<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;max-width:420px">'
-    +'<input id="en-date" type="date" aria-label="From date" style="'+inp+';flex:1;min-width:0;color:#141b2d">'
-    +'<span style="color:#3a4254;font-size:12px;flex:none">to</span>'
-    +'<input id="en-date2" type="date" aria-label="To date" style="'+inp+';flex:1;min-width:0;color:#141b2d">'
+  h+='<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+    +'<select id="tx-export-ent" style="'+inp+';width:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+    +'<button id="tx-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
     +'</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
-    +'<input id="en-open" inputmode="numeric" placeholder="Opening balance (IDR, optional)" style="'+inp+'">'
-    +'<input id="en-close" inputmode="numeric" placeholder="Closing balance (IDR, optional)" style="'+inp+'"></div>'
-    +'<input id="en-note" placeholder="Note (optional)" style="'+inp+';width:100%;margin-bottom:8px">'
-    +'<button id="en-figtoggle" type="button" style="display:block;border:0;background:none;color:#4550d8;font-size:12.5px;font-weight:700;cursor:pointer;padding:0;margin:2px 0 12px">＋ Add amount details manually</button>'
-    +'<div id="en-figs" style="display:none">'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
-    +'<select id="en-flow" style="'+inp+'">'+Object.keys(FLOW_LBL).map(f=>'<option value="'+f+'">'+FLOW_LBL[f]+'</option>').join('')+'</select>'
-    +'<input id="en-cat" list="mag-cat-dl" placeholder="Category (pick or type)" style="'+inp+'"><datalist id="mag-cat-dl"></datalist></div>'
-    +'<div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:12px">'
-    +'<input id="en-desc" placeholder="Description, e.g. Villa rental income week 1" maxlength="200" style="'+inp+'">'
-    +'<input id="en-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'"></div>'
-    +'</div></div></details>'
-    +'<button id="en-send" style="border:0;border-radius:12px;background:#5b67f1;color:#fff;font-size:14px;font-weight:700;padding:12px 26px;cursor:pointer;box-shadow:0 5px 14px -5px rgba(91,103,241,.6)">Save update</button>'
-    +'<div id="en-msg" style="font-size:12px;margin:8px 0 22px;min-height:1px"></div>';
+    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Date, Entity, Flow, Category, Vendor, Description, Amount</b>. Flow is <b>Opex</b> or <b>Revenue</b>. Entity must match a PT name, Category an existing category for that flow, and Vendor an existing vendor name (leave blank for Unknown, or add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
+    +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Possible duplicates</b> (same entity, month, flow, category, vendor, amount &amp; description as an existing transaction) are flagged in the preview, not silently re-added — review before importing.</div>'
+    +'<button id="tx-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+    +'<div><label for="tx-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#e3e6fd;color:#4550d8;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+    +'<input id="tx-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+    +'<span id="tx-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
+    +'<div id="tx-preview" style="margin-top:12px"></div>'
+    +'<div style="margin-bottom:22px"></div>';
   // ── Update Entity Balance — a dedicated box for logging opening/closing bank balance per PT
   // per period, decoupled from the file-upload flow above (previously this was only reachable by
   // expanding "Advanced" inside the main entry form). Feeds the Balance Reconciliation section. ──
@@ -7200,252 +7243,66 @@ async function renderEntryBody(){
   h+='<div id="en-lmsg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>';
   body.innerHTML=h;
   const setMsg=(id,t,ok)=>{const m=document.getElementById(id); if(m){m.style.color=ok?'#2b7a4b':'#b3261e'; m.textContent=t;}};
-  // category suggestions follow the chosen type
-  const flowSel=document.getElementById('en-flow'), catDl=document.getElementById('mag-cat-dl');
-  function fillCats(){ const k=FLOW_KIND[flowSel.value];
-    catDl.innerHTML=cats.filter(c=>c.kind===k).map(c=>'<option value="'+escH(c.name)+'">').join(''); }
-  flowSel.addEventListener('change',fillCats); fillCats();
-  // date picker -> consolidation month
-  const MCODES=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  const MNAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
-  function periodFromDate(v){
-    const p=v.split('-'); const y=parseInt(p[0],10), m=parseInt(p[1],10);
-    return {code:MCODES[m-1]+(y===2026?'':String(y).slice(2)), label:MNAMES[m-1]+' '+y};
-  }
-  const dateInp=document.getElementById('en-date'), dateInp2=document.getElementById('en-date2'), perMsg=document.getElementById('en-permsg');
-  const tz=new Date(); const today=tz.getFullYear()+'-'+String(tz.getMonth()+1).padStart(2,'0')+'-'+String(tz.getDate()).padStart(2,'0');
-  dateInp.value=today; dateInp2.value=today;
-  function updPerMsg(){
-    if(!dateInp.value){ perMsg.textContent=''; return; }
-    if(dateInp2.value && dateInp2.value<dateInp.value) dateInp2.value=dateInp.value;
-    const P=periodFromDate(dateInp.value);
-    let t='→ counted in '+(perName[P.code]||P.label);
-    if(dateInp2.value){
-      const P2=periodFromDate(dateInp2.value);
-      if(P2.code!==P.code) t+=' (range crosses months — counted by the start date)';
-    }
-    perMsg.textContent=t;
-  }
-  let DATES_TOUCHED=false;
-  dateInp.addEventListener('change',()=>{DATES_TOUCHED=true;updPerMsg();refreshParsePreview();});
-  dateInp2.addEventListener('change',()=>{DATES_TOUCHED=true;updPerMsg();refreshParsePreview();});
-  updPerMsg();
-  // parse attached bank books into editable dashboard figures
-  let PARSE_SEQ=0;
-  function adoptFileDates(p){
-    dateInp.value=p.minDate; dateInp2.value=p.maxDate;
-    updPerMsg(); refreshParsePreview();
-  }
-  async function refreshParsePreview(){
-    const box=document.getElementById('en-parse'); if(!box) return;
-    const hasSheet=EN_FILES.some(x=>/\.(xlsx|xls|csv)$/i.test(x.file.name));
-    if(!hasSheet && !EN_AI.length){ box.style.display='none'; box.innerHTML=''; EN_PARSED_ROWS=[]; return; }
-    const seq=++PARSE_SEQ;
-    box.style.display='block';
-    box.innerHTML='<div style="font-size:12.5px;color:#1f8a61;font-weight:700">📊 Reading figures from the bank book…</div>';
-    const myEntityId=document.getElementById('en-ent').value, myEntityName=(ENT[myEntityId]&&ENT[myEntityId].name)||'';
-    let p=null; try{ if(hasSheet) p=await parseBankFiles(dateInp.value, dateInp2.value||dateInp.value, myEntityName); }catch(e){}
-    if(seq!==PARSE_SEQ) return;
-    // merge AI-extracted transactions (PDF/photo) into the same totals
-    if(EN_AI.length){
-      await loadEntityNameRx();
-      p=p||{count:0,rev:0,opex:0,finIn:0,finOut:0,files:[],allCount:0,minDate:null,maxDate:null,rows:[]};
-      const from=dateInp.value, to=dateInp2.value||from;
-      const aiFiles=new Set();
-      EN_AI.forEach(t=>{
-        const dt=String(t.date||'').slice(0,10);
-        if(!dt||!t.amt) return;
-        p.allCount++;
-        if(!p.minDate||dt<p.minDate) p.minDate=dt;
-        if(!p.maxDate||dt>p.maxDate) p.maxDate=dt;
-        if(from&&dt<from) return;
-        if(to&&dt>to) return;
-        const tag=(t.cat||'')+' '+(t.desc||'');
-        if(EXCLUDE_RX.test(tag)){ p.excluded=(p.excluded||0)+1; p.excludedAmt=(p.excludedAmt||0)+t.amt; return; }
-        const canon=financingCanon(tag,t.dir,myEntityName);
-        const fin=t.kind==='financing'||FIN_RX.test(tag)||!!canon;
-        const refund=!fin && t.dir==='in' && REFUND_RX.test(tag);
-        if(t.dir==='in'){ if(fin) p.finIn+=t.amt; else if(refund) p.opex-=t.amt; else p.rev+=t.amt; }
-        else { if(fin) p.finOut+=t.amt; else p.opex+=t.amt; }
-        p.count++; aiFiles.add((t.src||'document')+' (AI)');
-        p.rows.push({date:dt,desc:t.desc||'',amt:t.amt,dir:t.dir,fin:fin,refund:refund,cat:t.cat||'',canon:fin?canon:null,shName:canon==='Shareholder Capital Deposit (Stan & Igor)'&&t.dir==='in'?shareholderName(t.desc||''):null});
-      });
-      aiFiles.forEach(f=>p.files.push(f));
-    }
-    EN_PARSED_ROWS = (p&&p.rows)?p.rows:[];
-    // ── dedup: compare against what is already in the dashboard; only new rows get added ──
-    EN_DEDUP=null;
-    if(p && p.count && EN_PARSED_ROWS.length){
-      try{
-        const entity=document.getElementById('en-ent').value;
-        const months=[...new Set(EN_PARSED_ROWS.map(r=>periodFromDate(r.date).code))];
-        const flowKey=r=>r.fin?(r.dir==='in'?'fin_in':'fin_out'):((r.dir==='in'&&!r.refund)?'rev':'opex');
-        const [exTx,epts]=await Promise.all([
-          sbFetch('transactions?entity_code=eq.'+entity+'&period_code=in.('+months.join(',')+')&select=period_code,flow,day_label,amount_idr&limit=10000'),
-          sbFetch('entity_period_totals?entity_code=eq.'+entity+'&period_code=in.('+months.join(',')+')&select=period_code,revenue,opex,financing_in,financing_out')
-        ]);
-        if(seq!==PARSE_SEQ) return;
-        // multiset of existing detail rows, keyed month|flow|amount (same-day match preferred)
-        const pool={};
-        exTx.forEach(t=>{const k=t.period_code+'|'+t.flow+'|'+Math.round(t.amount_idr); (pool[k]=pool[k]||[]).push(t.day_label);});
-        const takeFrom=(k,day)=>{const arr=pool[k]; if(!arr||!arr.length) return false;
-          const i=arr.indexOf(day); arr.splice(i>=0?i:0,1); return true;};
-        const newRows=[]; let skipped=0;
-        EN_PARSED_ROWS.forEach(r=>{
-          const k=periodFromDate(r.date).code+'|'+flowKey(r)+'|'+Math.round(r.amt);
-          if(takeFrom(k,dayLbl(r.date))) skipped++;
-          else newRows.push(r);
-        });
-        // amounts already counted in the monthly totals but without stored detail:
-        // new rows fill that headroom first (detail only), anything beyond adds to the totals
-        const FLN={rev:'revenue',opex:'opex',fin_in:'financing_in',fin_out:'financing_out'};
-        const detail={}, tot={};
-        exTx.forEach(t=>{const f=FLN[t.flow]; if(f){const k2=t.period_code+'|'+f; detail[k2]=(detail[k2]||0)+Math.round(t.amount_idr);}});
-        epts.forEach(e2=>{['revenue','opex','financing_in','financing_out'].forEach(f=>{tot[e2.period_code+'|'+f]=Math.round(e2[f]);});});
-        // pos = new amounts subject to gap-fill capping (avoids re-adding what a month's total already includes
-        // without stored detail); neg = refund reductions, which always apply in full regardless of that gap.
-        const byMonth={}; let gapFilled=0;
-        newRows.forEach(r=>{
-          // Shareholder capital deposits are tracked ONLY via loan_flows (the capDep card), never inside
-          // entity_period_totals.financing_in — must be excluded here too, not just in the save handler's
-          // own byMonth pass, since THIS computation (EN_DEDUP.byMonth[code].add) is what the save handler
-          // actually applies (its own b2.sum is only used for the per-category proportional split).
-          if(r.canon==='Shareholder Capital Deposit (Stan & Igor)') return;
-          const P2=periodFromDate(r.date);
-          const b=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,
-            pos:{revenue:0,opex:0,financing_in:0,financing_out:0},neg:{revenue:0,opex:0,financing_in:0,financing_out:0}};
-          if(r.date<b.min)b.min=r.date; if(r.date>b.max)b.max=r.date;
-          const f=FLN[flowKey(r)];
-          if(r.refund) b.neg[f]-=r.amt; else b.pos[f]+=r.amt;
-        });
-        const addTotals={revenue:0,opex:0,financing_in:0,financing_out:0};
-        Object.entries(byMonth).forEach(([code,b])=>{
-          b.add={};
-          ['revenue','opex','financing_in','financing_out'].forEach(f=>{
-            const gap=Math.max(0,(tot[code+'|'+f]||0)-(detail[code+'|'+f]||0));
-            gapFilled+=Math.min(b.pos[f],gap);
-            b.add[f]=Math.max(0,b.pos[f]-gap)+b.neg[f];
-            addTotals[f]+=b.add[f];
-          });
-        });
-        EN_DEDUP={skipped:skipped,gapFilled:gapFilled,newRows:newRows,byMonth:byMonth,add:addTotals};
-      }catch(e){ EN_DEDUP=null; }
-    }
-    if(p && !p.count && p.allCount && p.minDate){
-      // the file's transactions fall outside the selected dates
-      if(!DATES_TOUCHED){ adoptFileDates(p); return; }   // user never picked dates — follow the file
-      box.style.border='1px solid #f0d9a8'; box.style.background='#fdf8ec';
-      box.innerHTML='<div style="font-size:12.5px;color:#141b2d;line-height:1.6"><b>⚠️ 📊 The attached bank book has '+p.allCount+' transactions dated '+escH(p.minDate)+' → '+escH(p.maxDate)+'</b>, but your selected period is '+escH(dateInp.value)+(dateInp2.value&&dateInp2.value!==dateInp.value?' → '+escH(dateInp2.value):'')+' — so <b>no figures will be applied to the dashboard</b>.</div>'
-        +'<button id="en-adopt" type="button" style="margin-top:8px;border:0;border-radius:10px;background:#5b67f1;color:#fff;font-size:12.5px;font-weight:700;padding:8px 14px;cursor:pointer">Use the file’s dates ('+escH(p.minDate)+' → '+escH(p.maxDate)+')</button>';
-      const ab=document.getElementById('en-adopt'); if(ab) ab.onclick=()=>adoptFileDates(p);
-      return;
-    }
-    box.style.border='1px solid #c9e3d4'; box.style.background='#f2faf5';
-    if(!p || !p.count){
-      box.innerHTML=(p&&p.excluded)
-        ? '<div style="font-size:12.5px;color:#3a4254"><b>📊 Auto-read:</b> found '+p.excluded+' transaction'+(p.excluded>1?'s':'')+' in range, but all of them were internal transfers ('+fmtIDR(p.excludedAmt||0)+') — correctly excluded, so no revenue/expense figures to apply. The documents will still be saved.</div>'
-        : '<div style="font-size:12.5px;color:#3a4254"><b>📊 Auto-read:</b> no transactions could be read from the attached spreadsheet (unrecognised sheet format). The documents will still be saved — add figures manually below if needed.</div>';
-      return;
-    }
-    const fld=(id,lb,v)=>'<div style="flex:1 1 150px;min-width:140px"><div style="font-size:10.5px;font-weight:700;color:#1f8a61;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">'+lb+'</div>'
-      +'<input id="'+id+'" inputmode="numeric" value="'+fmtIDR(v)+'" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #c9e3d4;border-radius:10px;font-size:13px;background:#fff"></div>';
-    const V=EN_DEDUP?{rev:EN_DEDUP.add.revenue,opex:EN_DEDUP.add.opex,finIn:EN_DEDUP.add.financing_in,finOut:EN_DEDUP.add.financing_out}:p;
-    // Same pre-commit warning banner style as Replace Period Import / the Outstanding Liability
-    // & Fixed Cost bulk importers: amber box, "this will add N / skip M as already-existing"
-    // phrasing — so every data-entry method warns about duplicates the same way before saving.
-    let dedupLine='';
-    if(EN_DEDUP){
-      dedupLine='<div style="font-size:11.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:8px 10px;margin:0 0 9px"><b>This will add '+EN_DEDUP.newRows.length+' new</b> transaction'+(EN_DEDUP.newRows.length===1?'':'s')+' compared with what\'s already in the dashboard'
-        +(EN_DEDUP.skipped?' — <b>'+EN_DEDUP.skipped+' row'+(EN_DEDUP.skipped===1?'':'s')+' flagged as already-existing were skipped</b> (matched by month, revenue/expense/financing type &amp; amount) so re-uploading the same file can\'t create a duplicate':'')
-        +(EN_DEDUP.gapFilled>0?'. '+fmtIDR(EN_DEDUP.gapFilled)+' matches amounts already counted in the monthly totals (adds transaction detail only, no change to the totals)':'')+'.</div>';
-    }
-    const nothingNew=EN_DEDUP && !EN_DEDUP.newRows.length;
-    const excludedLine=p.excluded?'<div style="font-size:11.5px;color:#3a4254;margin:-4px 0 9px">🚫 '+p.excluded+' internal transfer'+(p.excluded>1?'s':'')+' ('+fmtIDR(p.excludedAmt||0)+') detected and excluded — money moved between your own accounts, not revenue or expense.</div>':'';
-    box.innerHTML=
-      '<div style="font-size:12.5px;color:#141b2d;margin-bottom:9px"><b>📊 Figures read from '+escH(p.files.join(', '))+'</b> — '+p.count+' transactions, '+escH(dateInp.value)+(dateInp2.value&&dateInp2.value!==dateInp.value?' → '+escH(dateInp2.value):'')+'.</div>'
-      +excludedLine
-      +dedupLine
-      +(nothingNew
-        ? '<div style="font-size:12.5px;color:#1f8a61;font-weight:700">✓ Everything in this document is already in the dashboard — saving will only file the documents, no numbers change.</div>'
-        : '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">'
-          +fld('p-rev','Revenue (in)',V.rev)+fld('p-opex','Expenses (out)',V.opex)+fld('p-fin','Financing in',V.finIn)+fld('p-fout','Financing out',V.finOut)
-          +'</div>'
-          +'<div style="font-size:12px;color:#1f8a61;font-weight:700">✓ Only these NEW amounts will be added to the dashboard report when you press Save.</div>'
-          +'<div style="font-size:11px;color:#3a4254;margin-top:4px">Rows mentioning loans / capital are classified as financing; refunds of a prior expense reduce that expense instead of counting as revenue; everything else counts as revenue (in) or expenses (out). Edit any number above if it looks wrong.</div>');
-  }
-  ENTRY_REFRESH_PARSE=refreshParsePreview;
-  // optional figures section
-  const figT=document.getElementById('en-figtoggle'), figs=document.getElementById('en-figs');
-  figT.onclick=()=>{ const open=figs.style.display!=='none';
-    figs.style.display=open?'none':'block';
-    figT.textContent=open?'＋ Add amount details (optional — only if you also want to enter figures)':'－ Remove amount details (save documents only)'; };
-  // attachments picker
-  EN_FILES=[]; EN_AI=[];
-  const fInp=document.getElementById('en-file'), fList=document.getElementById('en-files');
-  function renderFiles(){
-    fList.innerHTML=EN_FILES.map((x,i)=>
-      '<span style="display:inline-flex;align-items:center;gap:7px;border:1px solid #d4d9fb;background:#fff;border-radius:12px;padding:4px 6px 4px 11px;font-size:11.5px;color:#141b2d;max-width:100%">'
-      +'<b style="color:#4550d8;font-weight:700">'+escH(DT_LBL[x.dt])+'</b>'
-      +'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">'+escH(x.file.name)+'</span>'
-      +'<span style="color:#3a4254">'+(x.file.size/1048576).toFixed(1)+' MB</span>'
-      +'<button class="fx" data-i="'+i+'" aria-label="Remove '+escH(x.file.name)+'" style="border:0;background:#f3f4f8;color:#262e3f;border-radius:9px;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:1">×</button></span>').join('');
-    fList.querySelectorAll('.fx').forEach(b=>b.onclick=()=>{EN_FILES.splice(parseInt(b.dataset.i,10),1);EN_AI=[];renderFiles();});
-    const ai=document.getElementById('en-aibtn');
-    if(ai) ai.style.display = EN_FILES.some(x=>AI_FILE_RX.test(x.file.name)) ? 'inline-block' : 'none';
-    if(ENTRY_REFRESH_PARSE) ENTRY_REFRESH_PARSE();
-  }
-  const aiBtn=document.getElementById('en-aibtn');
-  let AI_RUNNING=false;
-  async function runAI(){
-    const targets=EN_FILES.filter(x=>AI_FILE_RX.test(x.file.name));
-    if(!targets.length||AI_RUNNING) return;
-    AI_RUNNING=true; if(aiBtn) aiBtn.disabled=true;
-    EN_AI=[];
+  const txExpBtn=document.getElementById('tx-export');
+  if(txExpBtn) txExpBtn.onclick=()=>{
+    const entSel=document.getElementById('tx-export-ent').value;
+    const rows=[['Date','Entity','Flow','Category','Vendor','Description','Amount']];
+    const FLBL={opex:'Opex',rev:'Revenue',fin_in:'Financing In',fin_out:'Financing Out'};
+    const MON_ORDER={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+    TX.filter(t=>(entSel==='all'||t.e===entSel)).sort((a,b)=>{
+      if(a.e!==b.e) return a.e<b.e?-1:1;
+      if(a.mo!==b.mo) return (MON_ORDER[a.mo]||99)-(MON_ORDER[b.mo]||99);
+      return (a.d||'')<(b.d||'')?-1:1;
+    }).forEach(t=>{
+      rows.push([isoFromDayLabel(t.d)||t.d,eName(t.e),FLBL[t.type]||t.type,t.k,t.vendor||'',t.desc,t.amt]);
+    });
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Transactions');
+    const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
+    XLSX.writeFile(wb,'transactions_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  };
+  const txTplBtn=document.getElementById('tx-template');
+  if(txTplBtn) txTplBtn.onclick=async()=>{
+    txTplBtn.disabled=true;
     try{
-      for(let i=0;i<targets.length;i++){
-        if(aiBtn) aiBtn.textContent='🤖 Reading document '+(i+1)+' of '+targets.length+'…';
-        setMsg('en-msg','🤖 Reading '+targets[i].file.name+' ('+(i+1)+' of '+targets.length+')…',true);
-        const f=targets[i].file;
-        const b64=await fileB64(f);
-        const r=await authedFetch(SB_URL+'/functions/v1/ai-extract',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({filename:f.name,mime:f.type||'',data_b64:b64,from_date:document.getElementById('en-date').value,to_date:document.getElementById('en-date2').value})});
-        const d=await r.json().catch(()=>({}));
-        if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-        (d.transactions||[]).forEach(t=>EN_AI.push({date:t.date,desc:t.description,amt:t.amount,dir:t.direction,kind:t.kind,cat:t.category||'',src:f.name}));
-      }
-      if(aiBtn) aiBtn.textContent='🤖 Read again';
-      setMsg('en-msg','✅ Read '+EN_AI.length+' transactions from the document — check the figures below, then press Save.',true);
-    }catch(e){ setMsg('en-msg','AI reading failed: '+e.message+' — you can still save the documents or enter figures under Advanced.'); if(aiBtn) aiBtn.textContent='🤖 Try again'; }
-    AI_RUNNING=false; if(aiBtn) aiBtn.disabled=false;
-    if(ENTRY_REFRESH_PARSE) ENTRY_REFRESH_PARSE();
-  }
-  if(aiBtn) aiBtn.onclick=runAI;
-  // guess the PT from the file name so the user doesn't have to think about it
-  const ENT_GUESS=[[/berawa|bbu/i,'bbu'],[/ic[ _.-]*alam/i,'icalam'],[/amara.*(bm|building)/i,'icbm'],[/amara.*(hp|hosp)/i,'ichp'],[/amara.*dev/i,'icdev'],[/(ic|indonesia capital)[ _.-]*(group|grup)|icg\b/i,'icgg'],[/sanur|ics\b/i,'ics'],[/magnum|mei\b/i,'mei'],[/kso|signature/i,'kso'],[/(sup|samahita).*dev/i,'supdev'],[/(sup|samahita|tus).*(hosp|hp)/i,'tush'],[/(sup|samahita).*(bm|building)/i,'supbm'],[/lounge|rooftop|ulr/i,'ulr'],[/sky[ _]*stars.*dev|ssvd/i,'ssvd'],[/sky[ _]*stars.*(hosp|hp)|ssvh/i,'ssvh'],[/sky[ _]*stars.*(bm|building)|ssvbm/i,'ssvbm']];
-  function guessEntity(fname){
-    for(const [rx,code] of ENT_GUESS){ if(rx.test(fname)&&EIDS.includes(code)) return code; }
-    return null;
-  }
-  fInp.addEventListener('change',()=>{
-    const dt=document.getElementById('en-dtype').value;
-    let firstNew=null;
-    for(const f of fInp.files){
-      if(EN_FILES.length>=10){ setMsg('en-msg','Maximum 10 files per submission.'); break; }
-      if(f.size>10485760){ setMsg('en-msg',f.name+' is over 10 MB — compress or split it.'); continue; }
-      EN_FILES.push({file:f,dt:dt});
-      if(!firstNew) firstNew=f;
+      await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
+      const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
+      await downloadValidatedTemplate('transactions_template.xlsx','Transactions',
+        ['Date','Entity','Flow','Category','Vendor','Description','Amount'],
+        ['2026-07-01',eName(EIDS[0]),'Opex',opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','Sample transaction description',1000000],
+        [{col:'B',values:EIDS.map(eName)},{col:'C',values:['Opex','Revenue']},{col:'D',values:opexCatsTpl.concat(revCatsTpl)},{col:'E',values:VENDORS_G||[]}]);
+    } finally { txTplBtn.disabled=false; }
+  };
+  const txFileInp=document.getElementById('tx-file');
+  if(txFileInp) txFileInp.onchange=async()=>{
+    const f=txFileInp.files[0]; if(!f) return;
+    document.getElementById('tx-filename').textContent=f.name;
+    await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
+    let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
+      document.getElementById('tx-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
     }
-    fInp.value=''; renderFiles();
-    if(firstNew){
-      const gs=guessEntity(firstNew.name);
-      const entSel=document.getElementById('en-ent'), entNote=document.getElementById('en-entnote');
-      if(gs && entSel && entSel.value!==gs){
-        entSel.value=gs;
-        if(entNote) entNote.textContent='✓ PT detected from the file name — change it above if that’s wrong.';
-      }
-      runAI(); // no-op unless a PDF/photo was attached
-    }
-  });
+    const sheet=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+    if(!rows.length){ TX_ROWS=[]; renderTxPreview(); return; }
+    const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
+    const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
+    const kDate=col(['date']), kEnt=col(['entity','pt']), kFlow=col(['flow','type']), kCat=col(['category','cost category']),
+      kVendor=col(['vendor','vendor name']), kDesc=col(['description','transaction description']), kAmt=col(['amount','amount (idr)','amount idr']);
+    TX_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+      const date=kDate!=null?parseFlexDate(r[kDate]):null;
+      const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameG(entityRaw);
+      const flowRaw=kFlow!=null?String(r[kFlow]||'').trim().toLowerCase():'';
+      const flowKey=/^rev/.test(flowRaw)?'rev':(/^opex|^expense/.test(flowRaw)?'opex':null);
+      const catRaw=kCat!=null?r[kCat]:'', catMatch=flowKey?findCategoryByFlow(catRaw,flowKey):null;
+      const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=findVendor(vendorRaw);
+      const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
+      const amt=kAmt!=null?Number(r[kAmt]):NaN;
+      const row={date,entityRaw,entityMatch,flowRaw,flowKey,catRaw,catMatch,vendorRaw,vendorMatch,desc,amt};
+      computeTxRow(row);
+      return row;
+    });
+    renderTxPreview();
+  };
   const opdSend=document.getElementById('opd-send');
   if(opdSend) opdSend.onclick=async()=>{
     const msg=document.getElementById('opd-msg'); setMsg('opd-msg','');
@@ -7707,146 +7564,6 @@ async function renderEntryBody(){
   if(IS_ADMIN) wireReplacePeriodImport();
   wireOppPicker(inp);
   if(IS_ADMIN){ renderCategoriesBody(); renderVendorsBody(); }
-  document.getElementById('en-send').onclick=async()=>{
-    const entity=document.getElementById('en-ent').value;
-    const dval=dateInp.value, dval2=dateInp2.value||dval;
-    if(!dval) return setMsg('en-msg','Pick the period dates on the calendar.');
-    if(dval2<dval) return setMsg('en-msg','The end date cannot be before the start date.');
-    const P=periodFromDate(dval);
-    const pcode=P.code, plabel=perName[pcode]?null:P.label;
-    const note=(document.getElementById('en-note').value||'').trim()||null;
-    const figsOpen=figs.style.display!=='none';
-    let flow,category,label,amt;
-    if(figsOpen){
-      flow=flowSel.value;
-      category=(document.getElementById('en-cat').value||'').trim()||'Other';
-      label=(document.getElementById('en-desc').value||'').trim();
-      amt=Number((document.getElementById('en-amt').value||'').replace(/[^0-9-]/g,''));
-      if(!label) return setMsg('en-msg','Add a short description for the amount.');
-      if(!amt) return setMsg('en-msg','Enter the amount in IDR (digits only), or remove the amount section to save documents only.');
-    }else{
-      if(!EN_FILES.length) return setMsg('en-msg','Attach at least one document (bank recap, bank statement or payment voucher).');
-      flow='docs'; category='Documents'; amt=0;
-      const counts={}; EN_FILES.forEach(x=>{counts[x.dt]=(counts[x.dt]||0)+1;});
-      label=Object.entries(counts).map(([k,n])=>DT_LBL[k]+(n>1?' ×'+n:'')).join(', ').slice(0,200)||'Documents';
-    }
-    const b=document.getElementById('en-send'); b.disabled=true; b.textContent='Submitting…';
-    try{
-      const atts=[];
-      for(let i=0;i<EN_FILES.length;i++){
-        b.textContent='Uploading document '+(i+1)+' of '+EN_FILES.length+'…';
-        atts.push(await uploadSubDoc(EN_FILES[i].file,EN_FILES[i].dt));
-      }
-      b.textContent='Submitting…';
-      await adminAdd('entry_submissions',{entity_code:entity,period_code:pcode,period_label:plabel,entry_date:dval,entry_date_end:(dval2!==dval?dval2:null),flow:flow,category:category,label:label,amount_idr:amt,note:note,attachments:atts});
-      // apply figures auto-read from the attached bank book (if confirmed)
-      let appliedParsed=false;
-      const parseBox=document.getElementById('en-parse');
-      if(parseBox && parseBox.style.display!=='none' && document.getElementById('p-rev')){
-        const gv=id=>{const el=document.getElementById(id); return el?(Number((el.value||'').replace(/[^0-9-]/g,''))||0):0;};
-        const bkLabel=('Bank book '+dval+(dval2!==dval?' → '+dval2:'')).slice(0,200);
-        // only rows NOT already in the dashboard are stored/applied (dedup); fall back to all rows if the comparison failed
-        const rowsToStore=EN_DEDUP?EN_DEDUP.newRows:(EN_PARSED_ROWS||[]);
-        // analyse each transaction into its proper revenue/expense category
-        if(rowsToStore.length){ b.textContent='Categorising transactions…'; try{ await categorizeRows(rowsToStore); }catch(e){} }
-        // each transaction counts in its own month (a file spanning May–June no longer lands entirely in May)
-        const byMonth={};
-        rowsToStore.forEach(r=>{
-          // Shareholder capital deposits are tracked ONLY via loan_flows (the dedicated capDep card) —
-          // NOT added to entity_period_totals.financing_in too, or the dashboard's own fullNet formula
-          // (rev+finIn+capDep-opex-finOut) would double-count them, exactly like the card's own text warns.
-          if(r.canon==='Shareholder Capital Deposit (Stan & Igor)') return;
-          const P2=periodFromDate(r.date);
-          const b2=byMonth[P2.code]=byMonth[P2.code]||{label:P2.label,min:r.date,max:r.date,sum:{revenue:0,opex:0,financing_in:0,financing_out:0},cats:{revenue:{},opex:{},financing_in:{},financing_out:{}}};
-          if(r.date<b2.min)b2.min=r.date; if(r.date>b2.max)b2.max=r.date;
-          const fl=r.fin?(r.dir==='in'?'financing_in':'financing_out'):((r.dir==='in'&&!r.refund)?'revenue':'opex');
-          const signed=r.refund?-r.amt:r.amt;
-          b2.sum[fl]+=signed;
-          const cat=r.canon||(r.fin?'Financing':'Other');
-          b2.cats[fl][cat]=(b2.cats[fl][cat]||0)+signed;
-        });
-        // amounts to add to the monthly totals: dedup result caps out what the totals already include
-        Object.entries(byMonth).forEach(([code,b2])=>{
-          b2.apply=(EN_DEDUP&&EN_DEDUP.byMonth[code]&&EN_DEDUP.byMonth[code].add)?EN_DEDUP.byMonth[code].add:b2.sum;
-        });
-        const sums={revenue:0,opex:0,financing_in:0,financing_out:0};
-        Object.values(byMonth).forEach(b2=>{['revenue','opex','financing_in','financing_out'].forEach(f=>{sums[f]+=b2.apply[f];});});
-        const edited={revenue:gv('p-rev'),opex:gv('p-opex'),financing_in:gv('p-fin'),financing_out:gv('p-fout')};
-        const subsRows=[];
-        Object.entries(byMonth).forEach(([code,b2])=>{
-          ['revenue','opex','financing_in','financing_out'].forEach(fl=>{
-            const applyAmt=b2.apply[fl];
-            if(!applyAmt) return;   // skip only exact zero — negative (net refund reduction) still applies
-            // distribute the applied amount across the categories proportionally (gap-capping shrinks all equally)
-            const cats=Object.entries(b2.cats[fl]).filter(([,v])=>v); const catSum=cats.reduce((s,c)=>s+c[1],0)||1;
-            let allotted=0; let largest=null;
-            const parts=cats.map(([cat,v])=>{
-              const a2=Math.round(applyAmt*v/catSum); allotted+=a2;
-              if(!largest||Math.abs(v)>Math.abs(largest.v)) largest={cat:cat,v:v};
-              return {cat:cat,amt:a2};
-            });
-            if(largest){ const drift=applyAmt-allotted; const lp=parts.find(x=>x.cat===largest.cat); if(lp) lp.amt+=drift; }
-            parts.filter(x=>x.amt!==0).forEach(x=>{
-              subsRows.push({entity_code:entity,period_code:code,period_label:perName[code]?null:b2.label,
-                entry_date:b2.min,entry_date_end:(b2.max!==b2.min?b2.max:null),flow:fl,category:x.cat,
-                label:(x.cat==='Financing'?bkLabel:x.cat),amount_idr:x.amt,note:null,attachments:[]});
-            });
-          });
-        });
-        // numbers hand-edited in the preview become a visible adjustment on the start month
-        if(document.getElementById('p-rev')) ['revenue','opex','financing_in','financing_out'].forEach(fl=>{
-          const d=edited[fl]-sums[fl];
-          if(d) subsRows.push({entity_code:entity,period_code:pcode,period_label:plabel,entry_date:dval,entry_date_end:(dval2!==dval?dval2:null),
-            flow:fl,category:'Bank book import',label:('Manual adjustment — '+bkLabel).slice(0,200),amount_idr:d,note:null,attachments:[]});
-        });
-        for(const pr of subsRows) await adminAdd('entry_submissions',pr);
-        // save every NEW transaction so the breakdown drill-down shows full detail (financing rows stored for future dedup)
-        const baseOrd=Math.floor(Date.now()/1000);
-        const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
-        const txRows=rowsToStore.map((r,i)=>({
-          source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDate(r.date).code,
-          flow:r.fin?(r.dir==='in'?'fin_in':'fin_out'):((r.dir==='in'&&!r.refund)?'rev':'opex'),
-          entity_code:entity,day_label:dayLbl(r.date),
-          description:String(r.desc||'').slice(0,200),raw_label:(r.canon||bkLabel),
-          source_label:bkLabel,upload_batch:batchId,amount_idr:(r.refund?-r.amt:r.amt),contra:false}));
-        if(txRows.length) await adminAddBatch('transactions',txRows);
-        // shareholder capital deposits also feed the dedicated "Shareholder Capital Deposit" card,
-        // which reads from loan_flows (not entity_period_totals) — same convention as the original import
-        const loanRows=rowsToStore.filter(r=>r.dir==='in'&&r.canon==='Shareholder Capital Deposit (Stan & Igor)').map(r=>({
-          period_code:periodFromDate(r.date).code, from_label:r.shName||'Shareholder (Stan & Igor)',
-          to_label:(ENT[entity]&&ENT[entity].name)||entity, flow_type:'Capital deposit',
-          amount_idr:r.amt, from_group:null, to_group:(ENT[entity]&&ENT[entity].grp)||null}));
-        if(loanRows.length) await adminAddBatch('loan_flows',loanRows);
-        if(subsRows.length||txRows.length){ appliedParsed=true; ENTRY_DIRTY=true; }
-      }
-      // optional saldo awal / saldo akhir -> upsert balance row (keep the other side if only one entered)
-      const openRaw=(document.getElementById('en-open').value||'').replace(/[^0-9-]/g,'');
-      const closeRaw=(document.getElementById('en-close').value||'').replace(/[^0-9-]/g,'');
-      if(openRaw!==''||closeRaw!==''){
-        const prev=(BAL[entity]&&BAL[entity][pcode])||{};
-        const bp={entity_code:entity,period_code:pcode,updated_by:MY_EMAIL,updated_at:new Date().toISOString(),
-          opening_idr: openRaw!==''?Number(openRaw):(prev.open!=null?prev.open:null),
-          closing_idr: closeRaw!==''?Number(closeRaw):(prev.close!=null?prev.close:null)};
-        const rb=await authedFetch(SB_URL+'/rest/v1/entity_period_balances',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(bp)});
-        if(!rb.ok) throw new Error((await rb.text())||('HTTP '+rb.status));
-        (BAL[entity]=BAL[entity]||{})[pcode]={open:bp.opening_idr,close:bp.closing_idr};
-        ENTRY_DIRTY=true;
-      }
-      EN_FILES=[]; EN_AI=[];
-      await renderEntryBody();
-      if(flow!=='docs') ENTRY_DIRTY=true;
-      const m2=document.getElementById('en-msg');
-      if(m2){
-        m2.style.color='#2b7a4b';
-        if(flow==='docs'&&!appliedParsed){ m2.textContent='✅ Documents saved — filed in the log below.'; }
-        else{
-          m2.innerHTML='✅ Applied to the dashboard report — the page refreshes when you close this panel. <a href="#" id="en-viewtx" style="color:#4550d8;font-weight:700;text-decoration:none">🔍 Cross-check the transactions →</a>';
-          const vt=document.getElementById('en-viewtx'); if(vt) vt.onclick=(ev)=>{ev.preventDefault();sessionStorage.setItem('mag_open_history_tx','1');closeEntry();};
-        }
-      }
-      if(IS_ADMIN) refreshPendingBadge();
-    }catch(e){ setMsg('en-msg','Failed: '+e.message); b.disabled=false; b.textContent='Save update'; }
-  };
   body.querySelectorAll('.ap').forEach(btn=>btn.onclick=async()=>{
     btn.disabled=true; btn.textContent='…';
     try{ await rpcReview(parseInt(btn.dataset.id,10),'approved'); ENTRY_DIRTY=true; await renderEntryBody(); refreshPendingBadge(); }
