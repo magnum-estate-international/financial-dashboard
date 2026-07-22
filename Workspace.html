@@ -2884,7 +2884,7 @@ function cashPositionCard(){
     </div>`;
 }
 function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi4 kpi5'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard()+paymentPlanCard(); }
+  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi5'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard()+paymentPlanCard(); }
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
