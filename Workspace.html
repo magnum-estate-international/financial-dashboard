@@ -2897,33 +2897,37 @@ function renderKpiCash(){
 // the group's own AR/AP recap spreadsheets (see intercompany_ar_ap table) — read-only for now,
 // deliberately NOT scoped by the entity/group/month filters since it isn't month-bound data. ───
 function intercompanyCard(){
-  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
-  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
+  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
   const owners=new Set(INTERCOMPANY.map(r=>r.owner)).size;
   return `<div class="pcard clickable" onclick="openIntercompany()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="lab">Inter-Company AR/AP</div>
       <div class="big" style="color:var(--muted);font-size:16px">AP ${fmt(totAP)} &nbsp;·&nbsp; AR ${fmt(totAR)}</div>
-      <div class="meta">${INTERCOMPANY.length?`${INTERCOMPANY.length} entries across ${owners} PT — click to view`:'No recap loaded yet'}</div>
+      <div class="meta">${INTERCOMPANY.length?`${INTERCOMPANY.length} entries across ${owners} PT (net of setoran modal) — click to view`:'No recap loaded yet'}</div>
     </div>`;
 }
 function openIntercompany(){
   SORT_RERENDER['icArAp']=openIntercompany;
   let rows=INTERCOMPANY.slice();
-  rows=sortApply('icArAp',rows,r=>r.amt);
-  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
-  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
-  let h=`<div class="pn-sub" style="margin-bottom:8px">Recap of inter-company receivables (AR) and payables (AP) between PTs in the wider group — imported from the group's own AR/AP recap spreadsheets. Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT.</div>`;
-  h+=`<div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px"><span><b style="color:var(--red)">Total AP:</b> ${fmt(totAP)}</span><span><b style="color:var(--green)">Total AR:</b> ${fmt(totAR)}</span></div>`;
-  h+=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>PT (Owner)</th><th>Counterparty</th><th>Type</th><th class="num">${sortHeader('icArAp','Amount (IDR)','amt')}</th></tr></thead><tbody>`;
+  rows=sortApply('icArAp',rows,r=>r.amt-r.setoran);
+  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  let h=`<div class="pn-sub" style="margin-bottom:8px">Recap of inter-company receivables (AR) and payables (AP) between PTs in the wider group — imported from the group's own AR/AP recap spreadsheets. Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT. <b>Gross</b> is the raw ledger balance; <b>Setoran Modal</b> is any portion since reclassified as a capital contribution (reduces the balance); <b>AR/AP Net</b> is Gross minus Setoran Modal — the actual outstanding balance.</div>`;
+  h+=`<div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px"><span><b style="color:var(--red)">Total AP (net):</b> ${fmt(totAP)}</span><span><b style="color:var(--green)">Total AR (net):</b> ${fmt(totAR)}</span></div>`;
+  h+=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>PT (Owner)</th><th>Counterparty</th><th>Type</th><th class="num">Gross</th><th class="num">Setoran Modal</th><th class="num">${sortHeader('icArAp','AR/AP Net','amt')}</th></tr></thead><tbody>`;
   if(rows.length){
     rows.forEach(r=>{
       const cls=r.type==='AP'?'neg':'pos';
       const badge=r.type==='AP'?'background:#fbe9e7;color:#b3261e':'background:#e3f2e8;color:#2b7a4b';
-      h+=`<tr><td style="font-size:12.5px">${escH(r.owner)}</td><td style="font-size:12.5px">${escH(r.cp)}</td><td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span></td><td class="num ${cls}">${fmt(r.amt)}</td></tr>`;
+      const net=r.amt-r.setoran;
+      h+=`<tr><td style="font-size:12.5px">${escH(r.owner)}</td><td style="font-size:12.5px">${escH(r.cp)}</td><td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span></td>`
+        +`<td class="num" style="color:var(--muted)">${fmt(r.amt)}</td>`
+        +`<td class="num" style="color:var(--muted)" title="${r.setoranNote?escH(r.setoranNote):''}">${r.setoran?'− '+fmt(r.setoran):'—'}</td>`
+        +`<td class="num ${cls}"><strong>${fmt(net)}</strong></td></tr>`;
     });
   } else {
-    h+=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No recap data loaded yet.</td></tr>`;
+    h+=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No recap data loaded yet.</td></tr>`;
   }
   h+=`</tbody></table></div>`;
   showModal('Inter-Company AR/AP',h,true);
@@ -6099,7 +6103,8 @@ async function runDashboard(){
   // the entity/group/month filters that drive the rest of the dashboard.
   try{
     INTERCOMPANY=(await sbFetch('intercompany_ar_ap?select=*&order=owner_label,type,amount_idr.desc'))
-      .map(r=>({id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,amt:+r.amount_idr,source:r.source_file}));
+      .map(r=>({id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,amt:+r.amount_idr,
+        setoran:+(r.setoran_modal_idr||0),setoranNote:r.setoran_modal_note||null,source:r.source_file}));
   }catch(e){ INTERCOMPANY=[]; }
   rebuildScopeSelect();
   applyScopeChrome();
