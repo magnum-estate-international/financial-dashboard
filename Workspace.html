@@ -76,6 +76,7 @@ select:focus-visible{outline:none;border-color:#5b67f1;box-shadow:0 0 0 3px rgba
 .kpi4{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
 .kpi5{grid-template-columns:repeat(5,1fr)}
 .kpi2{display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
+.kpi1{display:grid;grid-template-columns:minmax(200px,340px);gap:15px;margin-bottom:15px}
 .kpi3{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
 .pcard{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);padding:21px 22px;
   border:var(--border);position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
@@ -308,6 +309,9 @@ a{color:#4550d8}
 
 <div class="divlabel" id="secCashLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Cash &amp; Liabilities</div>
 <div class="kpi2" id="kpiCash"></div>
+
+<div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Inter-Company AR/AP</div>
+<div class="kpi1" id="kpiIntercompany"></div>
 
 <div class="divlabel" id="secOpLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg> Operational Performance — May 2026</div>
 <div class="kpi3" id="kpiOp"></div>
@@ -2885,6 +2889,44 @@ function cashPositionCard(){
 }
 function renderKpiCash(){
   const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi4'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard(); }
+  const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
+}
+// ─── INTER-COMPANY AR/AP — a group-level recap of who owes whom across the wider PT group (many
+// counterparties here are holding/investment PTs that aren't operating entities in this dashboard,
+// so they're kept as plain text labels, not linked to EIDS/ENT). Sourced from a one-time import of
+// the group's own AR/AP recap spreadsheets (see intercompany_ar_ap table) — read-only for now,
+// deliberately NOT scoped by the entity/group/month filters since it isn't month-bound data. ───
+function intercompanyCard(){
+  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
+  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
+  const owners=new Set(INTERCOMPANY.map(r=>r.owner)).size;
+  return `<div class="pcard clickable" onclick="openIntercompany()">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="lab">Inter-Company AR/AP</div>
+      <div class="big" style="color:var(--muted);font-size:16px">AP ${fmt(totAP)} &nbsp;·&nbsp; AR ${fmt(totAR)}</div>
+      <div class="meta">${INTERCOMPANY.length?`${INTERCOMPANY.length} entries across ${owners} PT — click to view`:'No recap loaded yet'}</div>
+    </div>`;
+}
+function openIntercompany(){
+  SORT_RERENDER['icArAp']=openIntercompany;
+  let rows=INTERCOMPANY.slice();
+  rows=sortApply('icArAp',rows,r=>r.amt);
+  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
+  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
+  let h=`<div class="pn-sub" style="margin-bottom:8px">Recap of inter-company receivables (AR) and payables (AP) between PTs in the wider group — imported from the group's own AR/AP recap spreadsheets. Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT.</div>`;
+  h+=`<div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px"><span><b style="color:var(--red)">Total AP:</b> ${fmt(totAP)}</span><span><b style="color:var(--green)">Total AR:</b> ${fmt(totAR)}</span></div>`;
+  h+=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>PT (Owner)</th><th>Counterparty</th><th>Type</th><th class="num">${sortHeader('icArAp','Amount (IDR)','amt')}</th></tr></thead><tbody>`;
+  if(rows.length){
+    rows.forEach(r=>{
+      const cls=r.type==='AP'?'neg':'pos';
+      const badge=r.type==='AP'?'background:#fbe9e7;color:#b3261e':'background:#e3f2e8;color:#2b7a4b';
+      h+=`<tr><td style="font-size:12.5px">${escH(r.owner)}</td><td style="font-size:12.5px">${escH(r.cp)}</td><td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span></td><td class="num ${cls}">${fmt(r.amt)}</td></tr>`;
+    });
+  } else {
+    h+=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No recap data loaded yet.</td></tr>`;
+  }
+  h+=`</tbody></table></div>`;
+  showModal('Inter-Company AR/AP',h,true);
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
@@ -6012,6 +6054,7 @@ let BAL={};
 let CASHPOS={};
 let OUTSTANDING=[];
 let FIXCOST=[];
+let INTERCOMPANY=[];
 async function runDashboard(){
   const D=await loadFromSupabase();
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
@@ -6051,6 +6094,13 @@ async function runDashboard(){
       CASHPOS[c.entity_code]={cash:Number(c.cash_idr),at:c.updated_at};
     });
   }catch(e){ CASHPOS={}; }
+  // group-level inter-company AR/AP recap — not entity/month scoped (spans holding-company PTs
+  // outside the 16 operating entities too), so it's fetched once and shown as-is, unaffected by
+  // the entity/group/month filters that drive the rest of the dashboard.
+  try{
+    INTERCOMPANY=(await sbFetch('intercompany_ar_ap?select=*&order=owner_label,type,amount_idr.desc'))
+      .map(r=>({id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,amt:+r.amount_idr,source:r.source_file}));
+  }catch(e){ INTERCOMPANY=[]; }
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
