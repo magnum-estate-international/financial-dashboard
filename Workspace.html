@@ -2897,18 +2897,136 @@ function renderKpiCash(){
 // the group's own AR/AP recap spreadsheets (see intercompany_ar_ap table) — read-only for now,
 // deliberately NOT scoped by the entity/group/month filters since it isn't month-bound data. ───
 function intercompanyCard(){
-  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
-  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  const g=icBuildGraph();
+  let total=0; g.mat.forEach(row=>row.forEach(v=>{ if(v) total+=v; }));
   const owners=new Set(INTERCOMPANY.map(r=>r.owner)).size;
   return `<div class="pcard clickable" onclick="openIntercompany()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Inter-Company AR/AP</div>
-      <div class="big" style="color:var(--muted);font-size:16px">AP ${fmt(totAP)} &nbsp;·&nbsp; AR ${fmt(totAR)}</div>
-      <div class="meta">${INTERCOMPANY.length?`${INTERCOMPANY.length} entries across ${owners} PT (net of setoran modal) — click to view`:'No recap loaded yet'}</div>
+      <div class="lab">Utang Piutang Antar PT</div>
+      <div class="big" style="${total>0?'':'color:var(--muted)'}">${total>0?fmt(total):'—'}</div>
+      <div class="meta">${INTERCOMPANY.length?`Total saldo afiliasi · ${g.nodes.length} PT — klik untuk lihat detail`:'Belum ada data direkap'}</div>
     </div>`;
 }
+// ─── Utang Piutang Antar PT — graph-style view built on top of INTERCOMPANY (same source as the
+// simple table below): normalizes owner/counterparty names into one node list, builds a directed
+// creditor→debtor matrix (net of setoran modal), and cross-checks any pair where both sides
+// recorded the relationship (owner's AR vs counterparty's mirrored AP) for disagreement. ───
+function icNormName(s){
+  return String(s||'').toUpperCase().replace(/\(.*?\)/g,'').replace(/\bPT\.?\b/g,'').replace(/\s+/g,' ').trim();
+}
+function icBuildGraph(){
+  const nodesSet=new Set();
+  INTERCOMPANY.forEach(r=>{ nodesSet.add(icNormName(r.owner)); nodesSet.add(icNormName(r.cp)); });
+  const nodes=[...nodesSet].sort();
+  const idx={}; nodes.forEach((n,i)=>idx[n]=i);
+  const n=nodes.length;
+  const mat=Array.from({length:n},()=>Array(n).fill(0));
+  INTERCOMPANY.forEach(r=>{
+    const net=r.amt-r.setoran;
+    const o=idx[icNormName(r.owner)], c=idx[icNormName(r.cp)];
+    if(o==null||c==null||o===c||!net) return;
+    if(r.type==='AR') mat[o][c]=Math.max(mat[o][c],net);
+    else mat[c][o]=Math.max(mat[c][o],net);
+  });
+  return {nodes,idx,mat};
+}
+function icFindMismatches(){
+  const byKey={};
+  INTERCOMPANY.forEach(r=>{ (byKey[icNormName(r.owner)+'|'+icNormName(r.cp)+'|'+r.type]=byKey[icNormName(r.owner)+'|'+icNormName(r.cp)+'|'+r.type]||[]).push(r); });
+  const seen=new Set(), out=[];
+  INTERCOMPANY.forEach(r=>{
+    const a=icNormName(r.owner), b=icNormName(r.cp), key=a+'|'+b+'|'+r.type;
+    if(seen.has(key)) return; seen.add(key);
+    const mirrorType=r.type==='AP'?'AR':'AP', mirrorKey=b+'|'+a+'|'+mirrorType;
+    const mirrors=byKey[mirrorKey]; if(!mirrors||!mirrors.length) return;
+    seen.add(mirrorKey);
+    const net1=r.amt-r.setoran, net2=mirrors[0].amt-mirrors[0].setoran;
+    if(Math.abs(net1-net2)>1) out.push({a:r.owner,b:r.cp,amt1:net1,amt2:net2,diff:net1-net2});
+  });
+  return out;
+}
+let IC_CHART=null;
 function openIntercompany(){
   SORT_RERENDER['icArAp']=openIntercompany;
+  const g=icBuildGraph(), n=g.nodes.length;
+  let total=0,maxV=0; g.mat.forEach(row=>row.forEach(v=>{ if(v){ total+=v; maxV=Math.max(maxV,v); } }));
+  const mismatches=icFindMismatches();
+  const misTotal=mismatches.reduce((s,m)=>s+Math.abs(m.diff),0);
+  const net=g.nodes.map((name,i)=>{
+    let ar=0,ap=0;
+    for(let j=0;j<n;j++){ ar+=g.mat[i][j]; ap+=g.mat[j][i]; }
+    return {name,v:ar-ap};
+  }).filter(d=>d.v!==0).sort((a,b)=>b.v-a.v);
+  const heat=v=>{ const t=Math.pow(v/(maxV||1),0.6);
+    if(t<0.25) return ['#1b2f52','#9dc2ff']; if(t<0.5) return ['#2456a8','#dbe9ff']; if(t<0.75) return ['#4c8dff','#0a1020']; return ['#9dc2ff','#0a1020']; };
+  const shortName=nm=>nm.length>16?nm.slice(0,15)+'…':nm;
+  let matrixHtml=`<table style="border-collapse:separate;border-spacing:2px;width:100%;table-layout:fixed"><tr><th></th>`+
+    g.nodes.map(nm=>`<th style="font-size:9px;color:#5a6275;font-weight:500;font-family:'JetBrains Mono',monospace;padding:2px 0" title="${escH(nm)}">${escH(shortName(nm))}</th>`).join('')+`</tr>`;
+  g.nodes.forEach((rowName,i)=>{
+    matrixHtml+=`<tr><th style="font-size:9px;color:#5a6275;text-align:right;padding-right:6px;font-family:'JetBrains Mono',monospace;white-space:nowrap" title="${escH(rowName)}">${escH(shortName(rowName))}</th>`;
+    for(let j=0;j<n;j++){
+      if(i===j){ matrixHtml+=`<td style="height:24px;border-radius:5px;background:#10141d"></td>`; continue; }
+      const v=g.mat[i][j];
+      if(!v){ matrixHtml+=`<td style="height:24px;border-radius:5px;background:#131826"></td>`; continue; }
+      const [bg,fg]=heat(v);
+      const isMis=mismatches.some(m=>(icNormName(m.a)===g.nodes[i]&&icNormName(m.b)===g.nodes[j])||(icNormName(m.a)===g.nodes[j]&&icNormName(m.b)===g.nodes[i]));
+      matrixHtml+=`<td title="${escH(rowName)} memiliki piutang ke ${escH(g.nodes[j])}: ${fmt(v)}" style="height:24px;border-radius:5px;background:${bg};color:${fg};font-size:9.5px;font-family:'JetBrains Mono',monospace;text-align:center;cursor:default${isMis?';box-shadow:inset 0 0 0 1.5px #ff5d5d':''}">${(v/1e9).toFixed(1)}</td>`;
+    }
+    matrixHtml+=`</tr>`;
+  });
+  matrixHtml+=`</table>`;
+  let misListHtml=mismatches.length?mismatches.map(m=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;background:#1c2333;margin-bottom:7px">
+      <div><div style="font-size:12.5px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#e6e9f0">${escH(m.a)} ⇄ ${escH(m.b)}</div>
+      <div style="font-size:11px;color:#8b93a7;margin-top:2px">Satu sisi: ${fmt(m.amt1)} · sisi lain: ${fmt(m.amt2)}</div></div>
+      <div style="font-size:13px;font-weight:700;color:#ff5d5d;font-family:'JetBrains Mono',monospace">${fmt(Math.abs(m.diff))}</div>
+    </div>`).join(''):`<div style="font-size:12.5px;color:#8b93a7;padding:10px">Tidak ada selisih terdeteksi pada pasangan yang bisa dicek silang.</div>`;
+
+  let h=`<div style="background:#0d1117;color:#e6e9f0;border-radius:14px;padding:20px;font-family:'Inter',system-ui,sans-serif;margin:-4px">
+    <div style="font-size:12px;color:#8b93a7;margin-bottom:16px">Peta utang-piutang antar PT dalam grup, dibangun dari data rekap yang sudah diimpor. Nilai matriks dalam <b>miliar Rupiah</b>, arahkan kursor untuk detail. Kotak dengan garis merah = ditemukan selisih pencatatan antar kedua sisi.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+      <div style="background:#161b27;border:1px solid #262e42;border-radius:14px;padding:14px 16px"><div style="font-size:11px;color:#8b93a7;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Total saldo afiliasi</div><div style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace">${fmt(total)}</div></div>
+      <div style="background:#161b27;border:1px solid #262e42;border-radius:14px;padding:14px 16px"><div style="font-size:11px;color:#8b93a7;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Selisih belum match</div><div style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#ff5d5d">${fmt(misTotal)}</div><div style="font-size:11px;color:#ffb547;margin-top:6px">${mismatches.length} pasangan entitas</div></div>
+      <div style="background:#161b27;border:1px solid #262e42;border-radius:14px;padding:14px 16px"><div style="font-size:11px;color:#8b93a7;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">PT tercakup</div><div style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace">${g.nodes.length}</div><div style="font-size:11px;color:#8b93a7;margin-top:6px">${INTERCOMPANY.length} baris data</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px">
+      <div>
+        <div style="background:#161b27;border:1px solid #262e42;border-radius:16px;padding:20px;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">Matriks saldo antar entitas</div>
+          <div style="font-size:11.5px;color:#8b93a7;margin-bottom:14px">Baris = pemegang piutang · kolom = penanggung utang · nilai dalam Rp miliar</div>
+          <div style="overflow-x:auto">${matrixHtml}</div>
+        </div>
+        <div style="background:#161b27;border:1px solid #262e42;border-radius:16px;padding:20px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">Posisi neto per PT</div>
+          <div style="font-size:11.5px;color:#8b93a7;margin-bottom:14px">Piutang afiliasi dikurangi utang afiliasi — biru = pemberi dana neto, merah = peminjam neto</div>
+          <div style="position:relative;height:${Math.max(200,net.length*26)}px"><canvas id="icNetChart"></canvas></div>
+        </div>
+      </div>
+      <div>
+        <div style="background:#161b27;border:1px solid #262e42;border-radius:16px;padding:20px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">Perlu ditindaklanjuti</div>
+          <div style="font-size:11.5px;color:#8b93a7;margin-bottom:14px">Pasangan dengan selisih pencatatan antara kedua sisi</div>
+          ${misListHtml}
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;border-top:1px solid #262e42;padding-top:14px">
+      <details><summary style="cursor:pointer;font-size:12.5px;color:#8b93a7">Lihat tabel data mentah (Gross / Setoran Modal / Net)</summary>
+      <div style="margin-top:10px;color:#141b2d;background:#fff;border-radius:12px;padding:12px">${icRawTableHtml()}</div>
+      </details>
+    </div>
+  </div>`;
+  showModal('Utang Piutang Antar PT',h,true);
+  requestAnimationFrame(()=>{
+    const ctx=document.getElementById('icNetChart'); if(!ctx) return;
+    if(IC_CHART) IC_CHART.destroy();
+    IC_CHART=new Chart(ctx,{type:'bar',data:{labels:net.map(d=>d.name),datasets:[{data:net.map(d=>d.v),backgroundColor:net.map(d=>d.v>=0?'#4c8dff':'#ff5d5d'),borderRadius:6,maxBarThickness:18}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{backgroundColor:'#0a0e16',borderColor:'#262e42',borderWidth:1,padding:10,callbacks:{label:c=>(c.raw<0?'Peminjam neto: ':'Pemberi dana neto: ')+fmt(Math.abs(c.raw))}}},
+        scales:{x:{grid:{color:'rgba(38,46,66,.6)'},ticks:{color:'#8b93a7',callback:v=>fmt(v)}},y:{grid:{display:false},ticks:{color:'#8b93a7',font:{size:10.5}}}}}});
+  });
+}
+function icRawTableHtml(){
   let rows=INTERCOMPANY.slice();
   rows=sortApply('icArAp',rows,r=>r.amt-r.setoran);
   const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
@@ -2930,7 +3048,7 @@ function openIntercompany(){
     h+=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No recap data loaded yet.</td></tr>`;
   }
   h+=`</tbody></table></div>`;
-  showModal('Inter-Company AR/AP',h,true);
+  return h;
 }
 function renderKpiOp(a){
   const pos=a.opNet>=0;
