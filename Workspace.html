@@ -26,21 +26,18 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);min-height:100v
   background:#f3f4f8}
 .wrap{max-width:1280px;margin:0 auto;padding:0 26px 56px}
 header.hero{position:relative;overflow:hidden;color:#fff;border-radius:0 0 26px 26px;padding:34px 0 46px;
-  background:linear-gradient(115deg,#10162a 0%,#141b2d 55%,#1b2440 100%)}
+  background:linear-gradient(160deg,#0c0f1a 0%,#12172a 60%,#161c33 100%)}
 header.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
-  background-image:radial-gradient(circle,rgba(122,138,248,.35) 1.2px,transparent 1.3px);
-  background-size:14px 14px;
-  -webkit-mask-image:radial-gradient(620px 360px at 86% 30%,#000 20%,transparent 72%);
-          mask-image:radial-gradient(620px 360px at 86% 30%,#000 20%,transparent 72%)}
-header.hero::after{content:"";position:absolute;right:-80px;top:-90px;width:340px;height:340px;border-radius:50%;
-  background:radial-gradient(circle,rgba(91,103,241,.35),transparent 65%)}
+  background:radial-gradient(760px 420px at 88% 6%,rgba(216,183,115,.16),transparent 68%)}
+header.hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(216,183,115,.35),transparent)}
 header .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;position:relative;z-index:1}
-.brand{display:flex;align-items:center;gap:15px}
+.brand{display:flex;align-items:center;gap:16px}
 .mark{height:52px;width:auto;flex:none;filter:drop-shadow(0 6px 14px rgba(220,193,137,.35))}
-.brand h1{font-weight:800;font-size:24px;letter-spacing:-.4px;line-height:1.15;color:#fff}
-.brand .sub{font-size:12.5px;color:#8e97ad;letter-spacing:1.6px;text-transform:uppercase;margin-top:6px;font-weight:600}
-.hero-meta{text-align:right;font-size:14.5px;color:#8e97ad}
-.hero-meta .period{font-size:21px;color:#fff;font-weight:800;letter-spacing:-.3px}
+.brand h1{font-weight:700;font-size:23px;letter-spacing:-.3px;line-height:1.15;color:#f6f7fb}
+.brand .sub{font-size:12px;color:#9098af;letter-spacing:1.6px;text-transform:uppercase;margin-top:7px;font-weight:600}
+.hero-meta{text-align:right;font-size:14.5px;color:#9098af}
+.hero-meta .period{font-size:20px;color:#f6f7fb;font-weight:700;letter-spacing:-.2px}
 .toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:-28px auto 20px;max-width:1280px;padding:14px 20px;
   background:#fff;border-radius:16px;box-shadow:var(--shadow);border:var(--border);position:sticky;top:12px;z-index:30}
 .svgic{width:15px;height:15px;vertical-align:-3px;flex:none}
@@ -6184,12 +6181,14 @@ function showUserBar(){
   const b=document.createElement('div');
   b.id='mag-userbar';
   const initial=(email||'?').charAt(0).toUpperCase();
-  const pill='border:1px solid rgba(255,255,255,.22);border-radius:999px;background:rgba(255,255,255,.09);color:#e6e9f5;font-size:13.5px;font-weight:600;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap';
+  const pill='border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(255,255,255,.05);color:#c7cddd;font-size:13.5px;font-weight:600;padding:9px 17px;cursor:pointer;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:7px;transition:background .15s,border-color .15s';
+  const icGear='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>';
+  const icClock='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
   b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;max-width:1280px;margin:0 auto 16px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:14px;color:#c7cddd';
-  b.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;margin-right:8px;min-width:0"><span style="width:30px;height:30px;flex:none;border-radius:50%;background:linear-gradient(135deg,#5b67f1,#8d7bf0);color:#fff;font-weight:700;font-size:13.5px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
-    +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:#5b67f1;color:#fff;font-size:13.5px;font-weight:700;padding:10px 19px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(91,103,241,.65)">Update data</button>':'')
-    +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">⚙ Manage access</button>':'')
-    +'<button id="mag-history-open" style="'+pill+'">🕘 History</button>'
+  b.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;margin-right:8px;min-width:0"><span style="width:30px;height:30px;flex:none;border-radius:50%;background:linear-gradient(135deg,#c89a4a,#ecd7a3);color:#20170a;font-weight:700;font-size:13.5px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
+    +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="border:0;border-radius:999px;background:linear-gradient(135deg,#c89a4a,#e3c583);color:#20170a;font-size:13.5px;font-weight:700;padding:10px 19px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 5px 14px -5px rgba(200,154,74,.55)">Update data</button>':'')
+    +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">'+icGear+' Manage access</button>':'')
+    +'<button id="mag-history-open" style="'+pill+'">'+icClock+' History</button>'
     +'<button id="mag-signout" style="'+pill+'">Sign out</button>';
   const host=document.querySelector('header.hero');
   if(host){ host.insertBefore(b, host.firstChild); }
