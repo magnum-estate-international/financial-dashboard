@@ -2875,7 +2875,7 @@ function cashPositionCard(){
   let tot=0,n=0,latest=null;
   ids.forEach(id=>{ const c=CASHPOS[id]; if(c){ tot+=c.cash; n++; if(!latest||c.at>latest) latest=c.at; } });
   const asOf=latest?new Date(latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):null;
-  return `<div class="pcard blue-hl clickable" onclick="openDetail('cashpos')">
+  return `<div class="pcard clickable" onclick="openDetail('cashpos')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="lab">Cash Position</div>
       <div class="big">${n?fmt(tot):'—'}</div>
