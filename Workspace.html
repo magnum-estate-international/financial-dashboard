@@ -51,8 +51,8 @@ header .wrap{display:flex;align-items:center;justify-content:space-between;gap:2
 .brand .sub{font-size:12.5px;color:#8a8371;letter-spacing:.2px;text-transform:none;margin-top:6px;font-weight:600}
 .hero-meta{text-align:right;font-size:14px;color:#8a8371}
 .hero-meta .period{font-size:19px;color:#1f1a0f;font-weight:700;letter-spacing:-.2px}
-.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:-28px auto 20px;max-width:1280px;padding:14px 20px;
-  background:#fff;border-radius:16px;box-shadow:var(--shadow);border:var(--border);position:sticky;top:12px;z-index:30}
+.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:20px auto 20px;max-width:1280px;padding:14px 20px;
+  background:#fff;border-radius:16px;box-shadow:var(--shadow);border:var(--border);position:sticky;top:0;z-index:40}
 .svgic{width:15px;height:15px;vertical-align:-3px;flex:none}
 .ic-lg{width:22px;height:22px;flex:none}
 .spacer{flex:1}
@@ -6207,6 +6207,7 @@ function renderAll(){
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
   renderFinancialHealth(a);renderCashInOutChart();renderRevByEntChart();renderTopExpCats(a);
   renderAgingChart();renderIcSummary();renderMonthlyTrendChart();renderActionAlerts2();renderSnInsight();
+  if(typeof stickToolbarBelowHeader==='function') stickToolbarBelowHeader();
 }
 
 /* ══════════ SUPABASE LIVE DATA LAYER (added to connect this dashboard to the database) ══════════
@@ -8016,6 +8017,12 @@ document.getElementById('hdrRefresh')?.addEventListener('click',async()=>{
   try{ await runDashboard(); }catch(e){}
   setTimeout(()=>{ btn.style.transition='none'; btn.style.transform='none'; },520);
 });
+function stickToolbarBelowHeader(){
+  const hero=document.querySelector('header.hero'), tb=document.querySelector('.toolbar');
+  if(hero && tb) tb.style.top=hero.offsetHeight+'px';
+}
+window.addEventListener('resize',stickToolbarBelowHeader);
+stickToolbarBelowHeader();
 boot();
 </script>
 </body>
