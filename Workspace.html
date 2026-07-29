@@ -88,6 +88,16 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .pcard.green-hl{border-top:3px solid var(--green)}
 .pcard.red-hl{border-top:3px solid #f27a9d}
 .pcard.amber-hl{border-top:3px solid #e3c583}
+.pcard.boxed{border-width:1.5px;border-style:solid}
+.pcard.boxed.green-hl{border-top-width:1.5px;border-color:#bfe3d2}
+.pcard.boxed.red-hl{border-top-width:1.5px;border-color:#f6cdd8}
+.pcard.boxed.gold-hl{border-top:3px solid #c89a4a;border-color:#ecdcb8}
+.kpi-head{display:flex;align-items:center;gap:11px;margin-bottom:13px}
+.kpi-head .kpi-ic{margin-bottom:0}
+.pcard .kpi-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;
+  background:linear-gradient(135deg,#faf3e2,#f5e8c8);color:#9a6f0a}
+.pcard .kpi-ic svg{width:17px;height:17px}
+.kpi-head .lab{margin:0}
 .pcard .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:1.3px;font-weight:700;color:var(--muted)}
 .pcard .big{font-weight:800;font-size:24px;letter-spacing:-.7px;line-height:1.1;
   margin-top:9px;font-variant-numeric:lining-nums tabular-nums;color:var(--blue-900)}
@@ -2878,27 +2888,25 @@ function cashPositionCard(){
   let tot=0,n=0,latest=null;
   ids.forEach(id=>{ const c=CASHPOS[id]; if(c){ tot+=c.cash; n++; if(!latest||c.at>latest) latest=c.at; } });
   const asOf=latest?new Date(latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):null;
-  return `<div class="pcard clickable" onclick="openDetail('cashpos')">
+  return `<div class="pcard boxed gold-hl clickable" onclick="openDetail('cashpos')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Cash Position</div>
+      <div class="kpi-head"><div class="kpi-ic">${ICON.dollar(17)}</div><div class="lab">Cash Position</div></div>
       <div class="big">${n?fmt(tot):'—'}</div>
       <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No cash position logged yet — add it via Update Data'}</div>
     </div>`;
 }
 function revenueCard(a){
-  return `<div class="pcard green-hl clickable" onclick="openDetail('rev')">
-      <div class="kpi-ic" style="background:#e3f2e8;color:#1f8a61">${ICON.trend(18)}</div>
+  return `<div class="pcard boxed green-hl clickable" onclick="openDetail('rev')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Revenue</div>
+      <div class="kpi-head"><div class="kpi-ic" style="background:#e3f2e8;color:#1f8a61">${ICON.trend(17)}</div><div class="lab">Revenue</div></div>
       <div class="big pos">${fmt(a.rev)}</div>
       <div class="meta">Excludes loan inflows</div>
     </div>`;
 }
 function expensesCard(a){
-  return `<div class="pcard red-hl clickable" onclick="openDetail('opex')">
-      <div class="kpi-ic" style="background:#fbe9e7;color:#b3261e">${ICON.trendDown(18)}</div>
+  return `<div class="pcard boxed red-hl clickable" onclick="openDetail('opex')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Expenses Paid</div>
+      <div class="kpi-head"><div class="kpi-ic" style="background:#fbe9e7;color:#b3261e">${ICON.trendDown(17)}</div><div class="lab">Expenses Paid</div></div>
       <div class="big neg">${fmt(a.opex)}</div>
       <div class="meta"><b>${Object.keys(a.opexBD).length} categories</b> across ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'}</div>
     </div>`;
@@ -2918,9 +2926,9 @@ function intercompanyCard(){
   const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
   const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
   const owners=new Set(INTERCOMPANY.map(r=>r.owner)).size;
-  return `<div class="pcard clickable" onclick="openIntercompany()">
+  return `<div class="pcard boxed gold-hl clickable" onclick="openIntercompany()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Inter-Company AR/AP</div>
+      <div class="kpi-head"><div class="kpi-ic">${ICON.briefcase(17)}</div><div class="lab">Inter-Company AR/AP</div></div>
       <div class="big" style="color:var(--muted);font-size:16px">AP ${fmt(totAP)} &nbsp;·&nbsp; AR ${fmt(totAR)}</div>
       <div class="meta">${INTERCOMPANY.length?`${INTERCOMPANY.length} entries across ${owners} PT (net of setoran modal) — click to view`:'No recap loaded yet'}</div>
     </div>`;
@@ -3021,9 +3029,9 @@ function outstandingCard(){
   const open=outstandingOpen();
   const tot=open.reduce((s,o)=>s+o.remaining,0);
   const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
-  return `<div class="pcard clickable" onclick="openOutstanding('category')">
-      ${`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>`}
-      <div class="lab">Outstanding Liability</div>
+  return `<div class="pcard boxed gold-hl clickable" onclick="openOutstanding('category')">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="kpi-head"><div class="kpi-ic">${ICON.file(17)}</div><div class="lab">Outstanding Liability</div></div>
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
       <div class="meta">${open.length?`${open.length} unpaid invoice${open.length>1?'s':''}${overdueN?`, <span style="color:var(--red)">${overdueN} overdue</span>`:''}`:'No outstanding liabilities — click to add one'}</div>
     </div>`;
@@ -3039,9 +3047,9 @@ function fixCostInScope(){
 function fixCostCard(){
   const rows=fixCostInScope();
   const tot=rows.reduce((s,f)=>s+f.amt,0);
-  return `<div class="pcard clickable" onclick="openFixCost('vendor')">
+  return `<div class="pcard boxed gold-hl clickable" onclick="openFixCost('vendor')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Monthly Fix Cost</div>
+      <div class="kpi-head"><div class="kpi-ic">${ICON.refresh(17)}</div><div class="lab">Monthly Fix Cost</div></div>
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
       <div class="meta">${rows.length?`${rows.length} recurring cost item${rows.length>1?'s':''} — click to view`:'No fixed cost logged — click to add one'}</div>
     </div>`;
