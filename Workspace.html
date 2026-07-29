@@ -23,8 +23,27 @@
 ::selection{background:#f5e8c8;color:#5c4013}
 html{scroll-behavior:smooth}
 body{font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;
-  background:linear-gradient(180deg,#f8f7f3 0%,#f1efe9 420px,#f1efe9 100%)}
+  background:linear-gradient(180deg,#f8f7f3 0%,#f1efe9 420px,#f1efe9 100%);margin-left:214px}
 .wrap{max-width:1280px;margin:0 auto;padding:0 26px 56px}
+.sidenav{position:fixed;top:0;left:0;bottom:0;width:214px;z-index:60;display:flex;flex-direction:column;
+  padding:22px 12px;overflow-y:auto;background:linear-gradient(180deg,#0c0f1a 0%,#12172a 55%,#161c33 100%)}
+.sn-brand{display:flex;align-items:center;justify-content:center;padding:4px 0 24px}
+.sn-links{display:flex;flex-direction:column;gap:2px}
+.sn-link{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:10px;color:#9098af;
+  font-size:13.5px;font-weight:600;text-decoration:none;cursor:pointer;transition:background .15s,color .15s}
+.sn-link svg{width:17px;height:17px;flex:none;opacity:.8}
+.sn-link:hover{background:rgba(255,255,255,.06);color:#f0ede4}
+.sn-link.active{background:linear-gradient(135deg,#c89a4a,#e3c583);color:#20170a}
+.sn-link.active svg{opacity:1}
+.sn-insight{margin-top:auto;padding-top:18px}
+.sn-insight .card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:16px}
+.sn-insight .ic{color:#e3c583;margin-bottom:8px}
+.sn-insight p{color:#c7cddd;font-size:12.5px;line-height:1.6;margin-bottom:12px}
+.sn-insight b{color:#fff}
+.sn-insight button{width:100%;border:0;border-radius:10px;background:linear-gradient(135deg,#c89a4a,#e3c583);
+  color:#20170a;font-weight:700;font-size:12.5px;padding:9px;cursor:pointer;font-family:inherit}
+header.hero{border-radius:0 0 26px 0}
+@media(max-width:980px){.sidenav{display:none}body{margin-left:0}header.hero{border-radius:0 0 26px 26px}}
 header.hero{position:relative;overflow:hidden;color:#fff;border-radius:0 0 26px 26px;padding:34px 0 46px;
   background:linear-gradient(160deg,#0c0f1a 0%,#12172a 60%,#161c33 100%)}
 header.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
@@ -242,6 +261,24 @@ a{color:#9a6f0a}
 </style>
 <meta property="og:title" content="Group Consolidated Financial Dashboard · May 2026 · 17 Entities" data-id="th-modified" ><meta name="description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:url" content="https://salmon-emmie-62.tiiny.site/" data-id="th-modified" ><meta property="og:type" content="website" data-id="th-modified" ></head>
 <body>
+
+<nav class="sidenav" id="sideNav">
+  <div class="sn-brand"><svg viewBox="0 0 24 24" fill="none" stroke="#e3c583" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:30px;height:30px"><path d="m3 20 8-16 8 16"/><path d="M7.5 11h7"/></svg></div>
+  <div class="sn-links">
+    <a class="sn-link active" data-scroll="top" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg> Dashboard</a>
+    <a class="sn-link" data-scroll="secCashLabel" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Financial Overview</a>
+    <a class="sn-link" data-scroll="secBalLabel" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="14" x2="8" y2="17"/></svg> Cash &amp; Bank</a>
+    <a class="sn-link" data-action="outstanding" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Accounts Payable</a>
+    <a class="sn-link" data-action="intercompany" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg> Accounts Receivable</a>
+    <a class="sn-link" data-action="expenses" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 7 9 13 13 9 21 17"/><polyline points="14 17 21 17 21 10"/></svg> Expenses</a>
+    <a class="sn-link" data-action="fixcost" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Fixed Cost</a>
+    <a class="sn-link" data-action="intercompany" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Inter-Company (AR/AP)</a>
+    <a class="sn-link" data-action="print" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Reports</a>
+    <a class="sn-link" data-action="entities" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Entities</a>
+    <a class="sn-link" data-scroll="secAlertsLabel" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Alerts</a>
+  </div>
+  <div class="sn-insight" id="snInsight"></div>
+</nav>
 
 <header class="hero">
   <div class="wrap">
@@ -7701,6 +7738,22 @@ async function boot(){
   }
 }
 document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
+document.querySelectorAll('.sn-link').forEach(a=>{
+  a.addEventListener('click',e=>{
+    e.preventDefault();
+    document.querySelectorAll('.sn-link').forEach(x=>x.classList.remove('active'));
+    a.classList.add('active');
+    const scrollId=a.dataset.scroll, action=a.dataset.action;
+    if(scrollId==='top'){ window.scrollTo({top:0,behavior:'smooth'}); }
+    else if(scrollId){ document.getElementById(scrollId)?.scrollIntoView({behavior:'smooth',block:'start'}); }
+    else if(action==='outstanding'){ openOutstanding('category'); }
+    else if(action==='intercompany'){ openIntercompany(); }
+    else if(action==='expenses'){ openDetail('opex'); }
+    else if(action==='fixcost'){ openFixCost('vendor'); }
+    else if(action==='print'){ window.print(); }
+    else if(action==='entities'){ document.getElementById('scopeSel')?.scrollIntoView({behavior:'smooth',block:'center'}); }
+  });
+});
 boot();
 </script>
 </body>
