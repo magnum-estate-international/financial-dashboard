@@ -46,13 +46,14 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);min-height:100v
 @media(max-width:980px){.sidenav{display:none}body{margin-left:0}header.hero{border-radius:0 0 26px 26px}}
 header.hero{position:sticky;top:0;z-index:50;color:#2a2313;padding:22px 0 18px;background:#fefcf8;border-bottom:1px solid #ece5d6}
 header .wrap{display:flex;flex-direction:column;gap:16px;position:relative;z-index:1}
-.hdr-top-row{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:16px}
-.brand h1{font-weight:800;font-size:26px;letter-spacing:-.3px;line-height:1.15;color:#1f1a0f}
-.brand .sub{font-size:12.5px;color:#8a8371;letter-spacing:.2px;text-transform:none;margin-top:6px;font-weight:600}
-.hero-meta{text-align:right;font-size:14px;color:#8a8371}
-.hero-meta .period{font-size:19px;color:#1f1a0f;font-weight:700;letter-spacing:-.2px}
-.hdr-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding-top:14px;border-top:1px solid #ece5d6}
+.hdr-top-row{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:16px;min-width:0}
+.brand h1{font-weight:800;font-size:22px;letter-spacing:-.3px;line-height:1.2;color:#1f1a0f}
+.sub-line{display:flex;align-items:center;gap:12px;font-size:13px;color:#8a8371;margin-top:2px;white-space:nowrap}
+.sub-line::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,#e2ded0,transparent);min-width:40px}
+.hdr-select-wrap{display:flex;align-items:center;gap:8px;border:1px solid #e4e2d8;background:#fff;border-radius:10px;padding:0 12px;height:38px;color:#8a8371;flex:none}
+.hdr-select-ic{width:15px;height:15px;flex:none;opacity:.8}
+select.hdr-select{border:0;padding:0;height:36px;font-size:13px;color:#1f1a0f;background:none;font-weight:600}
 .svgic{width:15px;height:15px;vertical-align:-3px;flex:none}
 .ic-lg{width:22px;height:22px;flex:none}
 .spacer{flex:1}
@@ -271,7 +272,8 @@ a{color:#9a6f0a}
     <a class="sn-link" data-action="expenses" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 7 9 13 13 9 21 17"/><polyline points="14 17 21 17 21 10"/></svg> Expenses</a>
     <a class="sn-link" data-action="fixcost" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Fixed Cost</a>
     <a class="sn-link" data-action="intercompany" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Inter-Company (AR/AP)</a>
-    <a class="sn-link" data-action="print" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Reports</a>
+    <a class="sn-link" data-action="print" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / PDF</a>
+    <a class="sn-link" data-action="export" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Summary CSV</a>
     <a class="sn-link" data-action="entities" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Entities</a>
     <a class="sn-link" data-scroll="secAlertsLabel" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Alerts</a>
     <div class="sn-div"></div>
@@ -286,33 +288,15 @@ a{color:#9a6f0a}
   <div class="wrap">
     <div class="hdr-top-row">
     <div class="brand">
-      
       <div>
-        <h1>Group Consolidated Financial Dashboard</h1>
-        <div class="sub">ICG · MEI · BBU · Sky Stars · KSO TUS · PT SUP · Umalas Lounge</div>
+        <h1>Dashboard</h1>
+        <div class="sub-line"><span id="hdrBreadcrumb">Financial Overview</span></div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:18px">
-      <div class="hero-meta">
-        <div class="period" id="heroToday">Thursday, 16 July 2026</div>
-        <div id="heroScope">Consolidated · 17 Entities · 4 Groups + 3 Standalone</div>
-      </div>
-      <button id="hdrRefresh" title="Refresh data" style="border:1px solid #ece5d6;background:#fff;border-radius:10px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer;color:#8a8371;flex:none">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      </button>
-      <div style="position:relative;flex:none">
-        <button id="hdrBell" title="Pending approvals" style="border:1px solid #ece5d6;background:#fff;border-radius:10px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer;color:#8a8371" onclick="event.stopPropagation();openEntryPanel()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-        </button>
-        <span id="hdrBellBadge" style="display:none;position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:#d92d20;color:#fff;font-size:9.5px;font-weight:800;display:grid;place-items:center;line-height:1"></span>
-      </div>
-      <div id="hdrAccount" style="flex:none"></div>
-    </div>
-    </div>
-    <div class="hdr-controls">
-  <div class="fl">
-    <label for="monthSel">Period — Month</label>
-    <select id="monthSel" onchange="setMonth(this.value)" style="max-width:210px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="hdr-select-wrap">
+        <svg class="hdr-select-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+  <select id="monthSel" onchange="setMonth(this.value)" class="hdr-select" style="max-width:170px">
       <option value="APR">April 2026</option>
       <option value="MAY">May 2026</option>
       <option value="JUN">June 2026</option>
@@ -320,9 +304,9 @@ a{color:#9a6f0a}
       <option value="__custom">🗓 Custom range…</option>
     </select>
   </div>
-  <div class="fl">
-    <label for="scopeSel">View — Group / Entity</label>
-    <select id="scopeSel" onchange="setScope(this.value)" style="max-width:480px">
+      <div class="hdr-select-wrap">
+        <svg class="hdr-select-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+    <select id="scopeSel" onchange="setScope(this.value)" class="hdr-select" style="max-width:280px">
       <option value="all">🌐 All Groups — Consolidated (17 Entities)</option>
       <optgroup label="PT INDONESIA CAPITAL GROUP &amp; SUBS">
         <option value="g:icg">▸ ICG Group — Consolidated (6 entities)</option>
@@ -359,10 +343,19 @@ a{color:#9a6f0a}
         <option value="e:ulr">PT Umalas Lounge Rooftop</option>
       </optgroup>
     </select>
-  </div>
-  <div class="spacer"></div>
-  <button class="btn btn-ghost" onclick="window.print()"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / PDF</button>
-  <button class="btn btn-ghost" onclick="exportCSV()"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Summary CSV</button>
+      </div>
+      <div id="hdrLastUpdated" style="font-size:12.5px;color:#8a8371;white-space:nowrap"></div>
+      <button id="hdrRefresh" title="Refresh data" style="border:1px solid #ece5d6;background:#fff;border-radius:10px;width:34px;height:34px;display:grid;place-items:center;cursor:pointer;color:#8a8371;flex:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+      <div style="position:relative;flex:none">
+        <button id="hdrBell" title="Pending approvals" style="border:1px solid #ece5d6;background:#fff;border-radius:10px;width:34px;height:34px;display:grid;place-items:center;cursor:pointer;color:#8a8371" onclick="event.stopPropagation();openEntryPanel()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+        <span id="hdrBellBadge" style="display:none;position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:#d92d20;color:#fff;font-size:9.5px;font-weight:800;display:grid;place-items:center;line-height:1"></span>
+      </div>
+      <div id="hdrAccount" style="flex:none"></div>
+    </div>
     </div>
   </div>
 </header>
@@ -2954,7 +2947,8 @@ function renderBanner(){
   const opL=document.getElementById('secOpLabel'); if(opL) opL.innerHTML=`${ICON.trend()} Operational Performance — ${moLbl}`;
   const fnL=document.getElementById('secFinLabel'); if(fnL) fnL.innerHTML=`${ICON.refresh()} Financing Activity — ${moLbl}`;
   const n=scopeIds().length;
-  document.getElementById('heroScope').textContent = EF!=='all' ? ENT[EF].name : (GF==='all'?`Consolidated · ${n} Entities`:GRPNAME[GF]);
+  const scopeEl=document.getElementById('heroScope');
+  if(scopeEl) scopeEl.textContent = EF!=='all' ? ENT[EF].name : (GF==='all'?`Consolidated · ${n} Entities`:GRPNAME[GF]);
 }
 
 function renderAlert(a){
@@ -6431,6 +6425,15 @@ async function runDashboard(){
   renderAll();
   try{ await checkAdmin(); }catch(e){}
   showUserBar();
+  LAST_REFRESH=new Date();
+  renderLastUpdated();
+}
+let LAST_REFRESH=null;
+function renderLastUpdated(){
+  const el=document.getElementById('hdrLastUpdated'); if(!el) return;
+  if(!LAST_REFRESH){ el.textContent=''; return; }
+  const d=LAST_REFRESH;
+  el.textContent='Last updated: '+d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})+', '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
 }
 
 /* ── Login / gate UI ──────────────────────────────────────────────────── */
@@ -8002,6 +8005,7 @@ document.querySelectorAll('.sn-link').forEach(a=>{
     document.querySelectorAll('.sn-link').forEach(x=>x.classList.remove('active'));
     a.classList.add('active');
     const scrollId=a.dataset.scroll, action=a.dataset.action;
+    const bc=document.getElementById('hdrBreadcrumb'); if(bc && scrollId) bc.textContent=scrollId==='top'?'Financial Overview':a.textContent.trim();
     if(scrollId==='top'){ window.scrollTo({top:0,behavior:'smooth'}); }
     else if(scrollId){ document.getElementById(scrollId)?.scrollIntoView({behavior:'smooth',block:'start'}); }
     else if(action==='outstanding'){ openOutstanding('category'); }
@@ -8009,6 +8013,7 @@ document.querySelectorAll('.sn-link').forEach(a=>{
     else if(action==='expenses'){ openDetail('opex'); }
     else if(action==='fixcost'){ openFixCost('vendor'); }
     else if(action==='print'){ window.print(); }
+    else if(action==='export'){ exportCSV(); }
     else if(action==='entities'){ document.getElementById('scopeSel')?.scrollIntoView({behavior:'smooth',block:'center'}); }
   });
 });
