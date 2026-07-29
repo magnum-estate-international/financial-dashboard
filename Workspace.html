@@ -2886,7 +2886,7 @@ function cashPositionCard(){
     </div>`;
 }
 function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi4'; kc.innerHTML=cashPositionCard()+fixCostCard()+fixCostVsActualCard()+outstandingCard(); }
+  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi3'; kc.innerHTML=cashPositionCard()+fixCostCard()+outstandingCard(); }
   const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
 }
 // ─── INTER-COMPANY AR/AP — a group-level recap of who owes whom across the wider PT group (many
@@ -3041,21 +3041,6 @@ function fixCostCard(){
 async function refreshFixCost(){
   try{ FIXCOST=(await sbFetch('entity_fixed_costs?select=*&order=id')).map(mkFixCost); }catch(e){}
   renderKpiCash();
-}
-// Fix cost is a flat monthly baseline (entity/group-scoped, not month-scoped); actual is always
-// pinned to May (the last full, stable month) — see fixCostVsActualHtml() for the detail view.
-function fixCostVsActualCard(){
-  const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
-  const fc=FIXCOST.filter(f=>ids.includes(f.e)).reduce((s,f)=>s+f.amt,0);
-  const act=ids.reduce((s,id)=>s+((effMonth(id,'MAY')||{}).opex||0),0);
-  const varr=act-fc;
-  const color=varr>0?'var(--red)':(varr<0?'#1f8a61':'var(--muted)');
-  return `<div class="pcard clickable" onclick="openFixCostVsActual()">
-      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="lab">Fix Cost vs Actual (May)</div>
-      <div class="big" style="color:${(fc>0||act>0)?color:'var(--muted)'}">${(fc>0||act>0)?(varr>=0?'+':'')+fmt(varr):'—'}</div>
-      <div class="meta">${(fc>0||act>0)?`Fix cost ${fmt(fc)} vs actual ${fmt(act)} — click to view`:'No fixed cost or May actuals in this scope'}</div>
-    </div>`;
 }
 function renderLiabTopVendor(){
   const el=document.getElementById('liabTopVendor'); if(!el) return;
