@@ -2916,8 +2916,8 @@ function renderKpiCash(a){
   const kc=document.getElementById('kpiCash');
   if(kc){
     kc.className='';
-    kc.innerHTML=`<div class="kpi3">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}</div>`
-      +`<div class="kpi2">${outstandingCard()}${fixCostCard()}</div>`;
+    kc.innerHTML=`<div class="kpi4">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}${outstandingCard()}</div>`
+      +`<div class="kpi1">${fixCostCard()}</div>`;
   }
   const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
 }
