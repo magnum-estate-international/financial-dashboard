@@ -2914,7 +2914,11 @@ function expensesCard(a){
 function renderKpiCash(a){
   a=a||agg();
   const kc=document.getElementById('kpiCash');
-  if(kc){ kc.className='kpi5'; kc.innerHTML=revenueCard(a)+cashPositionCard()+expensesCard(a)+outstandingCard()+fixCostCard(); }
+  if(kc){
+    kc.className='';
+    kc.innerHTML=`<div class="kpi3">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}</div>`
+      +`<div class="kpi2">${outstandingCard()}${fixCostCard()}</div>`;
+  }
   const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
 }
 // ─── INTER-COMPANY AR/AP — a group-level recap of who owes whom across the wider PT group (many
