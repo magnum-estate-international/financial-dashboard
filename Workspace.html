@@ -305,7 +305,7 @@ a{color:#9a6f0a}
 
 <div class="wrap">
 
-<div class="divlabel" id="secCashLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Cash &amp; Liabilities</div>
+<div class="divlabel" id="secCashLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Financial Overview</div>
 <div class="kpi2" id="kpiCash"></div>
 
 <div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Inter-Company AR/AP</div>
@@ -2885,8 +2885,28 @@ function cashPositionCard(){
       <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No cash position logged yet — add it via Update Data'}</div>
     </div>`;
 }
-function renderKpiCash(){
-  const kc=document.getElementById('kpiCash'); if(kc){ kc.className='kpi3'; kc.innerHTML=cashPositionCard()+fixCostCard()+outstandingCard(); }
+function revenueCard(a){
+  return `<div class="pcard green-hl clickable" onclick="openDetail('rev')">
+      <div class="kpi-ic" style="background:#e3f2e8;color:#1f8a61">${ICON.trend(18)}</div>
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="lab">Revenue</div>
+      <div class="big pos">${fmt(a.rev)}</div>
+      <div class="meta">Excludes loan inflows</div>
+    </div>`;
+}
+function expensesCard(a){
+  return `<div class="pcard red-hl clickable" onclick="openDetail('opex')">
+      <div class="kpi-ic" style="background:#fbe9e7;color:#b3261e">${ICON.trendDown(18)}</div>
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="lab">Expenses Paid</div>
+      <div class="big neg">${fmt(a.opex)}</div>
+      <div class="meta"><b>${Object.keys(a.opexBD).length} categories</b> across ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'}</div>
+    </div>`;
+}
+function renderKpiCash(a){
+  a=a||agg();
+  const kc=document.getElementById('kpiCash');
+  if(kc){ kc.className='kpi5'; kc.innerHTML=revenueCard(a)+cashPositionCard()+expensesCard(a)+outstandingCard()+fixCostCard(); }
   const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
 }
 // ─── INTER-COMPANY AR/AP — a group-level recap of who owes whom across the wider PT group (many
@@ -2934,7 +2954,7 @@ function renderKpiOp(a){
   const pos=a.opNet>=0;
   const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
   const ko=document.getElementById('kpiOp');
-  ko.className='kpi3';
+  ko.className='kpi1';
   ko.innerHTML=`
     <div class="pcard dark clickable" onclick="openDetail('opnet')">
       ${hint('rgba(255,255,255,.65)')}
@@ -2945,18 +2965,6 @@ function renderKpiOp(a){
         <div><span>Operating Expenses</span><b style="color:#f87171">– ${fmt(a.opex)}</b></div>
         <div><span>${pos?'Surplus':'Deficit'}</span><b style="color:${pos?'#86efac':'#f87171'}">${pos?'+':'–'} ${fmt(Math.abs(a.opNet))}</b></div>
       </div>
-    </div>
-    <div class="pcard green-hl clickable" onclick="openDetail('rev')">
-      ${hint('var(--blue-300)')}
-      <div class="lab">Revenue</div>
-      <div class="big pos">${fmt(a.rev)}</div>
-      <div class="meta">Excludes loan inflows</div>
-    </div>
-    <div class="pcard red-hl clickable" onclick="openDetail('opex')">
-      ${hint('var(--blue-300)')}
-      <div class="lab">Expenses</div>
-      <div class="big neg">${fmt(a.opex)}</div>
-      <div class="meta"><b>${Object.keys(a.opexBD).length} categories</b> across ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'}</div>
     </div>`;
 }
 function renderKpiFin(a){
@@ -5878,7 +5886,7 @@ function renderBalances(){
 
 function renderAll(){
   const a=agg();
-  renderBanner();renderKpiCash();renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderBalances();
+  renderBanner();renderKpiCash(a);renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
 }
