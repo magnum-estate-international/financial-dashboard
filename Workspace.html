@@ -104,6 +104,8 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .pcard.dark .big{color:#fff}
 .pcard .big.sz30{font-size:29px}
 .pcard .meta{font-size:12px;margin-top:7px;color:var(--muted);line-height:1.55}
+.pcard .kpi-sub{font-size:11.5px;color:var(--muted)}
+.pcard .kpi-trend{font-size:12.5px;font-weight:700;margin-top:6px}
 .pcard .flowrow{display:flex;flex-direction:column;gap:6px;margin-top:13px}
 .pcard .flowrow div{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px;
   border-bottom:1px solid #f0f1f6;padding-bottom:5px}
@@ -2895,19 +2897,42 @@ function cashPositionCard(){
       <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No cash position logged yet — add it via Update Data'}</div>
     </div>`;
 }
+// Real month-over-month comparison, used only when the active filter is a single month
+// (Apr/May/Jun) with an actual prior month in scope — e.g. Jun vs May. When the filter is a
+// multi-month range (Q2/Custom) "last month" isn't a well-defined single figure, so no badge
+// is shown rather than guessing at one.
+const PREV_MONTH_OF={MAY:'APR',JUN:'MAY'};
+function monthTotals(mo){
+  let rev=0,opex=0;
+  scopeIds().forEach(id=>{ const m=effMonth(id,mo); if(m){ rev+=m.rev; opex+=m.opex; } });
+  return {rev,opex};
+}
+function trendBadge(cur,key){
+  const prevMo=PREV_MONTH_OF[MONTH]; if(!prevMo) return '';
+  const prev=monthTotals(prevMo)[key];
+  if(!prev) return '';
+  const pct=(cur-prev)/prev*100, up=pct>=0;
+  return `<div class="kpi-trend" style="color:${up?'#1f8a61':'var(--red)'}">${up?'▲':'▼'} ${Math.abs(pct).toFixed(0)}%</div>`;
+}
 function revenueCard(a){
+  const prevMo=PREV_MONTH_OF[MONTH];
   return `<div class="pcard boxed green-hl clickable" onclick="openDetail('rev')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic" style="background:#e3f2e8;color:#1f8a61">${ICON.trend(17)}</div><div class="lab">Revenue</div></div>
+      ${prevMo?'<div class="kpi-sub">vs last month</div>':''}
       <div class="big pos">${fmt(a.rev)}</div>
+      ${trendBadge(a.rev,'rev')}
       <div class="meta">Excludes loan inflows</div>
     </div>`;
 }
 function expensesCard(a){
+  const prevMo=PREV_MONTH_OF[MONTH];
   return `<div class="pcard boxed red-hl clickable" onclick="openDetail('opex')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic" style="background:#fbe9e7;color:#b3261e">${ICON.trendDown(17)}</div><div class="lab">Expenses Paid</div></div>
+      ${prevMo?'<div class="kpi-sub">vs last month</div>':''}
       <div class="big neg">${fmt(a.opex)}</div>
+      ${trendBadge(a.opex,'opex')}
       <div class="meta"><b>${Object.keys(a.opexBD).length} categories</b> across ${scopeIds().length} entit${scopeIds().length===1?'y':'ies'}</div>
     </div>`;
 }
