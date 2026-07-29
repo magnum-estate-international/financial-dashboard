@@ -135,6 +135,10 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .pos{color:var(--green)}.neg{color:var(--red)}.amb{color:var(--amber)}
 .grid{display:grid;gap:16px}
 .cols-eq{grid-template-columns:1fr 1fr}
+.cols-3{grid-template-columns:.9fr 1.3fr 1fr}
+.cols-3-eq{grid-template-columns:repeat(3,1fr)}
+@media(max-width:1150px){.cols-3,.cols-3-eq{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.cols-3,.cols-3-eq{grid-template-columns:1fr}}
 .panel{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);padding:24px;border:var(--border)}
 .panel h2{font-size:17px;font-weight:800;color:var(--blue-900);margin-bottom:2px;letter-spacing:-.2px}
 .panel .pn-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
@@ -358,6 +362,52 @@ a{color:#9a6f0a}
 <div class="kpi2" id="kpiCash"></div>
 
 <div id="alertBox"></div>
+
+<div class="grid cols-3" style="margin-bottom:16px">
+  <div class="panel">
+    <h2>Financial Health</h2>
+    <div class="pn-sub">Computed from figures already on this dashboard</div>
+    <div id="finHealth" style="margin-top:14px"></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Cash In vs Cash Out</h2><a href="#" onclick="event.preventDefault();openDetail('opnet')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+    <div class="pn-sub">Revenue+financing in vs Expenses+financing out, by month (real data only)</div>
+    <div class="chart-box" style="height:230px;margin-top:10px"><canvas id="cashInOutChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Revenue by Entity</h2><a href="#" onclick="event.preventDefault();openDetail('rev')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+    <div class="chart-box" style="height:170px;margin-top:10px"><canvas id="revByEntChart"></canvas></div>
+    <div id="revByEntLegend" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<div class="grid cols-3-eq" style="margin-bottom:16px">
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Top Expense Categories</h2><span class="pn-sub" style="margin:0">This period</span></div>
+    <div id="topExpCats" style="margin-top:12px"></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Outstanding Liability Aging</h2><a href="#" onclick="event.preventDefault();openOutstanding('category')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+    <div class="chart-box" style="height:150px;margin-top:10px"><canvas id="agingChart"></canvas></div>
+    <div id="agingLegend" style="margin-top:10px"></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Inter-Company AR/AP Summary</h2><a href="#" onclick="event.preventDefault();openIntercompany()" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">View all ›</a></div>
+    <div id="icSummary" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<div class="grid cols-eq" style="margin-bottom:16px">
+  <div class="panel">
+    <h2>Monthly Trend</h2>
+    <div class="pn-sub">Revenue vs Expenses — Apr, May, Jun 2026 (real monthly data; no Cash Position history is stored, so it isn't plotted)</div>
+    <div class="chart-box" style="height:230px;margin-top:10px"><canvas id="monthlyTrendChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Alerts &amp; Action Required</h2><a href="#" onclick="event.preventDefault();openOutstanding('category')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">View all ›</a></div>
+    <div id="actionAlerts2" style="margin-top:6px"></div>
+  </div>
+</div>
 
 <div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Inter-Company AR/AP</div>
 <div class="kpi1" id="kpiIntercompany"></div>
@@ -2982,6 +3032,188 @@ function renderKpiCash(a){
       +`<div class="kpi1">${fixCostCard()}</div>`;
   }
   const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
+}
+// ─── DASHBOARD OVERVIEW CHARTS — Financial Health / Cash In-Out / Revenue by Entity /
+// Top Expense Categories / Outstanding Aging / Inter-Company Summary / Monthly Trend /
+// Alerts. Every figure here is derived from data already computed elsewhere on this
+// dashboard (agg(), effMonth(), OUTSTANDING, FIXCOST, INTERCOMPANY, CASHPOS) — nothing
+// fabricated. Metrics that would need data we don't have (balance-sheet ratios, a
+// "project" breakdown, monthly cash-position history) are intentionally left out rather
+// than guessed at. ───
+function healthBar(pct,color){
+  const w=Math.max(0,Math.min(100,pct));
+  return `<div style="flex:1;height:7px;border-radius:4px;background:#eee9de;overflow:hidden"><div style="width:${w}%;height:100%;background:${color};border-radius:4px"></div></div>`;
+}
+function renderFinancialHealth(a){
+  const el=document.getElementById('finHealth'); if(!el) return;
+  const cov=a.opex>0?(a.rev/a.opex*100):null;
+  const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
+  const fc=FIXCOST.filter(f=>ids.includes(f.e)).reduce((s,f)=>s+f.amt,0);
+  const act=ids.reduce((s,id)=>s+((effMonth(id,'MAY')||{}).opex||0),0);
+  const adherence=act>0?(fc/act*100):null;
+  const open=outstandingOpen();
+  const overdueRate=open.length?(open.filter(o=>daysOverdue(o.due)>0).length/open.length*100):null;
+  const rows=[
+    {label:'Revenue Coverage',val:cov,fmt:cov==null?'—':cov.toFixed(0)+'%',color:cov==null?'#c5cbdb':(cov>=100?'#1f8a61':cov>=70?'#e3a13a':'#d92d20'),icon:ICON.trend(14)},
+    {label:'Fix Cost Adherence',val:adherence==null?null:Math.min(adherence,100),raw:adherence,fmt:adherence==null?'—':adherence.toFixed(0)+'%',color:adherence==null?'#c5cbdb':(adherence>=80&&adherence<=110?'#1f8a61':'#e3a13a'),icon:ICON.refresh(14)},
+    {label:'Overdue Rate',val:overdueRate,fmt:overdueRate==null?'—':overdueRate.toFixed(0)+'%',color:overdueRate==null?'#c5cbdb':(overdueRate<=10?'#1f8a61':overdueRate<=30?'#e3a13a':'#d92d20'),icon:ICON.warn(14)},
+  ];
+  el.innerHTML=rows.map(r=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="color:${r.color};flex:none">${r.icon}</span>
+      <span style="font-size:12.5px;color:var(--muted);width:118px;flex:none">${r.label}</span>
+      ${healthBar(r.val==null?0:r.val,r.color)}
+      <span style="font-size:13px;font-weight:800;color:var(--blue-900);width:40px;text-align:right;flex:none">${r.fmt}</span>
+    </div>`).join('')
+    +`<div class="pn-sub" style="margin-top:2px">Revenue Coverage = revenue ÷ opex · Fix Cost Adherence = fixed-cost baseline ÷ May actual opex · Overdue Rate = share of open invoices past due</div>`;
+}
+let cashInOutChart=null;
+function renderCashInOutChart(){
+  const cv=document.getElementById('cashInOutChart'); if(!cv) return;
+  const ids=scopeIds();
+  const months=['APR','MAY','JUN'];
+  const cashIn=[],cashOut=[],net=[];
+  months.forEach(mo=>{
+    let ri=0,ro=0;
+    ids.forEach(id=>{ const m=effMonth(id,mo); if(m){ ri+=m.rev+m.finIn; ro+=m.opex+m.finOut; } });
+    cashIn.push(ri); cashOut.push(ro); net.push(ri-ro);
+  });
+  if(cashInOutChart) cashInOutChart.destroy();
+  cashInOutChart=new Chart(cv,{type:'line',
+    data:{labels:['Apr','May','Jun'],datasets:[
+      {label:'Cash In',data:cashIn,borderColor:'#1f8a61',backgroundColor:'rgba(31,138,97,.12)',fill:true,tension:.35,pointRadius:3},
+      {label:'Cash Out',data:cashOut,borderColor:'#d92d20',backgroundColor:'rgba(217,45,32,.08)',fill:true,tension:.35,pointRadius:3},
+      {label:'Net',data:net,borderColor:'#9a6f0a',borderDash:[5,4],fill:false,tension:.35,pointRadius:3},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}},
+      scales:{y:{ticks:{callback:v=>fmtB(v)}},x:{grid:{display:false}}}}});
+}
+let revByEntChart=null;
+function renderRevByEntChart(){
+  const cv=document.getElementById('revByEntChart'); if(!cv) return;
+  const ids=scopeIds();
+  let rows=ids.map(id=>({id,rev:(eff(id)||{rev:0}).rev})).filter(r=>r.rev>0).sort((x,y)=>y.rev-x.rev);
+  const top=rows.slice(0,5), rest=rows.slice(5);
+  const restSum=rest.reduce((s,r)=>s+r.rev,0);
+  const labels=top.map(r=>ENT[r.id].short?ENT[r.id].short.join(' '):ENT[r.id].name);
+  const data=top.map(r=>r.rev);
+  const colors=top.map(r=>ENT[r.id].color);
+  if(restSum>0){ labels.push('Others'); data.push(restSum); colors.push('#c5cbdb'); }
+  if(revByEntChart) revByEntChart.destroy();
+  const total=data.reduce((s,v)=>s+v,0);
+  revByEntChart=new Chart(cv,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.raw)}}}}});
+  const legend=document.getElementById('revByEntLegend');
+  if(legend) legend.innerHTML=labels.map((l,i)=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:5px">
+      <span style="width:9px;height:9px;border-radius:50%;background:${colors[i]};flex:none"></span>
+      <span style="flex:1;color:var(--muted)">${escH(l)}</span>
+      <span style="font-weight:700;color:var(--blue-900)">${total>0?(data[i]/total*100).toFixed(0):0}%</span>
+    </div>`).join('');
+}
+function renderTopExpCats(a){
+  const el=document.getElementById('topExpCats'); if(!el) return;
+  const cats=Object.entries(a.opexBD).filter(([k])=>!/not itemised/i.test(k)).sort((x,y)=>y[1]-x[1]).slice(0,6);
+  const max=cats.length?cats[0][1]:1;
+  el.innerHTML=cats.length?cats.map(([k,v])=>`<div style="margin-bottom:11px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span style="color:var(--blue-900);font-weight:600">${escH(k)}</span><span style="font-weight:700;color:var(--muted)">${fmtB(v)}</span></div>
+      <div style="height:6px;border-radius:4px;background:#eee9de;overflow:hidden"><div style="width:${(v/max*100).toFixed(0)}%;height:100%;background:linear-gradient(90deg,#e3c583,#9a6f0a);border-radius:4px"></div></div>
+    </div>`).join('') : '<div class="pn-sub">No expense categories in this scope.</div>';
+}
+let agingChart=null;
+function agingBuckets(){
+  const ids=new Set(scopeIds());
+  const open=OUTSTANDING.filter(o=>o.status==='open'&&ids.has(o.e));
+  const b={current:0,d30:0,d60:0,d90:0};
+  open.forEach(o=>{ const d=daysOverdue(o.due);
+    if(d<=30) b.current+=o.remaining; else if(d<=60) b.d30+=o.remaining; else if(d<=90) b.d60+=o.remaining; else b.d90+=o.remaining;
+  });
+  return b;
+}
+function renderAgingChart(){
+  const cv=document.getElementById('agingChart'); if(!cv) return;
+  const b=agingBuckets();
+  const labels=['Current (0-30 days)','30-60 days','60-90 days','90+ days'];
+  const data=[b.current,b.d30,b.d60,b.d90];
+  const colors=['#1f8a61','#e3c583','#9a6f0a','#d92d20'];
+  const total=data.reduce((s,v)=>s+v,0);
+  if(agingChart) agingChart.destroy();
+  agingChart=new Chart(cv,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.raw)}}}}});
+  const legend=document.getElementById('agingLegend');
+  if(legend) legend.innerHTML=total>0?labels.map((l,i)=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:5px">
+      <span style="width:9px;height:9px;border-radius:50%;background:${colors[i]};flex:none"></span>
+      <span style="flex:1;color:var(--muted)">${l}</span>
+      <span style="font-weight:700;color:var(--blue-900)">${(data[i]/total*100).toFixed(0)}%</span>
+    </div>`).join('')+`<div style="margin-top:6px;font-size:12.5px;font-weight:800;color:var(--blue-900)">${fmt(total)} total</div>`
+    :'<div class="pn-sub">No outstanding liabilities in this scope.</div>';
+}
+function renderIcSummary(){
+  const el=document.getElementById('icSummary'); if(!el) return;
+  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  const byOwner={};
+  INTERCOMPANY.forEach(r=>{ const net=(r.amt-r.setoran)*(r.type==='AR'?1:-1); byOwner[r.owner]=(byOwner[r.owner]||0)+net; });
+  const rows=Object.entries(byOwner).sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,6);
+  el.innerHTML=`<div style="display:flex;gap:18px;margin-bottom:12px">
+      <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Total Receivable</div><div style="font-size:18px;font-weight:800;color:#1f8a61">${fmt(totAR)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Total Payable</div><div style="font-size:18px;font-weight:800;color:var(--red)">${fmt(totAP)}</div></div>
+    </div>`
+    +(rows.length?rows.map(([owner,net])=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;border-top:1px solid #eee9de">
+        <span style="color:var(--blue-900)">${escH(owner)}</span>
+        <span style="font-weight:700;color:${net>=0?'#1f8a61':'var(--red)'}">${net>=0?'+':''}${fmt(net)}</span>
+      </div>`).join('') : '<div class="pn-sub">No recap loaded yet.</div>');
+}
+let monthlyTrendChart=null;
+function renderMonthlyTrendChart(){
+  const cv=document.getElementById('monthlyTrendChart'); if(!cv) return;
+  const ids=scopeIds();
+  const months=['APR','MAY','JUN'];
+  const rev=[],opex=[];
+  months.forEach(mo=>{
+    let r=0,o=0; ids.forEach(id=>{ const m=effMonth(id,mo); if(m){ r+=m.rev; o+=m.opex; } });
+    rev.push(r); opex.push(o);
+  });
+  if(monthlyTrendChart) monthlyTrendChart.destroy();
+  monthlyTrendChart=new Chart(cv,{type:'line',
+    data:{labels:['April 2026','May 2026','June 2026'],datasets:[
+      {label:'Revenue',data:rev,borderColor:'#1f8a61',backgroundColor:'rgba(31,138,97,.08)',fill:true,tension:.3,pointRadius:4},
+      {label:'Expenses',data:opex,borderColor:'#d92d20',backgroundColor:'rgba(217,45,32,.06)',fill:true,tension:.3,pointRadius:4},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}},
+      scales:{y:{ticks:{callback:v=>fmtB(v)}},x:{grid:{display:false}}}}});
+}
+function renderActionAlerts2(){
+  const el=document.getElementById('actionAlerts2'); if(!el) return;
+  const ids=new Set(scopeIds());
+  const open=OUTSTANDING.filter(o=>o.status==='open'&&ids.has(o.e));
+  const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
+  const dueTomorrowN=open.filter(o=>daysOverdue(o.due)===-1).length;
+  const noCashN=scopeIds().filter(id=>!CASHPOS[id]).length;
+  const noFixCostN=scopeIds().filter(id=>!FIXCOST.some(f=>f.e===id)).length;
+  const rows=[];
+  if(overdueN) rows.push({sev:'crit',text:`${overdueN} invoice${overdueN===1?'':'s'} ${overdueN===1?'is':'are'} overdue`,onclick:"openOutstanding('category')"});
+  if(dueTomorrowN) rows.push({sev:'warn',text:`Payment due tomorrow: ${dueTomorrowN} invoice${dueTomorrowN===1?'':'s'}`,onclick:"openOutstanding('category')"});
+  if(noCashN) rows.push({sev:'info',text:`${noCashN} entit${noCashN===1?'y hasn’t':'ies haven’t'} logged a cash position`,onclick:"openDetail('cashpos')"});
+  if(noFixCostN) rows.push({sev:'info',text:`${noFixCostN} entit${noFixCostN===1?'y has':'ies have'} no fixed cost logged`,onclick:"openFixCost('entity')"});
+  const icon={crit:ICON.warn(15),warn:ICON.bell(15),info:ICON.info(15)};
+  const color={crit:'var(--red)',warn:'#e3a13a',info:'#9a6f0a'};
+  el.innerHTML=rows.length?rows.map((r,i)=>`<div class="clickable" style="display:flex;align-items:center;gap:11px;padding:10px 2px;cursor:pointer${i?';border-top:1px solid #eee9de':''}" onclick="${r.onclick}">
+      <span style="color:${color[r.sev]};flex:none">${icon[r.sev]}</span>
+      <span style="font-size:12.5px;color:var(--blue-900)">${r.text}</span>
+    </div>`).join('') : '<div class="pn-sub">No pressing issues for this scope right now.</div>';
+}
+function renderSnInsight(){
+  const el=document.getElementById('snInsight'); if(!el) return;
+  const prevMo=PREV_MONTH_OF[MONTH];
+  if(!prevMo){ el.innerHTML=''; return; }
+  const cur=monthTotals(MONTH), prev=monthTotals(prevMo);
+  let text=null;
+  if(prev.rev){ const p=(cur.rev-prev.rev)/prev.rev*100; text=`Revenue ${p>=0?'increased':'decreased'} <b>${Math.abs(p).toFixed(0)}%</b> compared to last month.`; }
+  if(!text) { el.innerHTML=''; return; }
+  el.innerHTML=`<div class="card">
+      <div class="ic">${ICON.trend(18)}</div>
+      <p>${text}</p>
+      <button onclick="openDetail('rev')">View Details</button>
+    </div>`;
 }
 // ─── INTER-COMPANY AR/AP — a group-level recap of who owes whom across the wider PT group (many
 // counterparties here are holding/investment PTs that aren't operating entities in this dashboard,
@@ -5963,6 +6195,8 @@ function renderAll(){
   renderBanner();renderKpiCash(a);renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
+  renderFinancialHealth(a);renderCashInOutChart();renderRevByEntChart();renderTopExpCats(a);
+  renderAgingChart();renderIcSummary();renderMonthlyTrendChart();renderActionAlerts2();renderSnInsight();
 }
 
 /* ══════════ SUPABASE LIVE DATA LAYER (added to connect this dashboard to the database) ══════════
