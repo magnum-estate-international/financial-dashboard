@@ -6286,10 +6286,15 @@ const HIST_TH='text-align:left;font-size:11px;color:#3a4254;text-transform:upper
 const HIST_TD='padding:8px;font-size:12.5px;border-top:1px solid #eef2f7;vertical-align:top';
 const histFmtT=t=>{const d=new Date(t);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});};
 const histPT=e=>e?((typeof ENT!=='undefined'&&ENT[e])?ENT[e].name:e):'—';
-let HIST_TAB='log';
+let HIST_TAB='log', HIST_REFRESH_TIMER=null;
+function closeHistoryPanel(){
+  const w=document.getElementById('mag-history'); if(w) w.remove();
+  if(HIST_REFRESH_TIMER){ clearInterval(HIST_REFRESH_TIMER); HIST_REFRESH_TIMER=null; }
+}
 async function openHistoryPanel(tab){
   HIST_TAB=tab||'log';
   const old=document.getElementById('mag-history'); if(old) old.remove();
+  if(HIST_REFRESH_TIMER){ clearInterval(HIST_REFRESH_TIMER); HIST_REFRESH_TIMER=null; }
   const wrap=document.createElement('div'); wrap.id='mag-history';
   wrap.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(20,27,45,.45);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;font-family:Plus Jakarta Sans,system-ui,sans-serif';
   const tabBtn=(id,lbl)=>'<button class="hist-tab" data-tab="'+id+'" style="border:0;background:none;padding:8px 4px;margin-right:18px;font-size:13.5px;font-weight:700;cursor:pointer;color:'+(HIST_TAB===id?'#141b2d':'#8891a8')+';border-bottom:2px solid '+(HIST_TAB===id?'#b8860b':'transparent')+'">'+lbl+'</button>';
@@ -6298,10 +6303,15 @@ async function openHistoryPanel(tab){
     +'<div style="border-bottom:1px solid #eef2f7;margin-bottom:14px">'+tabBtn('log','Change Log')+tabBtn('tx','Recent Transactions')+'</div>'
     +'<div id="mag-history-body">Loading…</div></div>';
   document.body.appendChild(wrap);
-  document.getElementById('mag-history-x').onclick=()=>wrap.remove();
-  wrap.addEventListener('click',e=>{if(e.target===wrap)wrap.remove();});
+  document.getElementById('mag-history-x').onclick=closeHistoryPanel;
+  wrap.addEventListener('click',e=>{if(e.target===wrap)closeHistoryPanel();});
   wrap.querySelectorAll('.hist-tab').forEach(b=>b.onclick=()=>openHistoryPanel(b.dataset.tab));
   if(HIST_TAB==='tx') await renderRecentTxTab(); else await renderChangeLogTab();
+  // Keep this live while open, so activity logged by other users shows up without having to
+  // close and reopen the panel — fetches fresh every time regardless of who's the current user
+  // (audit_log has no per-user filter; admins see every user's actions, others see their own
+  // plus anything tied to entities they have access to, both enforced by RLS on the table).
+  HIST_REFRESH_TIMER=setInterval(()=>{ if(!document.getElementById('mag-history')) return; if(HIST_TAB==='tx') renderRecentTxTab(); else renderChangeLogTab(); },15000);
 }
 async function renderChangeLogTab(){
   const body=document.getElementById('mag-history-body');
