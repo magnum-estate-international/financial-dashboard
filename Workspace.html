@@ -409,12 +409,12 @@ a{color:#9a6f0a}
     <div id="finHealth" style="margin-top:14px"></div>
   </div>
   <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Cash In vs Cash Out</h2><a href="#" onclick="event.preventDefault();openDetail('opnet')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Cash In vs Cash Out</h2><a href="#" onclick="event.preventDefault();openInPanel(()=>openDetail('opnet'))" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
     <div class="pn-sub">Revenue+financing in vs Expenses+financing out, by month (real data only)</div>
     <div class="chart-box" style="height:230px;margin-top:10px"><canvas id="cashInOutChart"></canvas></div>
   </div>
   <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Revenue by Entity</h2><a href="#" onclick="event.preventDefault();openDetail('rev')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Revenue by Entity</h2><a href="#" onclick="event.preventDefault();openInPanel(()=>openDetail('rev'))" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
     <div class="chart-box" style="height:170px;margin-top:10px"><canvas id="revByEntChart"></canvas></div>
     <div id="revByEntLegend" style="margin-top:10px"></div>
   </div>
@@ -426,7 +426,7 @@ a{color:#9a6f0a}
     <div id="topExpCats" style="margin-top:12px"></div>
   </div>
   <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Outstanding Liability Aging</h2><a href="#" onclick="event.preventDefault();openOutstanding('category')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Outstanding Liability Aging</h2><a href="#" onclick="event.preventDefault();openInPanel(()=>openOutstanding('category'),'.sn-link[data-action=&quot;outstanding&quot;]')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
     <div class="chart-box" style="height:150px;margin-top:10px"><canvas id="agingChart"></canvas></div>
     <div id="agingLegend" style="margin-top:10px"></div>
   </div>
@@ -3020,7 +3020,7 @@ function cashPositionCard(){
   let tot=0,n=0,latest=null;
   ids.forEach(id=>{ const c=CASHPOS[id]; if(c){ tot+=c.cash; n++; if(!latest||c.at>latest) latest=c.at; } });
   const asOf=latest?new Date(latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):null;
-  return `<div class="pcard boxed gold-hl clickable" onclick="openDetail('cashpos')">
+  return `<div class="pcard boxed gold-hl clickable" onclick="openInPanel(()=>openDetail('cashpos'))">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.dollar(17)}</div><div class="lab">Cash Position</div></div>
       <div class="big">${n?fmt(tot):'—'}</div>
@@ -3046,7 +3046,7 @@ function trendBadge(cur,key){
 }
 function revenueCard(a){
   const prevMo=PREV_MONTH_OF[MONTH];
-  return `<div class="pcard boxed green-hl clickable" onclick="openDetail('rev')">
+  return `<div class="pcard boxed green-hl clickable" onclick="openInPanel(()=>openDetail('rev'))">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic" style="background:#e3f2e8;color:#1f8a61">${ICON.trend(17)}</div><div class="lab">Revenue</div></div>
       ${prevMo?'<div class="kpi-sub">vs last month</div>':''}
@@ -3057,7 +3057,7 @@ function revenueCard(a){
 }
 function expensesCard(a){
   const prevMo=PREV_MONTH_OF[MONTH];
-  return `<div class="pcard boxed red-hl clickable" onclick="openDetail('opex')">
+  return `<div class="pcard boxed red-hl clickable" onclick="openInPanel(()=>openDetail('opex'),'.sn-link[data-action=&quot;expenses&quot;]')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic" style="background:#fbe9e7;color:#b3261e">${ICON.trendDown(17)}</div><div class="lab">Expenses Paid</div></div>
       ${prevMo?'<div class="kpi-sub">vs last month</div>':''}
@@ -3255,7 +3255,7 @@ function renderSnInsight(){
   el.innerHTML=`<div class="card">
       <div class="ic">${ICON.trend(18)}</div>
       <p>${text}</p>
-      <button onclick="openDetail('rev')">View Details</button>
+      <button onclick="openInPanel(()=>openDetail('rev'))">View Details</button>
     </div>`;
 }
 // ─── INTER-COMPANY AR/AP — a group-level recap of who owes whom across the wider PT group (many
@@ -3267,7 +3267,7 @@ function intercompanyCard(){
   const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
   const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
   const owners=new Set(INTERCOMPANY.map(r=>r.owner)).size;
-  return `<div class="pcard boxed gold-hl clickable" onclick="openIntercompany()">
+  return `<div class="pcard boxed gold-hl clickable" onclick="openInPanel(()=>openIntercompany(),'.sn-link[data-action=&quot;intercompany&quot;]')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.briefcase(17)}</div><div class="lab">Inter-Company AR/AP</div></div>
       <div class="big" style="color:var(--muted);font-size:16px">AP ${fmt(totAP)} &nbsp;·&nbsp; AR ${fmt(totAR)}</div>
@@ -3370,7 +3370,7 @@ function outstandingCard(){
   const open=outstandingOpen();
   const tot=open.reduce((s,o)=>s+o.remaining,0);
   const overdueN=open.filter(o=>daysOverdue(o.due)>0).length;
-  return `<div class="pcard boxed gold-hl clickable" onclick="openOutstanding('category')">
+  return `<div class="pcard boxed gold-hl clickable" onclick="openInPanel(()=>openOutstanding('category'),'.sn-link[data-action=&quot;outstanding&quot;]')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.file(17)}</div><div class="lab">Outstanding Liability</div></div>
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
@@ -3388,7 +3388,7 @@ function fixCostInScope(){
 function fixCostCard(){
   const rows=fixCostInScope();
   const tot=rows.reduce((s,f)=>s+f.amt,0);
-  return `<div class="pcard boxed gold-hl clickable" onclick="openFixCost('vendor')">
+  return `<div class="pcard boxed gold-hl clickable" onclick="openInPanel(()=>openFixCost('vendor'),'.sn-link[data-action=&quot;fixcost&quot;]')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.refresh(17)}</div><div class="lab">Monthly Fix Cost</div></div>
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
@@ -3716,6 +3716,21 @@ function closeFullPanel(){
   document.getElementById('dashboardRoot').style.display='';
   document.querySelectorAll('.sn-link').forEach(x=>x.classList.remove('active'));
   document.querySelector('.sn-link[data-scroll="top"]')?.classList.add('active');
+  window.scrollTo({top:0,behavior:'instant'});
+}
+// Opens any of the existing showModal()-based detail views (KPI card "Details ›", chart-header
+// "Details ›", sidebar nav) as a full inline page instead of a floating modal — same view-building
+// functions, just rendered into #fullPanel. activeLinkSelector re-highlights the matching sidebar
+// item so the nav stays in sync even when entered from a dashboard card rather than the sidebar itself.
+function openInPanel(fn,activeLinkSelector){
+  PANEL_MODE=true;
+  document.getElementById('dashboardRoot').style.display='none';
+  document.getElementById('fullPanel').style.display='';
+  if(activeLinkSelector){
+    document.querySelectorAll('.sn-link').forEach(x=>x.classList.remove('active'));
+    document.querySelector(activeLinkSelector)?.classList.add('active');
+  }
+  fn();
   window.scrollTo({top:0,behavior:'instant'});
 }
 // Opex categories rolled up into a handful of parent cost groups for the breakdown modal —
@@ -8045,27 +8060,17 @@ document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==
 document.querySelectorAll('.sn-link').forEach(a=>{
   a.addEventListener('click',e=>{
     e.preventDefault();
-    document.querySelectorAll('.sn-link').forEach(x=>x.classList.remove('active'));
-    a.classList.add('active');
     const scrollId=a.dataset.scroll, action=a.dataset.action;
-    const backToDashboard=()=>{
-      if(PANEL_MODE){ PANEL_MODE=false; document.getElementById('fullPanel').style.display='none'; document.getElementById('dashboardRoot').style.display=''; }
-    };
-    const openInPanel=(fn)=>{
-      PANEL_MODE=true;
-      document.getElementById('dashboardRoot').style.display='none';
-      document.getElementById('fullPanel').style.display='';
-      fn();
-      window.scrollTo({top:0,behavior:'instant'});
-    };
-    if(scrollId==='top'){ backToDashboard(); window.scrollTo({top:0,behavior:'smooth'}); }
-    else if(scrollId){ backToDashboard(); document.getElementById(scrollId)?.scrollIntoView({behavior:'smooth',block:'start'}); }
-    else if(action==='outstanding'){ openInPanel(()=>openOutstanding('category')); }
-    else if(action==='intercompany'){ openInPanel(()=>openIntercompany()); }
-    else if(action==='expenses'){ openInPanel(()=>openDetail('opex')); }
-    else if(action==='fixcost'){ openInPanel(()=>openFixCost('vendor')); }
+    const backToDashboard=()=>{ if(PANEL_MODE) closeFullPanel(); };
+    const setActive=()=>{ document.querySelectorAll('.sn-link').forEach(x=>x.classList.remove('active')); a.classList.add('active'); };
+    if(scrollId==='top'){ backToDashboard(); setActive(); window.scrollTo({top:0,behavior:'smooth'}); }
+    else if(scrollId){ backToDashboard(); setActive(); document.getElementById(scrollId)?.scrollIntoView({behavior:'smooth',block:'start'}); }
+    else if(action==='outstanding'){ openInPanel(()=>openOutstanding('category')); setActive(); }
+    else if(action==='intercompany'){ openInPanel(()=>openIntercompany()); setActive(); }
+    else if(action==='expenses'){ openInPanel(()=>openDetail('opex')); setActive(); }
+    else if(action==='fixcost'){ openInPanel(()=>openFixCost('vendor')); setActive(); }
     else if(action==='print'){ window.print(); }
-    else if(action==='entities'){ backToDashboard(); document.getElementById('scopeSel')?.scrollIntoView({behavior:'smooth',block:'center'}); }
+    else if(action==='entities'){ backToDashboard(); setActive(); document.getElementById('scopeSel')?.scrollIntoView({behavior:'smooth',block:'center'}); }
   });
 });
 document.getElementById('hdrRefresh')?.addEventListener('click',async()=>{
