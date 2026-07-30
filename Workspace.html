@@ -387,6 +387,16 @@ a{color:#9a6f0a}
 
 <div class="wrap">
 
+<div id="fullPanel" style="display:none">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+    <button onclick="closeFullPanel()" class="btn btn-ghost" style="font-size:13px">‹ Back to Dashboard</button>
+    <h2 id="fpTitle" style="font-size:20px;font-weight:800;color:#1f1a0f;margin:0"></h2>
+  </div>
+  <div id="fpBody"></div>
+</div>
+
+<div id="dashboardRoot">
+
 <div class="divlabel" id="secCashLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Financial Overview</div>
 <div class="kpi2" id="kpiCash"></div>
 
@@ -577,6 +587,7 @@ a{color:#9a6f0a}
   Consolidated Management Dashboard · May 2026 · 4 Groups + 3 Standalone Entities · Sources: ICG bank report (5 entities) + Magnum/SSV cash flow report (4 entities) + PT SUP cash flow report (3 entities) + ICS dashboard (Mandiri, Permata, Danamon &amp; BCA) + BBU dashboard + Umalas Lounge dashboard (BB Bank &amp; BB Tunai) + KSO Umalas Signature report (Bank Danamon IN/OUT) · Prepared June 2026<br>
   <em>Operating results exclude all inter-company loans, affiliate loans, receivables, shareholder &amp; licensing payments, and inter-bank transfers.</em>
 </footer>
+</div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -3662,8 +3673,14 @@ function renderOpexChart(a){
 // exactly where the list was scrolled to, so paging back from row 50 doesn't dump you at row 1.
 // Two scroll positions are tracked per title: the outer modal box, and each inner .table-scroll
 // div (long tables scroll independently of the modal itself) by document order.
-let MODAL_SCROLL_BY_TITLE={}, MODAL_CUR_TITLE=null;
+let MODAL_SCROLL_BY_TITLE={}, MODAL_CUR_TITLE=null, PANEL_MODE=false;
 function showModal(title,html,wide){
+  if(PANEL_MODE){
+    document.getElementById('fpTitle').textContent=title;
+    document.getElementById('fpBody').innerHTML=html;
+    window.scrollTo({top:0,behavior:'instant'});
+    return;
+  }
   const box=document.getElementById('modalBox');
   if(MODAL_CUR_TITLE!=null && box){
     const tables=[...document.querySelectorAll('#mBody .table-scroll')].map(el=>el.scrollTop);
@@ -3689,8 +3706,17 @@ function showModal(title,html,wide){
   requestAnimationFrame(applyRestore);
 }
 function closeModal(){
+  if(PANEL_MODE){ closeFullPanel(); return; }
   document.getElementById('overlay').classList.remove('show');
   MODAL_SCROLL_BY_TITLE={}; MODAL_CUR_TITLE=null;
+}
+function closeFullPanel(){
+  PANEL_MODE=false;
+  document.getElementById('fullPanel').style.display='none';
+  document.getElementById('dashboardRoot').style.display='';
+  document.querySelectorAll('.sn-link').forEach(x=>x.classList.remove('active'));
+  document.querySelector('.sn-link[data-scroll="top"]')?.classList.add('active');
+  window.scrollTo({top:0,behavior:'instant'});
 }
 // Opex categories rolled up into a handful of parent cost groups for the breakdown modal —
 // purely a display grouping (openBDItem drill-down still keys off the individual category name).
@@ -8022,14 +8048,24 @@ document.querySelectorAll('.sn-link').forEach(a=>{
     document.querySelectorAll('.sn-link').forEach(x=>x.classList.remove('active'));
     a.classList.add('active');
     const scrollId=a.dataset.scroll, action=a.dataset.action;
-    if(scrollId==='top'){ window.scrollTo({top:0,behavior:'smooth'}); }
-    else if(scrollId){ document.getElementById(scrollId)?.scrollIntoView({behavior:'smooth',block:'start'}); }
-    else if(action==='outstanding'){ openOutstanding('category'); }
-    else if(action==='intercompany'){ openIntercompany(); }
-    else if(action==='expenses'){ openDetail('opex'); }
-    else if(action==='fixcost'){ openFixCost('vendor'); }
+    const backToDashboard=()=>{
+      if(PANEL_MODE){ PANEL_MODE=false; document.getElementById('fullPanel').style.display='none'; document.getElementById('dashboardRoot').style.display=''; }
+    };
+    const openInPanel=(fn)=>{
+      PANEL_MODE=true;
+      document.getElementById('dashboardRoot').style.display='none';
+      document.getElementById('fullPanel').style.display='';
+      fn();
+      window.scrollTo({top:0,behavior:'instant'});
+    };
+    if(scrollId==='top'){ backToDashboard(); window.scrollTo({top:0,behavior:'smooth'}); }
+    else if(scrollId){ backToDashboard(); document.getElementById(scrollId)?.scrollIntoView({behavior:'smooth',block:'start'}); }
+    else if(action==='outstanding'){ openInPanel(()=>openOutstanding('category')); }
+    else if(action==='intercompany'){ openInPanel(()=>openIntercompany()); }
+    else if(action==='expenses'){ openInPanel(()=>openDetail('opex')); }
+    else if(action==='fixcost'){ openInPanel(()=>openFixCost('vendor')); }
     else if(action==='print'){ window.print(); }
-    else if(action==='entities'){ document.getElementById('scopeSel')?.scrollIntoView({behavior:'smooth',block:'center'}); }
+    else if(action==='entities'){ backToDashboard(); document.getElementById('scopeSel')?.scrollIntoView({behavior:'smooth',block:'center'}); }
   });
 });
 document.getElementById('hdrRefresh')?.addEventListener('click',async()=>{
