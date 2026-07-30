@@ -6229,11 +6229,16 @@ function showUserBar(){
   const icUpload='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
   const icLogout='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
   b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;max-width:1280px;margin:0 auto 12px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
-  b.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px;margin-right:6px;min-width:0"><span style="width:26px;height:26px;flex:none;border-radius:50%;background:linear-gradient(135deg,#c89a4a,#ecd7a3);color:#20170a;font-weight:700;font-size:12px;display:inline-grid;place-items:center">'+initial+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</span></span>'
+  b.innerHTML='<div style="position:relative;margin-right:6px">'
+      +'<button id="mag-profile-btn" style="border:0;background:none;cursor:pointer;padding:2px;display:flex;align-items:center;font-family:inherit"><span style="width:26px;height:26px;flex:none;border-radius:50%;background:linear-gradient(135deg,#c89a4a,#ecd7a3);color:#20170a;font-weight:700;font-size:12px;display:inline-grid;place-items:center">'+initial+'</span></button>'
+      +'<div id="mag-profile-menu" style="display:none;position:absolute;top:calc(100% + 10px);right:0;min-width:220px;background:#fff;border:1px solid #ece5d6;border-radius:14px;box-shadow:0 16px 40px -18px rgba(20,27,45,.35);padding:12px;z-index:80">'
+        +'<div style="font-size:11.5px;color:#8a8371;padding:2px 6px 10px;border-bottom:1px solid #ece5d6;margin-bottom:8px;overflow-wrap:break-word">'+email+'</div>'
+        +'<button id="mag-signout" style="width:100%;border:0;background:#fdeef1;color:#b3261e;font-size:12.5px;font-weight:700;padding:9px 12px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:7px">'+icLogout+' Sign out</button>'
+      +'</div>'
+    +'</div>'
     +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="'+pill+'">'+icUpload+' Update data</button>':'')
     +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">'+icGear+' Manage access</button>':'')
-    +'<button id="mag-history-open" style="'+pill+'">'+icClock+' History</button>'
-    +'<button id="mag-signout" style="'+pill+'">'+icLogout+' Sign out</button>';
+    +'<button id="mag-history-open" style="'+pill+'">'+icClock+' History</button>';
   const host=document.querySelector('header.hero');
   if(host){ host.insertBefore(b, host.firstChild); }
   else { b.style.cssText+=';position:fixed;top:10px;right:12px;z-index:9998;background:rgba(20,27,45,.92);border-radius:14px;padding:8px 12px'; document.body.appendChild(b); }
@@ -6241,6 +6246,9 @@ function showUserBar(){
   const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
   const eb=document.getElementById('mag-entry-open'); if(eb) eb.onclick=openEntryPanel;
   const hb=document.getElementById('mag-history-open'); if(hb) hb.onclick=()=>openHistoryPanel('log');
+  const pb=document.getElementById('mag-profile-btn'), pm=document.getElementById('mag-profile-menu');
+  pb.onclick=e=>{ e.stopPropagation(); pm.style.display=pm.style.display==='none'?'block':'none'; };
+  document.addEventListener('click',e=>{ if(pm.style.display==='block' && !e.target.closest('#mag-profile-menu') && !e.target.closest('#mag-profile-btn')) pm.style.display='none'; });
   if(IS_ADMIN) refreshPendingBadge();
   if(sessionStorage.getItem('mag_open_history_tx')){ sessionStorage.removeItem('mag_open_history_tx'); openHistoryPanel('tx'); }
 }
