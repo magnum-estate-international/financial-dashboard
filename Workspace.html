@@ -25,7 +25,7 @@ html{scroll-behavior:smooth}
 body{font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;
   background:linear-gradient(180deg,#f8f7f3 0%,#f1efe9 420px,#f1efe9 100%)}
 .wrap{max-width:1280px;margin:0 auto;padding:0 26px 56px}
-header.hero{position:relative;overflow:hidden;color:#fff;border-radius:0 0 26px 26px;padding:22px 0 30px;
+header.hero{position:relative;overflow:hidden;color:#fff;border-radius:0 0 26px 26px;padding:14px 0 26px;
   background:linear-gradient(160deg,#0c0f1a 0%,#12172a 60%,#161c33 100%)}
 header.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(760px 420px at 88% 6%,rgba(216,183,115,.16),transparent 68%)}
@@ -6238,7 +6238,7 @@ function showUserBar(){
   const roleLabel=IS_ADMIN?'Organisation Admin':(MY_ROLE==='editor'?'Editor':'Viewer');
   const icChevron='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none;opacity:.7"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>';
   const menuItem='width:100%;border:0;background:none;text-align:left;color:#3a2f1a;font-size:12.5px;font-weight:600;padding:9px 10px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:9px';
-  b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;max-width:1280px;margin:0 auto 12px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
+  b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;max-width:1280px;margin:0 auto 8px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
   b.innerHTML=(MY_ROLE==='editor'?'<button id="mag-entry-open" style="'+pill+'">'+icUpload+' Update data</button>':'')
     +'<button id="mag-history-open" style="'+pill+'">'+icClock+' History</button>'
     +'<div style="position:relative;margin-left:2px">'
