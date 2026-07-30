@@ -6228,17 +6228,24 @@ function showUserBar(){
   const icClock='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
   const icUpload='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
   const icLogout='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+  const name=(email||'').split('@')[0]||'—';
+  const roleLabel=IS_ADMIN?'Organisation Admin':(MY_ROLE==='editor'?'Editor':'Viewer');
+  const icChevron='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none;opacity:.7"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>';
+  const menuItem='width:100%;border:0;background:none;text-align:left;color:#3a2f1a;font-size:12.5px;font-weight:600;padding:9px 10px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:9px';
   b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;max-width:1280px;margin:0 auto 12px;padding:0 26px;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
-  b.innerHTML='<div style="position:relative;margin-right:6px">'
-      +'<button id="mag-profile-btn" style="border:0;background:none;cursor:pointer;padding:2px;display:flex;align-items:center;font-family:inherit"><span style="width:26px;height:26px;flex:none;border-radius:50%;background:linear-gradient(135deg,#c89a4a,#ecd7a3);color:#20170a;font-weight:700;font-size:12px;display:inline-grid;place-items:center">'+initial+'</span></button>'
-      +'<div id="mag-profile-menu" style="display:none;position:absolute;top:calc(100% + 10px);right:0;min-width:220px;background:#fff;border:1px solid #ece5d6;border-radius:14px;box-shadow:0 16px 40px -18px rgba(20,27,45,.35);padding:12px;z-index:80">'
-        +'<div style="font-size:11.5px;color:#8a8371;padding:2px 6px 10px;border-bottom:1px solid #ece5d6;margin-bottom:8px;overflow-wrap:break-word">'+email+'</div>'
-        +'<button id="mag-signout" style="width:100%;border:0;background:#fdeef1;color:#b3261e;font-size:12.5px;font-weight:700;padding:9px 12px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:7px">'+icLogout+' Sign out</button>'
+  b.innerHTML=(MY_ROLE==='editor'?'<button id="mag-entry-open" style="'+pill+'">'+icUpload+' Update data</button>':'')
+    +'<button id="mag-history-open" style="'+pill+'">'+icClock+' History</button>'
+    +'<div style="position:relative;margin-left:2px">'
+      +'<button id="mag-profile-btn" style="border:0;background:none;cursor:pointer;padding:4px 6px;border-radius:12px;display:flex;align-items:center;gap:9px;font-family:inherit">'
+        +'<span style="width:32px;height:32px;flex:none;border-radius:50%;background:linear-gradient(135deg,#c89a4a,#ecd7a3);color:#20170a;font-weight:700;font-size:13px;display:inline-grid;place-items:center">'+initial+'</span>'
+        +'<span style="text-align:left;line-height:1.3"><span style="display:block;font-size:13px;font-weight:700;color:#f6f7fb">'+escH(name)+'</span><span style="display:block;font-size:11px;color:#9098af">'+roleLabel+'</span></span>'
+        +icChevron
+      +'</button>'
+      +'<div id="mag-profile-menu" style="display:none;position:absolute;top:calc(100% + 10px);right:0;min-width:220px;background:#fff;border:1px solid #ece5d6;border-radius:14px;box-shadow:0 16px 40px -18px rgba(20,27,45,.35);padding:10px;z-index:80">'
+        +(IS_ADMIN?'<button id="mag-admin-open" style="'+menuItem+'">'+icGear+' Manage access</button>':'')
+        +'<button id="mag-signout" style="'+menuItem+'">'+icLogout+' Sign out</button>'
       +'</div>'
-    +'</div>'
-    +(MY_ROLE==='editor'?'<button id="mag-entry-open" style="'+pill+'">'+icUpload+' Update data</button>':'')
-    +(IS_ADMIN?'<button id="mag-admin-open" style="'+pill+'">'+icGear+' Manage access</button>':'')
-    +'<button id="mag-history-open" style="'+pill+'">'+icClock+' History</button>';
+    +'</div>';
   const host=document.querySelector('header.hero');
   if(host){ host.insertBefore(b, host.firstChild); }
   else { b.style.cssText+=';position:fixed;top:10px;right:12px;z-index:9998;background:rgba(20,27,45,.92);border-radius:14px;padding:8px 12px'; document.body.appendChild(b); }
