@@ -2934,6 +2934,7 @@ const ICON={
   warn:(s=18)=>svgOpen(s)+`<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
   check:(s=18)=>svgOpen(s)+`<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
   shield:(s=16)=>svgOpen(s)+`<path d="M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5Z"/></svg>`,
+  key:(s=16)=>svgOpen(s)+`<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>`,
   history:(s=14)=>svgOpen(s)+`<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>`,
   edit:(s=14)=>svgOpen(s)+`<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
   trash:(s=14)=>svgOpen(s)+`<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
@@ -2992,23 +2993,26 @@ function renderAlert(a){
   // the same rev/opNet/coverAmt figures already computed above (nothing fabricated).
   const buildWaveSVG=()=>{
     const W=800,H=90,baseY=48,amp=34;
-    // Positive and negative excursions are scaled independently (each against its own max) so a
-    // deficit that's small next to revenue in absolute IDR still reads as a clear, real dip below
-    // the zero line rather than disappearing under revenue's much larger scale — the exact figures
-    // are already printed as text above each point, so this only affects the shape's readability,
-    // not what numbers are reported.
+    // Revenue and Op. Expenses each plot at their own real magnitude (both rising up from the
+    // baseline) so whichever is actually larger reads as the taller peak — a direct visual
+    // comparison of inflow vs outflow size. Op. Result then shows the true net effect, dipping
+    // below the zero line when it's a deficit, and Capital Deposits shows the recovery. Positive
+    // and negative excursions are scaled independently (each against its own max) so a deficit
+    // that's small next to revenue in absolute IDR still reads as a clear, real dip rather than
+    // disappearing under revenue's larger scale — the exact figures are already printed as text
+    // above each point, so this only affects the shape's readability, not what's reported.
     const finalNet=a.opNet+coverAmt;
-    const posMax=Math.max(a.rev,Math.max(a.opNet,0),Math.max(finalNet,0),1);
+    const posMax=Math.max(a.rev,a.opex,Math.max(a.opNet,0),Math.max(finalNet,0),1);
     const negMax=Math.max(Math.max(-a.opNet,0),Math.max(-finalNet,0),1);
     const y=v=>Math.round((v>=0?baseY-(v/posMax)*amp:baseY+(Math.abs(v)/negMax)*amp)*100)/100;
-    const pts=[{x:0,y:baseY},{x:100,y:y(a.rev)},{x:300,y:y(a.opNet)},{x:500,y:y(a.opNet)},{x:700,y:y(a.opNet+coverAmt)},{x:800,y:y(a.opNet+coverAmt)}];
+    const pts=[{x:0,y:baseY},{x:100,y:y(a.rev)},{x:300,y:y(a.opex)},{x:500,y:y(a.opNet)},{x:700,y:y(finalNet)},{x:800,y:y(finalNet)}];
     let d=`M ${pts[0].x} ${pts[0].y}`;
     for(let i=1;i<pts.length;i++){
       const p0=pts[i-1],p1=pts[i],midX=(p0.x+p1.x)/2;
       d+=` C ${midX} ${p0.y}, ${midX} ${p1.y}, ${p1.x} ${p1.y}`;
     }
     const areaD=`${d} L 800 ${baseY} L 0 ${baseY} Z`;
-    const markers=[[100,a.rev],[300,a.opNet],[700,a.opNet+coverAmt]]
+    const markers=[[100,a.rev],[300,a.opex],[500,a.opNet],[700,finalNet]]
       .map(([x,v])=>`<circle cx="${x}" cy="${y(v)}" r="4.5" fill="#fff" stroke="${v>=0?'#1f8a61':'#d9536e'}" stroke-width="2.5"/>`).join('');
     return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="exec-wave-svg">
       <defs>
@@ -3058,7 +3062,6 @@ function renderAlert(a){
         <div class="exec-status">
           <div class="exec-status-lab">Financial Status</div>
           <div class="exec-status-msg"><span style="color:${statusColor}">${ICON.shield(15)}</span> ${msg}</div>
-          <div class="exec-status-note">${note}</div>
         </div>
       </div>
       <div class="exec-flow">
@@ -3072,11 +3075,9 @@ function renderAlert(a){
       </div>
     </div>
     <div class="exec-takeaway">
-      <div class="exec-takeaway-ic">${ICON.info(15)}</div>
-      <div class="exec-takeaway-lab">Key takeaway</div>
-      <div class="exec-takeaway-text">${deficit
-        ? `Operating deficit of <b style="color:#d92d20">IDR ${fmtB(Math.abs(a.opNet))}</b> is ${covered?'fully':'not'} covered by ${consolidated?'shareholder capital deposits':'financing received'} of <b style="color:#1f8a61">IDR ${fmtB(coverAmt)}</b>.`
-        : `Operating surplus of <b style="color:#1f8a61">IDR ${fmtB(a.opNet)}</b> this period — operations are self-funding.`}</div>
+      <div class="exec-takeaway-ic">${ICON.key(15)}</div>
+      <div class="exec-takeaway-lab">Action Key</div>
+      <div class="exec-takeaway-text">${note}</div>
     </div>
   </div>`;
 }
