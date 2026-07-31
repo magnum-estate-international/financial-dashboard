@@ -114,7 +114,6 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .kpi5>.pcard{flex:1 1 200px}
 .kpi2{display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
 .kpi1{display:grid;grid-template-columns:minmax(200px,340px);gap:15px;margin-bottom:15px}
-.kpi1-entchart{padding:16px 20px;margin-bottom:16px}
 .pcard{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);padding:21px 22px;
   border:var(--border);position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
 .pcard::after{content:"";position:absolute;right:-40px;bottom:-60px;width:150px;height:150px;border-radius:50%;
@@ -3083,11 +3082,7 @@ function renderKpiCash(a){
   const kc=document.getElementById('kpiCash');
   if(kc){
     kc.className='';
-    kc.innerHTML=`<div class="kpi5">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}${outstandingCard()}${fixCostCard()}</div>`
-      +`<div class="panel kpi1-entchart"><h2 style="font-size:13px">Revenue vs Op. Expense by Entity</h2>`
-      +`<div class="pn-sub" style="font-size:10.5px;color:var(--muted);margin-top:2px">Log scale · click a bar to filter that entity</div>`
-      +`<div class="chart-box" style="height:150px;margin-top:6px"><canvas id="entChartCompact"></canvas></div></div>`;
-    renderEntChartCompact();
+    kc.innerHTML=`<div class="kpi5">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}${outstandingCard()}${fixCostCard()}</div>`;
   }
   const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
 }
@@ -3462,29 +3457,6 @@ function renderEntChart(){
         tooltip:{callbacks:{title:items=>ENT[ids[items[0].dataIndex]].name,label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
       scales:{y:{type:'logarithmic',ticks:{callback:v=>{const l=Math.log10(v);return Number.isInteger(l)?('IDR '+fmtB(v)):'';}},grid:{color:'#edeff5'}},
         x:{grid:{display:false},ticks:{font:{size:10}}}}}});
-}
-// Compact companion to renderEntChart — same data/log-scale logic, squeezed into the KPI row next
-// to Monthly Fix Cost: no legend/axis labels/tooltxt clutter at that size, just the bar shapes
-// (still clickable, still a real tooltip) so it reads as a quick at-a-glance comparison rather
-// than a full chart shrunk down.
-let entChartCompact=null;
-function renderEntChartCompact(){
-  const canvas=document.getElementById('entChartCompact'); if(!canvas) return;
-  const ids=grpIds();
-  const revD=ids.map(id=>{const v=eff(id).rev;return v>0?v:null;});
-  const oxD=ids.map(id=>{const v=eff(id).opex;return v>0?v:null;});
-  if(entChartCompact) entChartCompact.destroy();
-  Chart.defaults.font.family='Plus Jakarta Sans, sans-serif'; Chart.defaults.color='#3a4254';
-  entChartCompact=new Chart(canvas,{type:'bar',
-    data:{labels:ids.map(id=>ENT[id].short),datasets:[
-      {label:'Operating Revenue',data:revD,backgroundColor:'#34a87c',borderRadius:3},
-      {label:'Operating Expense',data:oxD,backgroundColor:'#f27a9d',borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      onClick:(ev,els)=>{if(els.length)pickEntity(ids[els[0].index]);},
-      plugins:{legend:{display:false},
-        tooltip:{callbacks:{title:items=>ENT[ids[items[0].dataIndex]].name,label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
-      scales:{y:{type:'logarithmic',display:false},
-        x:{grid:{display:false},ticks:{font:{size:8},maxRotation:60,minRotation:60,autoSkip:false}}}}});
 }
 function renderOpexChart(a){
   const items=Object.entries(a.opexBD).sort((x,y)=>y[1]-x[1]);
