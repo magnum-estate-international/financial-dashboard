@@ -99,11 +99,6 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .exec-takeaway-ic{width:26px;height:26px;border-radius:8px;background:#c89a4a;color:#fff;display:grid;place-items:center;flex:none}
 .exec-takeaway-lab{font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#8a6d1a;flex:none}
 .exec-takeaway-text{font-size:12px;color:var(--blue-900);line-height:1.4}
-.exec-status{border-top:1px solid #eef0f4;padding-top:9px}
-.exec-status-lab{font-size:11px;font-weight:800;color:var(--blue-900);margin-bottom:6px}
-.exec-status-msg{display:flex;gap:6px;font-size:11.5px;font-weight:700;color:var(--blue-900);line-height:1.3;margin-bottom:5px}
-.exec-status-msg svg{flex:none;margin-top:1px}
-.exec-status-note{font-size:10.5px;color:var(--muted);line-height:1.4}
 @media(max-width:900px){.exec-insight-body{flex-wrap:wrap}.exec-left{width:100%}}
 .divlabel{font-size:11px;font-weight:800;color:var(--blue-900);text-transform:uppercase;letter-spacing:1.4px;margin:32px 0 14px;
   display:flex;align-items:center;gap:10px}
@@ -2975,7 +2970,6 @@ function renderAlert(a){
   const consolidated=EF==='all';
   const coverAmt=consolidated?a.capDep:a.finIn;
   const coverLabel=consolidated?'Capital Deposits':'Financing Support';
-  const covered=coverAmt>=Math.abs(a.opNet);
   const statusLabel=deficit?'CRITICAL':'HEALTHY';
   const statusColor=deficit?'#d92d20':'#1f8a61';
   const statusBg=deficit?'#fdeef1':'#e3f2e8';
@@ -3039,13 +3033,6 @@ function renderAlert(a){
       ${markers}
     </svg>`;
   };
-  const msg=deficit
-    ? (covered
-        ? `Deficit is covered by ${consolidated?'shareholder capital deposits':'financing support'}.`
-        : consolidated
-          ? `Not covered by outside capital — the gap is funded through IDR ${fmtB(a.finIn)} of inter-company loans between group entities, which net to zero at full consolidation.${a.capDep>0?` Shareholder deposits cover only IDR ${fmtB(a.capDep)}.`:''}`
-          : `Deficit is NOT fully covered — cash shortfall of IDR ${fmtB(Math.abs(a.opNet)-a.finIn)}.`)
-    : 'Operations are self-funding this period.';
   const note=deficit?'Continue monitoring cash flow and cost control.':'Maintain expense discipline to sustain the surplus.';
   el.innerHTML=`<div class="exec-insight${deficit?'':' surplus'}">
     <div class="exec-insight-title">${ICON.pulse(13)} Executive Financial Insight</div>
@@ -3058,10 +3045,6 @@ function renderAlert(a){
             <div class="exec-card-val">IDR ${fmtB(Math.abs(a.opNet))}</div>
             <span class="exec-badge" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
           </div>
-        </div>
-        <div class="exec-status">
-          <div class="exec-status-lab">Financial Status</div>
-          <div class="exec-status-msg"><span style="color:${statusColor}">${ICON.shield(15)}</span> ${msg}</div>
         </div>
       </div>
       <div class="exec-flow">
