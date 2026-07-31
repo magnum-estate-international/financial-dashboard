@@ -6083,25 +6083,24 @@ let cashInOutChart=null;
 function renderCashInOutChart(){
   const canvas=document.getElementById('cashInOutChart'); if(!canvas) return;
   const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
-  const cashIn=[],cashOut=[],net=[];
+  const cashIn=[],cashOut=[];
   Q2_MONTHS.forEach(mo=>{
     let ci=0,co=0;
     ids.forEach(id=>{ const m=effMonth(id,mo); if(m){ ci+=m.rev+m.finIn; co+=m.opex+m.finOut; } });
-    cashIn.push(ci); cashOut.push(co); net.push(ci-co);
+    cashIn.push(ci); cashOut.push(co);
   });
   const labels=Q2_MONTHS.map(mo=>MONTHS[mo].split(' ')[0]);
   if(cashInOutChart) cashInOutChart.destroy();
   Chart.defaults.font.family='Plus Jakarta Sans, sans-serif'; Chart.defaults.color='#3a4254';
   cashInOutChart=new Chart(canvas,{type:'line',
     data:{labels,datasets:[
-      {label:'Cash In',data:cashIn,borderColor:'#34a87c',backgroundColor:'#34a87c22',fill:true,tension:.35,pointRadius:3},
-      {label:'Cash Out',data:cashOut,borderColor:'#f27a9d',backgroundColor:'#f27a9d22',fill:true,tension:.35,pointRadius:3},
-      {label:'Net Cash Flow',data:net,borderColor:'#e09a3a',borderDash:[5,4],fill:false,tension:.35,pointRadius:3}
+      {label:'Cash In',data:cashIn,borderColor:'#34a87c',backgroundColor:'#34a87c29',fill:true,tension:.4,pointRadius:5,pointBackgroundColor:'#34a87c',pointBorderColor:'#fff',pointBorderWidth:2,borderWidth:3},
+      {label:'Cash Out',data:cashOut,borderColor:'#e0536e',backgroundColor:'#e0536e22',fill:true,tension:.4,pointRadius:5,pointBackgroundColor:'#e0536e',pointBorderColor:'#fff',pointBorderWidth:2,borderWidth:3}
     ]},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{position:'top',labels:{boxWidth:11,padding:12,font:{size:10.5}}},
+      plugins:{legend:{position:'top',align:'start',labels:{boxWidth:9,usePointStyle:true,pointStyle:'circle',padding:16,font:{size:11,weight:'600'}}},
         tooltip:{callbacks:{label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
-      scales:{y:{ticks:{callback:v=>fmtB(v)},grid:{color:'#edeff5'}},x:{grid:{display:false}}}}});
+      scales:{y:{ticks:{callback:v=>fmtB(v)},grid:{color:'#f0f1f6'}},x:{grid:{display:false}}}}});
 }
 let revByEntChart=null;
 function renderRevByEntChart(){
