@@ -3092,26 +3092,27 @@ function renderKpiCash(a){
 // the group's own AR/AP recap spreadsheets (see intercompany_ar_ap table) — read-only for now,
 // deliberately NOT scoped by the entity/group/month filters since it isn't month-bound data. ───
 function intercompanyCard(){
-  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
-  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
-  const owners=new Set(INTERCOMPANY.map(r=>r.owner)).size;
+  const totAP=IC_TX.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
+  const totAR=IC_TX.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
+  const owners=new Set(IC_TX.map(r=>r.owner)).size;
   return `<div class="pcard boxed gold-hl clickable" onclick="openIntercompany()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.briefcase(17)}</div><div class="lab">Inter-Company AR/AP</div></div>
       <div class="big" style="color:var(--muted);font-size:16px">AP ${fmt(totAP)} &nbsp;·&nbsp; AR ${fmt(totAR)}</div>
-      <div class="meta">${INTERCOMPANY.length?`${INTERCOMPANY.length} entries across ${owners} PT (net of setoran modal) — click to view`:'No recap loaded yet'}</div>
+      <div class="meta">${IC_TX.length?`${IC_TX.length} transactions across ${owners} PT — click to view`:'No transactions imported yet — add via Update Data'}</div>
     </div>`;
 }
 // ─── Inter-Company AR/AP ──────────────────────────────────────────────────────────────────────
-// Redesigned as a summary-first view (one row per owner PT, like Outstanding Liability's "By
-// Entity" breakdown) instead of dumping all ~70+ raw rows in one flat table — a reader can see at
-// a glance which PTs carry the biggest net exposure, then drill into one owner's counterparties.
-// The full flat list is still one click away for anyone who needs to see everything at once.
+// Backed by IC_TX, an itemized transaction ledger (owner/counterparty/type/date/description/amount)
+// built up via Excel import — this replaced the original one-time intercompany_ar_ap summary
+// snapshot as the source of truth here, per direction, since that snapshot had no per-transaction
+// detail to drill into. Summary-first view (one row per owner PT, like Outstanding Liability's "By
+// Entity" breakdown) instead of dumping every raw row in one flat table.
 function icOwnerSummary(){
   const byOwner={};
-  INTERCOMPANY.forEach(r=>{
+  IC_TX.forEach(r=>{
     const g=byOwner[r.owner]=byOwner[r.owner]||{ap:0,ar:0,n:0};
-    if(r.type==='AP') g.ap+=(r.amt-r.setoran); else g.ar+=(r.amt-r.setoran);
+    if(r.type==='AP') g.ap+=r.amt; else g.ar+=r.amt;
     g.n++;
   });
   return Object.entries(byOwner).map(([owner,g])=>({owner,ap:g.ap,ar:g.ar,net:g.ar-g.ap,n:g.n}));
@@ -3142,17 +3143,16 @@ let IC_SEARCH_FOCUS=false;
 function openIntercompany(){
   const q=IC_SEARCH.trim().toLowerCase();
   // Only owners that match one of this dashboard's own 16 tracked entities — many owner labels
-  // in the raw recap are holding/investment PTs never onboarded here (e.g. "PT Indonesia Capital
-  // Pecatu/Nirwana/Batubelig", "PT Tirta Digital Indonesia"), which would otherwise clutter this
-  // list with PTs nobody using this dashboard can drill into elsewhere. Totals below are recomputed
-  // from this filtered set too, so the stat cards stay consistent with the table under them.
+  // seen in imported files are holding/investment PTs never onboarded here, which would otherwise
+  // clutter this list with PTs nobody using this dashboard can drill into elsewhere. Totals below
+  // are recomputed from this filtered set too, so the stat cards stay consistent with the table.
   let rows=icOwnerSummary().filter(g=>findEntityByNameG(g.owner));
   const totAP=rows.reduce((s,g)=>s+g.ap,0);
   const totAR=rows.reduce((s,g)=>s+g.ar,0);
-  let h=`<div class="pn-sub" style="margin-bottom:8px">Recap of inter-company receivables (AR) and payables (AP) between PTs in the wider group — imported from the group's own AR/AP recap spreadsheets. Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT. Only PTs tracked in this dashboard are shown.</div>`;
+  let h=`<div class="pn-sub" style="margin-bottom:8px">Itemized inter-company receivables (AR) and payables (AP) between PTs in the wider group — built up via Excel import (Update Data). Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT. Only PTs tracked in this dashboard are shown.</div>`;
   h+=icStatCards(totAP,totAR);
-  if(!INTERCOMPANY.length){
-    h+=`<p style="color:var(--muted);font-size:12.5px">No recap data loaded yet.</p>`;
+  if(!IC_TX.length){
+    h+=`<p style="color:var(--muted);font-size:12.5px">No inter-company transactions imported yet — add them via <b>Update Data → Import Inter-Company Transactions</b>.</p>`;
     showModal('Inter-Company AR/AP',h,true);
     return;
   }
@@ -3162,7 +3162,7 @@ function openIntercompany(){
     </div>`;
   rows=rows.filter(g=>!q||g.owner.toLowerCase().includes(q));
   rows.sort((a,b)=>b.net-a.net);
-  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>PT (Owner)</th><th class="num">Counterparties</th><th class="num">Payable (AP)</th><th class="num">Receivable (AR)</th><th class="num">Net Balance</th></tr></thead><tbody>`;
+  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>PT (Owner)</th><th class="num">Transactions</th><th class="num">Payable (AP)</th><th class="num">Receivable (AR)</th><th class="num">Net Balance</th></tr></thead><tbody>`;
   if(rows.length){
     rows.forEach(g=>{
       const netPos=g.net>=0;
@@ -3182,56 +3182,90 @@ function openIntercompany(){
   const si=document.getElementById('ic-search');
   if(si && document.activeElement!==si && IC_SEARCH_FOCUS){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
 }
+function icTxRowHtml(r,encOwner){
+  const canEdit=MY_ROLE==='editor';
+  const cls=r.type==='AP'?'neg':'pos';
+  const badge=r.type==='AP'?'background:#fbe9e7;color:#b3261e':'background:#e3f2e8;color:#2b7a4b';
+  let editCell='';
+  if(canEdit){
+    const items=[
+      menuItem(ICON.edit()+' Edit',`openIcTxEdit(${r.id},'${encOwner}')`),
+      menuItem(ICON.trash()+' Delete',`deleteIcTx(${r.id},'${encOwner}')`,'var(--red)'),
+    ];
+    editCell=`<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${r.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+      +`<div id="ope-menu-${r.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
+  } else { editCell='<td></td>'; }
+  return `<tr>
+    <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
+    <td style="font-size:12.5px">${escH(r.cp)}</td>
+    <td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span></td>
+    <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}</td>
+    <td class="num ${cls}"><strong>${fmt(r.amt)}</strong></td>
+    ${editCell}
+  </tr>`;
+}
 function openIntercompanyOwner(encOwner){
   const owner=decodeURIComponent(encOwner);
   SORT_RERENDER['icArAp']=()=>openIntercompanyOwner(encOwner);
-  let rows=INTERCOMPANY.filter(r=>r.owner===owner);
-  rows=sortApply('icArAp',rows,r=>r.amt-r.setoran);
-  const apTot=rows.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
-  const arTot=rows.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  let rows=IC_TX.filter(r=>r.owner===owner);
+  rows=sortApply('icArAp',rows,r=>r.amt);
+  const apTot=rows.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
+  const arTot=rows.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openIntercompany()">‹ Back to all PTs</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(owner)}</h4>`;
   h+=icStatCards(apTot,arTot);
-  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Counterparty</th><th>Type</th><th class="num">Gross</th><th class="num">Setoran Modal</th><th class="num">${sortHeader('icArAp','AR/AP Net','amt')}</th></tr></thead><tbody>`;
+  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Date</th><th>Counterparty</th><th>Type</th><th>Description</th><th class="num">${sortHeader('icArAp','Amount','amt')}</th><th></th></tr></thead><tbody>`;
   if(rows.length){
-    rows.forEach(r=>{
-      const cls=r.type==='AP'?'neg':'pos';
-      const badge=r.type==='AP'?'background:#fbe9e7;color:#b3261e':'background:#e3f2e8;color:#2b7a4b';
-      const net=r.amt-r.setoran;
-      h+=`<tr class="clickable" style="cursor:pointer" onclick="openIcRowDetail(${r.id},'${encOwner}')"><td style="font-size:12.5px">${escH(r.cp)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span></td>`
-        +`<td class="num" style="color:var(--muted)">${fmt(r.amt)}</td>`
-        +`<td class="num" style="color:var(--muted)" title="${r.setoranNote?escH(r.setoranNote):''}">${r.setoran?'− '+fmt(r.setoran):'—'}</td>`
-        +`<td class="num ${cls}"><strong>${fmt(net)}</strong></td></tr>`;
-    });
+    rows.forEach(r=>{ h+=icTxRowHtml(r,encOwner); });
   } else {
-    h+=`<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No entries for this PT.</td></tr>`;
+    h+=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No transactions for this PT.</td></tr>`;
   }
   h+=`</tbody></table></div>`;
   showModal(owner,h,true);
 }
-// Full-record detail for a single Inter-Company AR/AP entry — surfaces fields the summary row
-// truncates or hides entirely (the full Setoran Modal note, which source file it was imported
-// from), since that row is already the finest granularity this recap data has (one ledger line
-// per owner/counterparty/type combination, not an aggregate of finer sub-transactions).
-function openIcRowDetail(id,encOwner){
-  const r=INTERCOMPANY.find(x=>x.id===id); if(!r) return;
-  const net=r.amt-r.setoran;
-  const cls=r.type==='AP'?'#b3261e':'#2b7a4b';
-  const badge=r.type==='AP'?'background:#fbe9e7;color:#b3261e':'background:#e3f2e8;color:#2b7a4b';
-  const field=(lab,val)=>`<tr><td style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 14px 8px 0;vertical-align:top;white-space:nowrap">${lab}</td><td style="font-size:13px;padding:8px 0">${val}</td></tr>`;
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openIntercompanyOwner('${encOwner}')">‹ Back to ${escH(decodeURIComponent(encOwner))}</button>`;
-  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(r.owner)} — ${escH(r.cp)}</h4>`;
-  h+=`<table>`
-    +field('Type',`<span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span>`)
-    +field('Owner (PT)',escH(r.owner))
-    +field('Counterparty',escH(r.cp))
-    +field('Gross',fmt(r.amt))
-    +field('Setoran Modal',r.setoran?('− '+fmt(r.setoran)):'—')
-    +(r.setoranNote?field('Setoran Modal note',escH(r.setoranNote)):'')
-    +field('AR/AP Net',`<strong style="color:${cls}">${fmt(net)}</strong>`)
-    +field('Source file',r.source?escH(r.source):'—')
-    +`</table>`;
-  showModal('Inter-Company AR/AP — Detail',h);
+async function deleteIcTx(id,encOwner){
+  if(!confirm('Delete this inter-company transaction? This cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/intercompany_transactions?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const idx=IC_TX.findIndex(t=>t.id===id);
+    if(idx>=0) IC_TX.splice(idx,1);
+    openIntercompanyOwner(encOwner);
+  }catch(e){ alert('Failed to delete: '+e.message); }
+}
+function openIcTxEdit(id,encOwner){
+  const r=IC_TX.find(t=>t.id===id); if(!r) return;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openIntercompanyOwner('${encOwner}')">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Inter-Company Transaction</h4>`;
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">PT (Owner): <b style="color:var(--ink)">${escH(r.owner)}</b></div>`
+    +opeField('Counterparty',`<input id="ictxe-cp" value="${escH(r.cp)}" style="${inp}">`)
+    +opeField('Type',`<select id="ictxe-type" style="${inp}"><option value="AP"${r.type==='AP'?' selected':''}>AP — this PT owes the counterparty</option><option value="AR"${r.type==='AR'?' selected':''}>AR — the counterparty owes this PT</option></select>`)
+    +opeField('Date',`<input id="ictxe-date" type="date" value="${r.date||''}" style="${inp}">`)
+    +opeField('Description',`<input id="ictxe-desc" value="${escH(r.desc||'')}" style="${inp}">`)
+    +opeField('Amount (IDR)',`<input id="ictxe-amt" type="number" min="0" step="1" value="${r.amt}" style="${inp}">`)
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveIcTxEdit(${id},'${encOwner}')">Save changes</button>`
+    +`<span id="ictxe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Inter-Company Transaction',h);
+}
+async function saveIcTxEdit(id,encOwner){
+  const err=document.getElementById('ictxe-err'); err.textContent='';
+  const cp=document.getElementById('ictxe-cp').value.trim();
+  const type=document.getElementById('ictxe-type').value;
+  const date=document.getElementById('ictxe-date').value||null;
+  const desc=document.getElementById('ictxe-desc').value.trim();
+  const amt=Number(document.getElementById('ictxe-amt').value);
+  if(!cp) return void(err.textContent='Counterparty is required.');
+  if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Amount must be a positive number.');
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/intercompany_transactions?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({counterparty_label:cp,type,tx_date:date,description:desc||null,amount_idr:amt})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const t=IC_TX.find(x=>x.id===id);
+    if(t){ t.cp=cp; t.type=type; t.date=date; t.desc=desc; t.amt=amt; }
+    openIntercompanyOwner(encOwner);
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
 function renderKpiFin(a){
   const pos=a.fullNet>=0;
@@ -5195,6 +5229,69 @@ function renderTxPreview(){
     }
   };
 }
+// ── Inter-Company Transactions import preview — Owner/Counterparty are free text (many
+// counterparties are holding PTs outside this dashboard's tracked entities), so unlike Transactions
+// there's no entity-matching fix-cell step, just Type/Amount validation. ──
+let IC_TX_ROWS=[];
+function findDuplicateIcTx(list,r){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return list.find(o=>norm(o.owner)===norm(r.owner) && norm(o.cp)===norm(r.cp) && o.type===r.type
+    && (o.date||'')===(r.date||'') && Math.round(o.amt)===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
+}
+function computeIcTxRow(r){
+  let error=null;
+  if(!r.owner) error='Owner (PT) is required';
+  else if(!r.cp) error='Counterparty is required';
+  else if(!r.type) error='Type must be AP or AR';
+  else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
+  r.error=error;
+  r.dup=error?null:findDuplicateIcTx(IC_TX,r);
+}
+function renderIcTxPreview(){
+  const el=document.getElementById('ictx-preview'); if(!el) return;
+  if(!IC_TX_ROWS.length){ el.innerHTML=''; return; }
+  const valid=IC_TX_ROWS.filter(r=>!r.error);
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Owner (PT)</th><th>Counterparty</th><th>Type</th><th>Date</th><th>Description</th><th class="num" style="text-align:right">Amount</th><th>Status</th></tr></thead><tbody>';
+  IC_TX_ROWS.forEach((r,i)=>{
+    const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
+    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':'OK');
+    h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+      +'<td style="font-size:12px">'+escH(r.owner||'—')+'</td>'
+      +'<td style="font-size:12px">'+escH(r.cp||'—')+'</td>'
+      +'<td style="font-size:12px">'+(r.type||'—')+'</td>'
+      +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
+      +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  const dupN=valid.filter(r=>r.dup).length;
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> transaction'+(valid.length===1?'':'s')+' — '+valid.length+' of '+IC_TX_ROWS.length+' row(s) ready'
+    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved transaction (same owner, counterparty, type, date, amount &amp; description) — review before importing':'')
+    +(IC_TX_ROWS.length>valid.length?'. Fix the flagged rows in the file and re-upload.':'')+'.</div>';
+  h+='<button id="ictx-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' transaction'+(valid.length===1?'':'s')+'</button>';
+  h+='<div id="ictx-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+  el.innerHTML=h;
+  const impBtn=document.getElementById('ictx-import');
+  if(impBtn) impBtn.onclick=async()=>{
+    impBtn.disabled=true; impBtn.textContent='Importing…';
+    try{
+      const rows=valid.map(r=>({owner_label:r.owner,counterparty_label:r.cp,type:r.type,tx_date:r.date,description:r.desc||null,amount_idr:r.amt,source_label:'Excel import'}));
+      if(rows.length) await adminAddBatch('intercompany_transactions',rows);
+      const fresh=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
+      IC_TX=fresh.map(mkIcTx);
+      IC_TX_ROWS=[];
+      document.getElementById('ictx-import-msg').style.color='#2b7a4b';
+      document.getElementById('ictx-import-msg').textContent='✓ Added '+rows.length+' new transaction'+(rows.length===1?'':'s')+'.';
+      impBtn.textContent='Imported ✓';
+      renderKpiCash(agg());
+    }catch(e){
+      document.getElementById('ictx-import-msg').style.color='#b3261e';
+      document.getElementById('ictx-import-msg').textContent='Import failed: '+e.message;
+      impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' transaction'+(valid.length===1?'':'s');
+    }
+  };
+}
 let FCD_ROWS=[];
 function computeFcdRow(r){
   let error=null;
@@ -6555,6 +6652,12 @@ let CASHPOS={};
 let OUTSTANDING=[];
 let FIXCOST=[];
 let INTERCOMPANY=[];
+let IC_TX=[];
+function mkIcTx(r){
+  return {id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,date:r.tx_date,
+    desc:r.description||'',amt:+r.amount_idr,source:r.source_label,
+    createdBy:r.created_by,createdAt:r.created_at};
+}
 async function runDashboard(){
   const D=await loadFromSupabase();
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
@@ -6602,6 +6705,13 @@ async function runDashboard(){
       .map(r=>({id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,amt:+r.amount_idr,
         setoran:+(r.setoran_modal_idr||0),setoranNote:r.setoran_modal_note||null,source:r.source_file}));
   }catch(e){ INTERCOMPANY=[]; }
+  // Itemized inter-company transactions (owner/counterparty/type/date/description/amount), added
+  // via Excel import — this is the live, growing ledger that replaced the one-time intercompany_ar_ap
+  // summary snapshot above as the Inter-Company AR/AP screen's source of truth, per direction.
+  try{
+    IC_TX=(await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date'))
+      .map(mkIcTx);
+  }catch(e){ IC_TX=[]; }
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
@@ -7657,6 +7767,25 @@ async function renderEntryBody(){
     +'<span id="tx-filename" style="font-size:12px;color:#3a4254"></span>'
     +'<div id="tx-preview" style="margin-top:12px"></div>'
     +'</div></details>';
+  // ── Import Inter-Company Transactions — itemized AP/AR ledger between PTs in the wider group
+  // (owner PT, counterparty, AP/AR, date, description, amount). Not entity/month scoped like the
+  // rest of this panel — Owner/Counterparty are free text (many counterparties are holding PTs
+  // outside this dashboard's 16 tracked entities), so there's no entity-matching step here, just
+  // Type/Amount validation. Same download-template → upload → preview → confirm convention. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Import Inter-Company Transactions</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per AR/AP transaction (Owner PT, Counterparty, Type, Date, Description, Amount), then upload. Owner and Counterparty are free text — many counterparties are holding/investment PTs not tracked as entities in this dashboard.</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="ictx-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<label for="ictx-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+      +'<input id="ictx-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'<button id="ictx-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-left:auto">'+ICON.download()+'Export current data (.xlsx)</button>'
+      +'</div>'
+      +'<span id="ictx-filename" style="font-size:12px;color:#3a4254"></span>'
+      +'<div id="ictx-preview" style="margin-top:12px"></div>'
+      +'</div></details>';
+  }
   // ── Update Entity Balance — a dedicated box for logging opening/closing bank balance per PT
   // per period, decoupled from the file-upload flow above (previously this was only reachable by
   // expanding "Advanced" inside the main entry form). Feeds the Balance Reconciliation section. ──
@@ -7916,6 +8045,56 @@ async function renderEntryBody(){
       return row;
     });
     renderTxPreview();
+  };
+  // ── Import Inter-Company Transactions wiring ──
+  const ictxTplBtn=document.getElementById('ictx-template');
+  if(ictxTplBtn) ictxTplBtn.onclick=async()=>{
+    ictxTplBtn.disabled=true;
+    try{
+      await downloadValidatedTemplate('intercompany_transactions_template.xlsx','Inter-Company',
+        ['Owner (PT)','Counterparty','Type','Date','Description','Amount'],
+        [eName(EIDS[0]),'Sample Counterparty PT','AP','2026-07-01','Sample inter-company transaction',1000000],
+        [{col:'C',values:['AP','AR']}]);
+    } finally { ictxTplBtn.disabled=false; }
+  };
+  const ictxExpBtn=document.getElementById('ictx-export');
+  if(ictxExpBtn) ictxExpBtn.onclick=()=>{
+    const rows=[['Owner (PT)','Counterparty','Type','Date','Description','Amount']];
+    IC_TX.slice().sort((a,b)=>{ if(a.owner!==b.owner) return a.owner<b.owner?-1:1; return (a.date||'')<(b.date||'')?-1:1; })
+      .forEach(r=>{ rows.push([r.owner,r.cp,r.type,r.date||'',r.desc||'',r.amt]); });
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:32},{wch:32},{wch:8},{wch:12},{wch:50},{wch:16}];
+    XLSX.utils.book_append_sheet(wb,ws,'Inter-Company');
+    XLSX.writeFile(wb,'intercompany_transactions_export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  };
+  const ictxFileInp=document.getElementById('ictx-file');
+  if(ictxFileInp) ictxFileInp.onchange=async()=>{
+    const f=ictxFileInp.files[0]; if(!f) return;
+    document.getElementById('ictx-filename').textContent=f.name;
+    let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
+      document.getElementById('ictx-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
+    }
+    const sheet=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+    if(!rows.length){ IC_TX_ROWS=[]; renderIcTxPreview(); return; }
+    const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
+    const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
+    const kOwner=col(['owner (pt)','owner','pt (owner)','pt']), kCp=col(['counterparty','counterparty label']),
+      kType=col(['type']), kDate=col(['date']), kDesc=col(['description']), kAmt=col(['amount','amount (idr)','amount idr']);
+    IC_TX_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+      const owner=kOwner!=null?String(r[kOwner]||'').trim():'';
+      const cp=kCp!=null?String(r[kCp]||'').trim():'';
+      const typeRaw=kType!=null?String(r[kType]||'').trim().toUpperCase():'';
+      const type=typeRaw==='AP'||typeRaw==='AR'?typeRaw:(/^AP/.test(typeRaw)?'AP':(/^AR/.test(typeRaw)?'AR':null));
+      const date=kDate!=null?parseFlexDate(r[kDate]):null;
+      const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
+      const amt=kAmt!=null?Number(r[kAmt]):NaN;
+      const row={owner,cp,type,date,desc,amt};
+      computeIcTxRow(row);
+      return row;
+    });
+    renderIcTxPreview();
   };
   const opdSend=document.getElementById('opd-send');
   if(opdSend) opdSend.onclick=async()=>{
