@@ -2987,7 +2987,6 @@ function renderAlert(a){
           : `Deficit is NOT fully covered — cash shortfall of IDR ${fmtB(Math.abs(a.opNet)-a.finIn)}.`)
     : 'Operations are self-funding this period.';
   const note=deficit?'Continue monitoring cash flow and cost control.':'Maintain expense discipline to sustain the surplus.';
-  const icNote=(consolidated&&deficit&&a.finIn>0)?`<div class="exec-status-note" style="margin-top:8px;padding-top:8px;border-top:1px solid #eef0f4">Inter-company financing in scope: IDR ${fmtB(a.finIn)} (excluded above — internal to the group).</div>`:'';
   el.innerHTML=`<div class="exec-insight${deficit?'':' surplus'}">
     <div class="exec-insight-title">${ICON.pulse(13)} Executive Financial Insight</div>
     <div class="exec-insight-body">
@@ -3013,7 +3012,6 @@ function renderAlert(a){
         <span class="exec-badge lg" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
         <div class="exec-status-msg"><span style="color:${statusColor}">${ICON.shield(15)}</span> ${msg}</div>
         <div class="exec-status-note">${note}</div>
-        ${icNote}
       </div>
     </div>
   </div>`;
