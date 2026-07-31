@@ -2955,11 +2955,21 @@ function renderBanner(){
 function renderAlert(a){
   const el=document.getElementById('alertBox'); if(!el) return;
   const deficit=a.opNet<0;
-  const covered=a.finIn>=Math.abs(a.opNet);
+  // At a single-entity view, a.finIn genuinely is cash moving into that entity (even if the
+  // source is a sister company) — real liquidity relief for its own books. But at a consolidated
+  // (multi-entity) view, most of a.finIn is loans/repayments circulating *between the group's own
+  // entities already in scope* (see ENT[id].finIn labels: "Loan repayments received from PT SSV",
+  // "Loans & return from PT SUP", etc.) — money that should net to ~zero across the whole group and
+  // isn't a real external cushion. Only a.capDep (shareholder capital deposits) is genuinely new
+  // money into the group, so that's what "covered" should be measured against once consolidated.
+  const consolidated=EF==='all';
+  const coverAmt=consolidated?a.capDep:a.finIn;
+  const coverLabel=consolidated?'Capital Deposits':'Financing Support';
+  const covered=coverAmt>=Math.abs(a.opNet);
   const statusLabel=deficit?'CRITICAL':'HEALTHY';
   const statusColor=deficit?'#d92d20':'#1f8a61';
   const statusBg=deficit?'#fdeef1':'#e3f2e8';
-  const maxVal=Math.max(a.rev,a.opex,Math.abs(a.opNet),a.finIn,1);
+  const maxVal=Math.max(a.rev,a.opex,Math.abs(a.opNet),coverAmt,1);
   const barH=v=>Math.max(6,Math.round(Math.abs(v)/maxVal*90));
   const barItem=(lab,val,color,grad)=>`<div class="exec-eq-item">
       <div class="exec-eq-lab">${lab}</div>
@@ -2967,9 +2977,14 @@ function renderAlert(a){
       <div class="exec-eq-bar-track"><div class="exec-eq-bar" style="height:${barH(val)}%;background:${grad}"></div></div>
     </div>`;
   const msg=deficit
-    ? (covered?'Deficit is covered by financing support.':`Deficit is NOT fully covered — cash shortfall of IDR ${fmtB(Math.abs(a.opNet)-a.finIn)}.`)
+    ? (covered
+        ? `Deficit is covered by ${consolidated?'shareholder capital deposits':'financing support'}.`
+        : consolidated
+          ? `Not covered by outside capital — the gap is funded through IDR ${fmtB(a.finIn)} of inter-company loans between group entities, which net to zero at full consolidation.${a.capDep>0?` Shareholder deposits cover only IDR ${fmtB(a.capDep)}.`:''}`
+          : `Deficit is NOT fully covered — cash shortfall of IDR ${fmtB(Math.abs(a.opNet)-a.finIn)}.`)
     : 'Operations are self-funding this period.';
   const note=deficit?'Continue monitoring cash flow and cost control.':'Maintain expense discipline to sustain the surplus.';
+  const icNote=(consolidated&&deficit&&a.finIn>0)?`<div class="exec-status-note" style="margin-top:8px;padding-top:8px;border-top:1px solid #eef0f4">Inter-company financing in scope: IDR ${fmtB(a.finIn)} (excluded above — internal to the group).</div>`:'';
   el.innerHTML=`<div class="exec-insight">
     <div class="exec-insight-title">Executive Financial Insight</div>
     <div class="exec-insight-body">
@@ -2989,13 +3004,14 @@ function renderAlert(a){
         <div class="exec-eq-op">=</div>
         ${barItem('Operating Result',a.opNet,deficit?'#d92d20':'#1f8a61',deficit?'#e8788a':'linear-gradient(180deg,#6fc79a,#34a87c)')}
         <div class="exec-eq-op">+</div>
-        ${barItem('Financing Support',a.finIn,'#1f8a61','linear-gradient(180deg,#6fc79a,#34a87c)')}
+        ${barItem(coverLabel,coverAmt,'#1f8a61','linear-gradient(180deg,#6fc79a,#34a87c)')}
       </div>
       <div class="exec-status">
         <div class="exec-status-lab">Financial Status</div>
         <span class="exec-badge lg" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
         <div class="exec-status-msg"><span style="color:${statusColor}">${ICON.shield(16)}</span> ${msg}</div>
         <div class="exec-status-note">${note}</div>
+        ${icNote}
       </div>
     </div>
   </div>`;
