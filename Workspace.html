@@ -3155,7 +3155,7 @@ function openIntercompany(){
       ${icSearchInput()}
     </div>`;
   let rows=icOwnerSummary().filter(g=>!q||g.owner.toLowerCase().includes(q));
-  rows.sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+  rows.sort((a,b)=>b.net-a.net);
   h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>PT (Owner)</th><th class="num">Counterparties</th><th class="num">Payable (AP)</th><th class="num">Receivable (AR)</th><th class="num">Net Balance</th></tr></thead><tbody>`;
   if(rows.length){
     rows.forEach(g=>{
