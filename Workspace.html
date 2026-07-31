@@ -200,7 +200,7 @@ tr:hover td{background:#f7f8fc}
 .tag.in{background:#ddf3e9;color:#1f8a61}.tag.out{background:#fde3e9;color:#c73e57}
 .tag.loan{background:var(--blue-50);color:#9a6f0a}.tag.rep{background:#e6f0e2;color:#4a7d3a}
 .tag.cap{background:#fdeed6;color:#a86a1a}
-.tx-doc-chip{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border:1px solid #e8d9b0;background:#faf3e2;color:#9a6f0a;border-radius:20px;padding:2px 9px;margin-left:6px;cursor:pointer;white-space:nowrap;vertical-align:middle}
+.tx-doc-chip{display:inline-grid;place-items:center;width:26px;height:26px;border:1px solid #e8d9b0;background:#faf3e2;color:#9a6f0a;border-radius:8px;padding:0;cursor:pointer}
 .tx-doc-chip:hover{background:#f5e8c8}
 .table-scroll{max-height:430px;overflow:auto;border-radius:12px;scrollbar-width:thin;scrollbar-color:#c5cbdb transparent}
 .table-scroll::-webkit-scrollbar{width:8px;height:8px}
@@ -3787,12 +3787,12 @@ function openOpexVendor(encVendor){
       +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
-      +`<th></th></tr></thead><tbody>`;
+      +`<th></th><th></th></tr></thead><tbody>`;
     tx.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex','neg',false,true,backCall);});
   } else {
     h+=`<table><tbody>`;
   }
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?5:1}"><strong>TOTAL</strong></td><td class="num neg"><strong id="txd-total-ov">${fmt(s)}</strong></td><td></td></tr></tbody></table>`;
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?5:1}"><strong>TOTAL</strong></td><td class="num neg"><strong id="txd-total-ov">${fmt(s)}</strong></td><td></td><td></td></tr></tbody></table>`;
   if(tx.length) h+=`</div>`;
   if(!tx.length) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No itemized transactions for this vendor in scope — it's part of the "Other expense (no vendor detail)" residual.</p>`;
   showModal(`${escH(vendor)} — Operating Expenses`,h,true);
@@ -4020,10 +4020,10 @@ function openBDItem(type,encKey){
       +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
-      +`<th></th></tr></thead><tbody>`;
+      +`<th></th><th></th></tr></thead><tbody>`;
     tx.forEach(x=>{s+=x.amt; h+=txRowHtml(x,type,cls,isRev,true,backCallBD);});
     Object.entries(residual).forEach(([id,r])=>{s+=r; h+=residualRowHtml(pill(id),id,r,cls,isRev,true);});
-    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="5"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong id="txd-total-bd">${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="5"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong id="txd-total-bd">${fmt(s)}</strong></td><td></td><td></td></tr></tbody></table></div>`;
     if(hasResidual) h+=`<p style="color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:8px"><b>Summary</b> rows represent entities whose figures are consolidated from bank-report category totals, so the TOTAL here matches the <b>By Entity</b> TOTAL above.</p>`;
   } else {
     h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals — their largest transactions appear under <b>"Key Transactions of the Month"</b>.</p>`;
@@ -4061,7 +4061,7 @@ function openCatEntity(type,encKey,id,fromEntity){
       +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
-      +`<th></th></tr></thead><tbody>`;
+      +`<th></th><th></th></tr></thead><tbody>`;
     tx.forEach(x=>{s+=x.amt; h+=txRowHtml(x,type,cls,isRev,false,backCallCE);});
   } else {
     h+=`<table id="txd-table-ce"><tbody>`;
@@ -4070,7 +4070,7 @@ function openCatEntity(type,encKey,id,fromEntity){
   if(Math.abs(residual)>0.5){
     h+=residualRowHtml(null,id,residual,cls,isRev,false);
   }
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong id="txd-total-ce">${fmt(val)}</strong></td><td></td></tr></tbody></table>`;
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong id="txd-total-ce">${fmt(val)}</strong></td><td></td><td></td></tr></tbody></table>`;
   if(tx.length) h+=`</div>`;
   if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this entity in scope.</p>`;
   showModal(`${ENT[id].name} — ${key}`,h,true);
@@ -4101,6 +4101,10 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const amtCls = x.contra ? 'amb' : cls;
   const tagHtml = x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '';
   const entCell = showEntity ? `<td>${pill(x.e)}</td>` : '';
+  // Document view is its own cell, shown to every user regardless of edit permission (viewers
+  // included) — separate from the editor-only ⋮ actions menu, and always positioned immediately
+  // to its left.
+  const docCell = `<td style="white-space:nowrap">${txDocChip(x)}</td>`;
   let editCell = `<td></td>`;
   if(canEdit && x.id!=null){
     // encodeURIComponent deliberately leaves ' unescaped (it's in its "safe" set) — but bc is about
@@ -4124,8 +4128,9 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
     ${entCell}
     <td style="font-size:12px;color:var(--muted)">${escH(x.k||'—')}</td>
     <td style="font-size:12px;color:var(--muted)">${escH(vendor)}</td>
-    <td style="font-size:12.5px">${escH(x.desc)}${tagHtml}${txDocChip(x)}</td>
+    <td style="font-size:12.5px">${escH(x.desc)}${tagHtml}</td>
     <td class="num ${amtCls}">${sign} ${fmt(Math.abs(x.amt))}</td>
+    ${docCell}
     ${editCell}
   </tr>`;
 }
@@ -4150,7 +4155,7 @@ function txDocChip(x){
   const atts=Array.isArray(x.attachments)?x.attachments:[];
   if(!atts.length) return '';
   const a=atts[0];
-  return ` <button type="button" class="tx-doc-chip" onclick="event.stopPropagation();openTxDoc('${encodeURIComponent(a.path)}')" title="${escH(a.name)}">📎 Document</button>`;
+  return `<button type="button" class="tx-doc-chip" onclick="event.stopPropagation();openTxDoc('${encodeURIComponent(a.path)}')" title="View ${escH(a.name)}">${ICON.file(13)}</button>`;
 }
 function triggerTxDocUpload(id,backCall){
   const inp=document.createElement('input');
@@ -4185,6 +4190,7 @@ function residualRowHtml(label,entCode,amt,cls,isRev,showEntity){
     <td style="font-size:12px;color:var(--muted)">—</td>
     <td style="font-size:12.5px;color:var(--muted)">Consolidated from the bank-report category total (per-transaction detail not yet loaded) <span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px">summary</span></td>
     <td class="num ${cls}">${isRev?'+':'–'} ${fmt(Math.abs(amt))}</td>
+    <td></td>
     <td></td>
   </tr>`;
 }
@@ -5689,7 +5695,7 @@ function openFixCostVsActualCategory(id,catEnc){
       +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
       +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
-      +`<th></th></tr></thead><tbody>`;
+      +`<th></th><th></th></tr></thead><tbody>`;
     tx.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex',cls,false,false,backCall);});
     if(Math.abs(residual)>0.5){
       s+=residual;
@@ -5703,7 +5709,7 @@ function openFixCostVsActualCategory(id,catEnc){
         +`<td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized transactions exceed the category\'s May total — investigate for a possible double-count':'Consolidated from the bank-report category total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td>`
         +`<td class="num ${cls}">${fmt(residual)}</td><td></td></tr>`;
     }
-    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong id="txd-total-fcva">${fmt(s)}</strong></td><td></td></tr></tbody></table></div>`;
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong id="txd-total-fcva">${fmt(s)}</strong></td><td></td><td></td></tr></tbody></table></div>`;
   } else {
     h+=`<p style="color:var(--muted);font-size:12.5px">No actual transactions for this category in May.</p>`;
   }
