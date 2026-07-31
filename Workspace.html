@@ -5292,6 +5292,70 @@ function renderIcTxPreview(){
     }
   };
 }
+// ── Cash Position import preview — one row per PT, no duplicate detection needed since each
+// upload upserts (merge-duplicates on entity_code) rather than adding a new ledger row. ──
+let CPOS_ROWS=[];
+function computeCposRow(r){
+  let error=null;
+  if(!r.entityMatch) error='Entity not recognized';
+  else if(!r.amt||r.amt<0||isNaN(r.amt)) error='Invalid amount';
+  r.error=error;
+}
+function cposEntityCell(r,i){
+  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('cpos-fix-ent-'+i,`fixCposField(${i},this.value)`);
+}
+function fixCposField(i,value){
+  const r=CPOS_ROWS[i]; if(!r) return;
+  r.entityMatch=value||null;
+  computeCposRow(r);
+  renderCposPreview();
+}
+function renderCposPreview(){
+  const el=document.getElementById('cpos-preview'); if(!el) return;
+  if(!CPOS_ROWS.length){ el.innerHTML=''; return; }
+  const valid=CPOS_ROWS.filter(r=>!r.error);
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Entity</th><th class="num" style="text-align:right">Cash Position</th><th>As of Date</th><th>Status</th></tr></thead><tbody>';
+  CPOS_ROWS.forEach((r,i)=>{
+    const rowBg=r.error?'#fbe9e7':'';
+    const status=r.error?escH(r.error):'OK';
+    h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+      +'<td style="font-size:12px">'+cposEntityCell(r,i)+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
+      +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'today')+'</td>'
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+status+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will set '+valid.length+' PT'+(valid.length===1?"'s":"s'")+' cash position</b> — '+valid.length+' of '+CPOS_ROWS.length+' row(s) ready'
+    +(CPOS_ROWS.length>valid.length?'. Fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
+  h+='<button id="cpos-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Update '+valid.length+' cash position'+(valid.length===1?'':'s')+'</button>';
+  h+='<div id="cpos-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+  el.innerHTML=h;
+  const impBtn=document.getElementById('cpos-import');
+  if(impBtn) impBtn.onclick=async()=>{
+    impBtn.disabled=true; impBtn.textContent='Saving…';
+    try{
+      const rows=valid.map(r=>{
+        const at=r.date?new Date(r.date+'T00:00:00Z').toISOString():new Date().toISOString();
+        return {entity_code:r.entityMatch,cash_idr:r.amt,updated_by:MY_EMAIL,updated_at:at};
+      });
+      for(const cp of rows){
+        const r=await authedFetch(SB_URL+'/rest/v1/entity_cash_position',{method:'POST',
+          headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(cp)});
+        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+        CASHPOS[cp.entity_code]={cash:cp.cash_idr,at:cp.updated_at};
+      }
+      CPOS_ROWS=[];
+      document.getElementById('cpos-import-msg').style.color='#2b7a4b';
+      document.getElementById('cpos-import-msg').textContent='✓ Updated '+rows.length+' cash position'+(rows.length===1?'':'s')+'.';
+      impBtn.textContent='Saved ✓';
+      renderKpiCash();
+    }catch(e){
+      document.getElementById('cpos-import-msg').style.color='#b3261e';
+      document.getElementById('cpos-import-msg').textContent='Import failed: '+e.message;
+      impBtn.disabled=false; impBtn.textContent='Update '+valid.length+' cash position'+(valid.length===1?'':'s');
+    }
+  };
+}
 let FCD_ROWS=[];
 function computeFcdRow(r){
   let error=null;
@@ -7805,17 +7869,35 @@ async function renderEntryBody(){
   }
   // ── Update Cash Position — a single current-value snapshot per entity, meant to be refreshed
   // daily (unlike Update Entity Balance above, which is a per-month reconciliation benchmark).
-  // Feeds the "Cash Position" column in Entity Performance Summary. ──
+  // Feeds the "Cash Position" column in Entity Performance Summary. Same one-at-a-time / Excel
+  // bulk-import tab pattern as Outstanding Liability/Fixed Cost — each row upserts (merge-duplicates
+  // on entity_code), so re-uploading the same PT just refreshes its snapshot instead of duplicating. ──
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Update Cash Position</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Log the current bank cash balance for one PT — meant to be updated daily as a quick snapshot of what\'s in the bank right now (separate from the monthly opening/closing balance above).</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Log the current bank cash balance per PT — meant to be updated daily as a quick snapshot of what\'s in the bank right now (separate from the monthly opening/closing balance above). Uploading a PT that already has a snapshot replaces it.</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="cpos-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
+      +'<button id="cpos-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
+      +'</div>'
+      +'<div id="cpos-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
       +'<select id="cpos-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<input id="cpos-amt" inputmode="numeric" placeholder="Cash position (IDR)" style="'+inp+'">'
       +'</div>'
       +'<button id="cpos-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save cash position</button>'
       +'<div id="cpos-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div>'
+      +'<div id="cpos-bulk" style="display:none">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns: <b>Entity (PT), Cash Position (IDR), As of Date</b> (optional — defaults to today if left blank). One row per PT — each upload replaces that PT\'s current snapshot.</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="cpos-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<label for="cpos-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+      +'<input id="cpos-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'</div>'
+      +'<span id="cpos-filename" style="font-size:12px;color:#3a4254"></span>'
+      +'<div id="cpos-preview" style="margin-top:12px"></div>'
+      +'</div>'
       +'</div></details>';
   }
   // ── Outstanding payables (unpaid invoices) — separate from the monthly figures above ──
@@ -8390,6 +8472,54 @@ async function renderEntryBody(){
         cposMsg.style.color='#2b7a4b'; cposMsg.textContent='Saved.';
       }catch(e){ cposMsg.textContent='Failed to save: '+e.message; }
       cposBtn.disabled=false; cposBtn.textContent='Save cash position';
+    };
+  }
+  // ── Cash Position: tab toggle + bulk Excel import ──
+  {
+    const tabOneCp=document.getElementById('cpos-tab-one'), tabBulkCp=document.getElementById('cpos-tab-bulk');
+    const paneOneCp=document.getElementById('cpos-single'), paneBulkCp=document.getElementById('cpos-bulk');
+    const setTabCp=t=>{
+      const one=t==='one';
+      if(paneOneCp) paneOneCp.style.display=one?'':'none';
+      if(paneBulkCp) paneBulkCp.style.display=one?'none':'';
+      if(tabOneCp){ tabOneCp.style.background=one?'#d9a92c':'#fff'; tabOneCp.style.color=one?'#2a1c02':'#3a4254'; tabOneCp.style.border=one?'0':'1px solid #e4e7ef'; }
+      if(tabBulkCp){ tabBulkCp.style.background=one?'#fff':'#d9a92c'; tabBulkCp.style.color=one?'#3a4254':'#2a1c02'; tabBulkCp.style.border=one?'1px solid #e4e7ef':'0'; }
+    };
+    if(tabOneCp) tabOneCp.onclick=()=>setTabCp('one');
+    if(tabBulkCp) tabBulkCp.onclick=()=>setTabCp('bulk');
+    const cposTplBtn=document.getElementById('cpos-template');
+    if(cposTplBtn) cposTplBtn.onclick=async()=>{
+      cposTplBtn.disabled=true;
+      try{
+        await downloadValidatedTemplate('cash_position_template.xlsx','Cash Position',
+          ['Entity (PT)','Cash Position (IDR)','As of Date'],
+          [eName(EIDS[0]),100000000,'2026-07-31'],
+          [{col:'A',values:EIDS.map(eName)}]);
+      } finally { cposTplBtn.disabled=false; }
+    };
+    const cposFileInp=document.getElementById('cpos-file');
+    if(cposFileInp) cposFileInp.onchange=async()=>{
+      const f=cposFileInp.files[0]; if(!f) return;
+      document.getElementById('cpos-filename').textContent=f.name;
+      let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
+        document.getElementById('cpos-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
+      }
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+      if(!rows.length){ CPOS_ROWS=[]; renderCposPreview(); return; }
+      const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
+      const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
+      const kEnt=col(['entity (pt)','entity','pt']), kAmt=col(['cash position (idr)','cash position','amount','amount (idr)']),
+        kDate=col(['as of date','date']);
+      CPOS_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+        const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameG(entityRaw);
+        const amt=kAmt!=null?Number(r[kAmt]):NaN;
+        const date=kDate!=null?parseFlexDate(r[kDate]):null;
+        const row={entityRaw,entityMatch,amt,date};
+        computeCposRow(row);
+        return row;
+      });
+      renderCposPreview();
     };
   }
   // ── Wire the "Replace Period Import" box ──
