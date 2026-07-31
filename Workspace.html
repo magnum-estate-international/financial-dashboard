@@ -74,8 +74,9 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .exec-insight{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);border:var(--border);border-top:3px solid #c89a4a;padding:12px 22px 13px;margin-bottom:16px}
 .exec-insight-title{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:var(--blue-900);text-transform:uppercase;margin-bottom:9px}
 .exec-insight-title svg{width:13px;height:13px;color:#c9974a}
-.exec-insight-body{display:flex;align-items:center;gap:16px}
-.exec-card{flex:none;width:172px;display:flex;gap:10px;align-items:center;background:linear-gradient(135deg,#faf3e2,#f5e8c8);border-radius:13px;padding:9px 12px}
+.exec-insight-body{display:flex;align-items:center;gap:22px}
+.exec-left{flex:none;width:270px;display:flex;flex-direction:column;gap:10px}
+.exec-card{flex:none;width:auto;display:flex;gap:10px;align-items:center;background:linear-gradient(135deg,#faf3e2,#f5e8c8);border-radius:13px;padding:9px 12px}
 .exec-card-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;background:linear-gradient(135deg,#e0536e,#c23a54);color:#fff;box-shadow:0 5px 12px -6px rgba(217,83,110,.55)}
 .exec-card.surplus .exec-card-ic{background:linear-gradient(135deg,#34a87c,#227a58);box-shadow:0 5px 12px -6px rgba(31,138,97,.5)}
 .exec-card-lab{font-size:10px;font-weight:700;color:var(--muted)}
@@ -92,12 +93,12 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .exec-eq-bar-track{width:100%;height:32px;display:flex;align-items:flex-end}
 .exec-eq-bar{width:100%;border-radius:5px;min-height:4px}
 .exec-eq-op{flex:none;align-self:center;font-size:15px;font-weight:700;color:var(--muted);padding-bottom:12px}
-.exec-status{flex:none;width:210px;border-left:1px solid #eef0f4;padding-left:18px}
+.exec-status{border-top:1px solid #eef0f4;padding-top:9px}
 .exec-status-lab{font-size:11px;font-weight:800;color:var(--blue-900);margin-bottom:6px}
 .exec-status-msg{display:flex;gap:6px;font-size:11.5px;font-weight:700;color:var(--blue-900);line-height:1.3;margin-bottom:5px}
 .exec-status-msg svg{flex:none;margin-top:1px}
 .exec-status-note{font-size:10.5px;color:var(--muted);line-height:1.4}
-@media(max-width:900px){.exec-insight-body{flex-wrap:wrap}.exec-card{width:100%}.exec-status{width:100%;border-left:0;padding-left:0;border-top:1px solid #eef0f4;padding-top:14px}}
+@media(max-width:900px){.exec-insight-body{flex-wrap:wrap}.exec-left{width:100%}}
 .divlabel{font-size:11px;font-weight:800;color:var(--blue-900);text-transform:uppercase;letter-spacing:1.4px;margin:32px 0 14px;
   display:flex;align-items:center;gap:10px}
 .divlabel svg.svgic{width:26px;height:26px;padding:6px;box-sizing:border-box;border-radius:9px;
@@ -2990,12 +2991,19 @@ function renderAlert(a){
   el.innerHTML=`<div class="exec-insight${deficit?'':' surplus'}">
     <div class="exec-insight-title">${ICON.pulse(13)} Executive Financial Insight</div>
     <div class="exec-insight-body">
-      <div class="exec-card${deficit?'':' surplus'}">
-        <div class="exec-card-ic">${deficit?ICON.trendDown(19):ICON.trend(19)}</div>
-        <div>
-          <div class="exec-card-lab">${deficit?'Operating Deficit':'Operating Surplus'}</div>
-          <div class="exec-card-val">IDR ${fmtB(Math.abs(a.opNet))}</div>
-          <span class="exec-badge" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
+      <div class="exec-left">
+        <div class="exec-card${deficit?'':' surplus'}">
+          <div class="exec-card-ic">${deficit?ICON.trendDown(19):ICON.trend(19)}</div>
+          <div>
+            <div class="exec-card-lab">${deficit?'Operating Deficit':'Operating Surplus'}</div>
+            <div class="exec-card-val">IDR ${fmtB(Math.abs(a.opNet))}</div>
+            <span class="exec-badge" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
+          </div>
+        </div>
+        <div class="exec-status">
+          <div class="exec-status-lab">Financial Status</div>
+          <div class="exec-status-msg"><span style="color:${statusColor}">${ICON.shield(15)}</span> ${msg}</div>
+          <div class="exec-status-note">${note}</div>
         </div>
       </div>
       <div class="exec-eq">
@@ -3006,12 +3014,6 @@ function renderAlert(a){
         ${barItem('Op. Result',a.opNet,deficit?'#d92d20':'#1f8a61',deficit?'#e8788a':'linear-gradient(180deg,#6fc79a,#34a87c)',deficit?ICON.warn(13):ICON.check(13),deficit?'#fdeef1':'#e3f2e8')}
         <div class="exec-eq-op">+</div>
         ${barItem(coverLabel,coverAmt,'#1f8a61','linear-gradient(180deg,#6fc79a,#34a87c)',ICON.shield(13),'#e3f2e8')}
-      </div>
-      <div class="exec-status">
-        <div class="exec-status-lab">Financial Status</div>
-        <span class="exec-badge lg" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
-        <div class="exec-status-msg"><span style="color:${statusColor}">${ICON.shield(15)}</span> ${msg}</div>
-        <div class="exec-status-note">${note}</div>
       </div>
     </div>
   </div>`;
