@@ -114,7 +114,6 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .kpi5>.pcard{flex:1 1 200px}
 .kpi2{display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
 .kpi1{display:grid;grid-template-columns:minmax(200px,340px);gap:15px;margin-bottom:15px}
-.kpi3{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
 .pcard{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);padding:21px 22px;
   border:var(--border);position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
 .pcard::after{content:"";position:absolute;right:-40px;bottom:-60px;width:150px;height:150px;border-radius:50%;
@@ -239,31 +238,6 @@ footer::before{content:"";display:block;width:56px;height:4px;margin:0 auto 16px
   background:linear-gradient(90deg,#b8860b,#e3c583,#f0dca6)}
 .clickable{cursor:pointer;transition:transform .18s,box-shadow .2s,border-color .2s}
 .clickable:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:#e8d9b0}
-.reco-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:20px}
-.reco{position:relative;background:var(--card);border:var(--border);border-left:3px solid transparent;border-radius:10px;
-  padding:13px 15px;transition:box-shadow .15s ease}
-.reco:hover{box-shadow:var(--shadow-sm)}
-.reco-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
-.reco .ric{width:26px;height:26px;flex:none;border-radius:8px;display:grid;place-items:center}
-.reco .ric svg{width:14px;height:14px}
-.reco h4{font-size:12.5px;font-weight:700;color:var(--blue-900);letter-spacing:-.1px;margin-bottom:4px;line-height:1.35}
-.reco .rtag{font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}
-.reco p{font-size:11px;color:#333b4d;line-height:1.55}
-.reco p b{font-variant-numeric:tabular-nums;font-size:11.5px}
-.reco.crit{border-left-color:#c73e57}
-.reco.crit .ric{background:rgba(199,62,87,.1);color:#c73e57}
-.reco.crit .rtag{color:#c73e57}.reco.crit p b{color:#c73e57}
-.reco.warn{border-left-color:#d98a24}
-.reco.warn .ric{background:rgba(217,138,36,.1);color:#a86a1a}
-.reco.warn .rtag{color:#a86a1a}.reco.warn p b{color:#a86a1a}
-.reco.info{border-left-color:#9a6f0a}
-.reco.info .ric{background:rgba(184,134,11,.1);color:#9a6f0a}
-.reco.info .rtag{color:#9a6f0a}.reco.info p b{color:#9a6f0a}
-.reco.good{border-left-color:#1f8a61}
-.reco.good .ric{background:rgba(31,138,97,.1);color:#1f8a61}
-.reco.good .rtag{color:#1f8a61}.reco.good p b{color:#1f8a61}
-@media(max-width:980px){.reco-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:640px){.reco-grid{grid-template-columns:1fr}}
 /* balance-reconciliation KPI cards */
 .pcard.bal{position:relative;overflow:hidden;border-top:none;padding-top:23px}
 .pcard.bal::before{content:'';position:absolute;top:0;left:0;right:0;height:5px}
@@ -286,8 +260,8 @@ footer::before{content:"";display:block;width:56px;height:4px;margin:0 auto 16px
 .pcard.bal.b-none .bic{background:#eef0f5;filter:grayscale(.4);opacity:.75}
 a{color:#9a6f0a}
 :focus-visible{outline:2px solid #b8860b;outline-offset:2px}
-@media(max-width:980px){.kpi4,.kpi3,.cols-eq,.cols-3{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 14px 40px}.toolbar{position:static}}
-@media(max-width:600px){.kpi4,.kpi3,.kpi2,.cols-eq,.cols-3{grid-template-columns:1fr}}
+@media(max-width:980px){.kpi4,.cols-eq,.cols-3{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 14px 40px}.toolbar{position:static}}
+@media(max-width:600px){.kpi4,.kpi2,.cols-eq,.cols-3{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
 @media print{.toolbar{display:none}}
 </style>
@@ -424,14 +398,8 @@ a{color:#9a6f0a}
 <div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Inter-Company AR/AP</div>
 <div class="kpi1" id="kpiIntercompany"></div>
 
-<div class="divlabel" id="secOpLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg> Operational Performance — May 2026</div>
-<div class="kpi3" id="kpiOp"></div>
-
 <div class="divlabel" id="secFinLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Financing Activity — May 2026</div>
 <div class="kpi4" id="kpiFin"></div>
-
-<div class="divlabel" id="secRecoLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Management Alert</div>
-<div id="recoGrid" class="reco-grid"></div>
 
 <div class="grid cols-eq" style="margin-bottom:16px">
   <div class="panel" id="secLiabTopLabel">
@@ -2955,7 +2923,6 @@ function renderBanner(){
     todayEl.dataset.set='1';
   }
   const moLbl=MONTHS[MONTH];
-  const opL=document.getElementById('secOpLabel'); if(opL) opL.innerHTML=`${ICON.trend()} Operational Performance — ${moLbl}`;
   const fnL=document.getElementById('secFinLabel'); if(fnL) fnL.innerHTML=`${ICON.refresh()} Financing Activity — ${moLbl}`;
   const n=scopeIds().length;
   document.getElementById('heroScope').textContent = EF!=='all' ? ENT[EF].name : (GF==='all'?`Consolidated · ${n} Entities`:GRPNAME[GF]);
@@ -3160,23 +3127,6 @@ function openIntercompany(){
   }
   h+=`</tbody></table></div>`;
   showModal('Inter-Company AR/AP',h,true);
-}
-function renderKpiOp(a){
-  const pos=a.opNet>=0;
-  const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
-  const ko=document.getElementById('kpiOp');
-  ko.className='kpi1';
-  ko.innerHTML=`
-    <div class="pcard dark clickable" onclick="openDetail('opnet')">
-      ${hint('rgba(255,255,255,.65)')}
-      <div class="lab">Net Operating Result</div>
-      <div class="big sz30" style="color:${pos?'#86efac':'#f87171'}">${pos?'+':'–'} IDR ${fmtB(Math.abs(a.opNet))}</div>
-      <div class="flowrow">
-        <div><span>Operating Revenue</span><b style="color:#86efac">+ ${fmt(a.rev)}</b></div>
-        <div><span>Operating Expenses</span><b style="color:#f87171">– ${fmt(a.opex)}</b></div>
-        <div><span>${pos?'Surplus':'Deficit'}</span><b style="color:${pos?'#86efac':'#f87171'}">${pos?'+':'–'} ${fmt(Math.abs(a.opNet))}</b></div>
-      </div>
-    </div>`;
 }
 function renderKpiFin(a){
   const pos=a.fullNet>=0;
@@ -4451,78 +4401,6 @@ function exportCSV(){
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
-// ─── POINTS OF ATTENTION (auto-derived management recommendations) ───────────
-const RECO_ICONS={
-  crit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>',
-  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10h-10Z"/></svg>',
-  good:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>'};
-const RECO_TAGS={crit:'Critical',warn:'Attention',info:'Review',good:'On track'};
-function renderRecos(a){
-  const el=document.getElementById('recoGrid'); if(!el) return;
-  const lbl=document.getElementById('secRecoLabel');
-  if(lbl) lbl.innerHTML=ICON.bell()+' Management Alert ('+(MONTHS[MONTH]||MONTH)+')';
-  const ids=scopeIds();
-  const R=[];
-  const cov=a.opex>0 ? (a.rev/a.opex*100) : null;
-  const netCash=a.opNet + a.finIn - a.finOut;
-  const nets=ids.map(id=>{const e=eff(id);return {id,name:ENT[id].name,n:e.rev-e.opex,rev:e.rev,opex:e.opex};})
-                .filter(x=>x.rev>0||x.opex>0);
-  const losers=nets.filter(x=>x.n<-0.5).sort((x,y)=>x.n-y.n);
-  const winners=nets.filter(x=>x.n>0.5).sort((x,y)=>y.n-x.n);
-  // 1. operating result
-  if(a.opNet<0){
-    R.push({sev:'crit',title:'Operating deficit of IDR '+fmtB(Math.abs(a.opNet)),
-      body:'Expenses exceed revenue'+(cov?' — revenue covers only <b>'+cov.toFixed(1)+'%</b> of operating costs':'')+'. Set a cost-reduction target for the largest expense categories and tighten spend approvals until the operation is self-funding.'});
-  } else if(a.opNet>0){
-    R.push({sev:'good',title:'Operations are self-funding (+IDR '+fmtB(a.opNet)+')',
-      body:'Revenue covers <b>'+(cov?cov.toFixed(1):'—')+'%</b> of operating costs. Protect the margin: keep fixed-cost growth below revenue growth when approving new commitments.'});
-  }
-  // 2. financing reliance
-  if(a.opNet<0 && a.finIn>0){
-    R.push({sev:'warn',title:'The gap is funded by financing, not operations',
-      body:'Financing inflows of <b>IDR '+fmtB(a.finIn)+'</b> are covering the operating shortfall. Agree a timeline with each PT to close the deficit from operations so loans and capital deposits fund growth, not payroll.'});
-  }
-  // 3. loss-making entities
-  if(losers.length){
-    const top=losers.slice(0,3).map(x=>'<b>'+x.name+'</b> (−'+fmtB(Math.abs(x.n))+')').join(', ');
-    R.push({sev:losers.length>=3?'crit':'warn',title:losers.length+' of '+nets.length+' entities in scope run at a loss',
-      body:'Largest shortfalls: '+top+'. Review cost structure, pricing and occupancy for these PTs first — they drive most of the consolidated gap.'});
-  }
-  // 4. expense concentration
-  const cats=Object.entries(a.opexBD).filter(([k])=>!/not itemised/.test(k)).sort((x,y)=>y[1]-x[1]);
-  if(a.opex>0 && cats.length){
-    const share=cats[0][1]/a.opex*100;
-    if(share>=20) R.push({sev:'info',title:'Spend is concentrated: '+cats[0][0]+' = '+share.toFixed(1)+'% of opex',
-      body:'A single category of <b>IDR '+fmtB(cats[0][1])+'</b> dominates spending. Re-tender or renegotiate this line and require director sign-off above an agreed threshold.'});
-  }
-  // 5. revenue concentration
-  const rcats=Object.entries(a.revBD).filter(([k])=>!/not itemised/.test(k)).sort((x,y)=>y[1]-x[1]);
-  if(a.rev>0 && rcats.length){
-    const rshare=rcats[0][1]/a.rev*100;
-    if(rshare>=50) R.push({sev:'info',title:'Revenue depends heavily on '+rcats[0][0]+' ('+rshare.toFixed(1)+'%)',
-      body:'Over half of income comes from one source. Grow recurring streams (rental, service charge, F&amp;B) to reduce exposure to one-off sales timing.'});
-  }
-  // 6. net cash
-  if(netCash<0){
-    R.push({sev:'crit',title:'Net cash movement is negative (−IDR '+fmtB(Math.abs(netCash))+')',
-      body:'Even after financing, more cash left than came in this period. Review the payment calendar and delay non-essential outflows to protect the cash buffer.'});
-  }
-  // 7. best performer
-  if(winners.length && nets.length>1){
-    R.push({sev:'good',title:'Strongest performer: '+winners[0].name+' (+IDR '+fmtB(winners[0].n)+')',
-      body:'Use it as the internal benchmark — compare its cost ratios and revenue mix against the loss-making PTs in the same group.'});
-  }
-  const order={crit:0,warn:1,info:2,good:3};
-  R.sort((x,y)=>order[x.sev]-order[y.sev]);
-  const out=R.slice(0,6);
-  el.innerHTML = out.length ? out.map(r=>
-    '<div class="reco '+r.sev+'"><div class="reco-top"><div class="ric">'+RECO_ICONS[r.sev]+'</div><span class="rtag">'+RECO_TAGS[r.sev]+'</span></div>'
-    +'<h4>'+r.title+'</h4>'
-    +'<p>'+r.body+'</p></div>').join('')
-    : '<div class="reco good"><div class="reco-top"><div class="ric">'+RECO_ICONS.good+'</div><span class="rtag">On track</span></div><h4>No pressing issues for this view</h4><p>Figures for this scope and period look balanced. Switch scope or month to check other entities.</p></div>';
-}
-
 // ─── OUTSTANDING PAYABLES MANAGEMENT ─────────────────────────────────────────
 function outstandingPaid(){
   const ids=new Set(scopeIds());
@@ -6397,7 +6275,7 @@ function renderOverdueInvoices(){
 }
 function renderAll(){
   const a=agg();
-  renderBanner();renderKpiCash(a);renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderBalances();
+  renderBanner();renderKpiCash(a);renderAlert(a);renderKpiFin(a);renderLiabTopVendor();renderLiabPriority();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
   renderFinancialHealth(a);renderCashInOutChart();renderRevByEntChart();renderTopExpCats(a);renderAgingChart();renderIcSummary();
