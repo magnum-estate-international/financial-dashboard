@@ -375,7 +375,7 @@ a{color:#9a6f0a}
     <div class="chart-box" style="height:210px;margin-top:10px"><canvas id="agingChart"></canvas></div>
   </div>
   <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Inter-Company AR/AP Summary</h2><span class="pn-sub" style="margin:0;font-size:11.5px;color:var(--muted)">All time</span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Loan Affiliate Summary</h2><span class="pn-sub" style="margin:0;font-size:11.5px;color:var(--muted)">All time</span></div>
     <div id="icSummary" style="margin-top:12px"></div>
   </div>
 </div>
@@ -395,7 +395,7 @@ a{color:#9a6f0a}
   </div>
 </div>
 
-<div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Inter-Company AR/AP</div>
+<div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Loan Affiliate</div>
 <div class="kpi1" id="kpiIntercompany"></div>
 
 <div class="divlabel" id="secFinLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Financing Activity — May 2026</div>
@@ -3097,7 +3097,7 @@ function intercompanyCard(){
   const owners=new Set(IC_TX.map(r=>r.owner)).size;
   return `<div class="pcard boxed gold-hl clickable" onclick="openIntercompany()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
-      <div class="kpi-head"><div class="kpi-ic">${ICON.briefcase(17)}</div><div class="lab">Inter-Company AR/AP</div></div>
+      <div class="kpi-head"><div class="kpi-ic">${ICON.briefcase(17)}</div><div class="lab">Loan Affiliate</div></div>
       <div class="big" style="color:var(--muted);font-size:16px">AP ${fmt(totAP)} &nbsp;·&nbsp; AR ${fmt(totAR)}</div>
       <div class="meta">${IC_TX.length?`${IC_TX.length} transactions across ${owners} PT — click to view`:'No transactions imported yet — add via Update Data'}</div>
     </div>`;
@@ -3152,8 +3152,8 @@ function openIntercompany(){
   let h=`<div class="pn-sub" style="margin-bottom:8px">Itemized inter-company receivables (AR) and payables (AP) between PTs in the wider group — built up via Excel import (Update Data). Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT. Only PTs tracked in this dashboard are shown.</div>`;
   h+=icStatCards(totAP,totAR);
   if(!IC_TX.length){
-    h+=`<p style="color:var(--muted);font-size:12.5px">No inter-company transactions imported yet — add them via <b>Update Data → Import Inter-Company Transactions</b>.</p>`;
-    showModal('Inter-Company AR/AP',h,true);
+    h+=`<p style="color:var(--muted);font-size:12.5px">No loan affiliate transactions imported yet — add them via <b>Update Data → Import Loan Affiliate Transactions</b>.</p>`;
+    showModal('Loan Affiliate',h,true);
     return;
   }
   h+=`<div style="display:flex;align-items:center;margin-bottom:10px;gap:10px">
@@ -3178,7 +3178,7 @@ function openIntercompany(){
     h+=`<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':''} PT found.</td></tr>`;
   }
   h+=`</tbody></table></div>`;
-  showModal('Inter-Company AR/AP',h,true);
+  showModal('Loan Affiliate',h,true);
   const si=document.getElementById('ic-search');
   if(si && document.activeElement!==si && IC_SEARCH_FOCUS){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
 }
@@ -3236,7 +3236,7 @@ async function deleteIcTx(id,encOwner){
 function openIcTxEdit(id,encOwner){
   const r=IC_TX.find(t=>t.id===id); if(!r) return;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openIntercompanyOwner('${encOwner}')">‹ Back</button>`;
-  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Inter-Company Transaction</h4>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Loan Affiliate Transaction</h4>`;
   const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">PT (Owner): <b style="color:var(--ink)">${escH(r.owner)}</b></div>`
     +opeField('Counterparty',`<input id="ictxe-cp" value="${escH(r.cp)}" style="${inp}">`)
@@ -3246,7 +3246,7 @@ function openIcTxEdit(id,encOwner){
     +opeField('Amount (IDR)',`<input id="ictxe-amt" type="number" min="0" step="1" value="${r.amt}" style="${inp}">`)
     +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveIcTxEdit(${id},'${encOwner}')">Save changes</button>`
     +`<span id="ictxe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
-  showModal('Edit Inter-Company Transaction',h);
+  showModal('Edit Loan Affiliate Transaction',h);
 }
 async function saveIcTxEdit(id,encOwner){
   const err=document.getElementById('ictxe-err'); err.textContent='';
@@ -6475,12 +6475,12 @@ function renderAgingChart(){
 }
 function renderIcSummary(){
   const el=document.getElementById('icSummary'); if(!el) return;
-  if(!INTERCOMPANY.length){ el.innerHTML='<div style="font-size:12.5px;color:var(--muted)">No inter-company recap loaded yet.</div>'; return; }
-  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
-  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  if(!IC_TX.length){ el.innerHTML='<div style="font-size:12.5px;color:var(--muted)">No loan affiliate transactions imported yet.</div>'; return; }
+  const totAR=IC_TX.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
+  const totAP=IC_TX.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
   const net=totAR-totAP;
   const byOwner={};
-  INTERCOMPANY.forEach(r=>{ const v=(r.type==='AR'?1:-1)*(r.amt-r.setoran); byOwner[r.owner]=(byOwner[r.owner]||0)+v; });
+  IC_TX.forEach(r=>{ const v=(r.type==='AR'?1:-1)*r.amt; byOwner[r.owner]=(byOwner[r.owner]||0)+v; });
   const rows=Object.entries(byOwner).sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,5);
   el.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12.5px"><span style="color:var(--muted)">Total Receivable</span><b style="color:#1f8a61">${fmtB(totAR)}</b></div>`
     +`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:12.5px"><span style="color:var(--muted)">Total Payable</span><b style="color:#d92d20">${fmtB(totAP)}</b></div>`
@@ -7837,7 +7837,7 @@ async function renderEntryBody(){
   // outside this dashboard's 16 tracked entities), so there's no entity-matching step here, just
   // Type/Amount validation. Same download-template → upload → preview → confirm convention. ──
   {
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Import Inter-Company Transactions</summary>'
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Import Loan Affiliate Transactions</summary>'
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per AR/AP transaction (Owner PT, Counterparty, Type, Date, Description, Amount), then upload. Owner and Counterparty are free text — many counterparties are holding/investment PTs not tracked as entities in this dashboard.</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
@@ -8133,9 +8133,9 @@ async function renderEntryBody(){
   if(ictxTplBtn) ictxTplBtn.onclick=async()=>{
     ictxTplBtn.disabled=true;
     try{
-      await downloadValidatedTemplate('intercompany_transactions_template.xlsx','Inter-Company',
+      await downloadValidatedTemplate('loan_affiliate_transactions_template.xlsx','Loan Affiliate',
         ['Owner (PT)','Counterparty','Type','Date','Description','Amount'],
-        [eName(EIDS[0]),'Sample Counterparty PT','AP','2026-07-01','Sample inter-company transaction',1000000],
+        [eName(EIDS[0]),'Sample Counterparty PT','AP','2026-07-01','Sample loan affiliate transaction',1000000],
         [{col:'C',values:['AP','AR']}]);
     } finally { ictxTplBtn.disabled=false; }
   };
@@ -8147,8 +8147,8 @@ async function renderEntryBody(){
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet(rows);
     ws['!cols']=[{wch:32},{wch:32},{wch:8},{wch:12},{wch:50},{wch:16}];
-    XLSX.utils.book_append_sheet(wb,ws,'Inter-Company');
-    XLSX.writeFile(wb,'intercompany_transactions_export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    XLSX.utils.book_append_sheet(wb,ws,'Loan Affiliate');
+    XLSX.writeFile(wb,'loan_affiliate_transactions_export_'+new Date().toISOString().slice(0,10)+'.xlsx');
   };
   const ictxFileInp=document.getElementById('ictx-file');
   if(ictxFileInp) ictxFileInp.onchange=async()=>{
