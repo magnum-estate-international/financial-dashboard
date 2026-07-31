@@ -71,31 +71,35 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .alert strong{font-size:15px;display:block;margin-bottom:3px;color:var(--blue-900);font-weight:800}
 .alert .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;background:var(--blue-50);color:#9a6f0a}
 .alert.deficit .ic{background:#fdeef1;color:var(--red)}
-.exec-insight{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);border:var(--border);padding:22px 26px;margin-bottom:16px}
-.exec-insight-title{font-size:11px;font-weight:800;letter-spacing:1.4px;color:var(--blue-900);text-transform:uppercase;margin-bottom:16px}
-.exec-insight-body{display:flex;align-items:stretch;gap:22px}
-.exec-card{flex:none;width:210px;display:flex;gap:12px;align-items:flex-start;background:#fdeef1;border-radius:14px;padding:16px}
-.exec-card.surplus{background:#e3f2e8}
-.exec-card-ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none;background:#fff;color:var(--red)}
-.exec-card.surplus .exec-card-ic{color:#1f8a61}
-.exec-card-lab{font-size:11.5px;font-weight:700;color:var(--muted)}
-.exec-card-val{font-size:21px;font-weight:800;color:var(--blue-900);letter-spacing:-.4px;margin:2px 0 8px}
-.exec-badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.6px;padding:3px 9px;border-radius:20px}
-.exec-badge.lg{font-size:12.5px;padding:6px 16px;margin:6px 0 14px}
-.exec-card-sub{font-size:11px;color:var(--muted);margin-top:8px}
-.exec-eq{flex:1;display:flex;align-items:flex-end;gap:14px;padding:0 6px}
+.exec-insight{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);border:var(--border);border-top:3px solid var(--red);padding:16px 24px 18px;margin-bottom:16px}
+.exec-insight.surplus{border-top-color:#1f8a61}
+.exec-insight-title{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:var(--blue-900);text-transform:uppercase;margin-bottom:14px}
+.exec-insight-title svg{width:13px;height:13px;color:#c9974a}
+.exec-insight-body{display:flex;align-items:center;gap:20px}
+.exec-card{flex:none;width:186px;display:flex;gap:11px;align-items:center;background:linear-gradient(135deg,#fdeef1,#fbe1e6);border-radius:14px;padding:13px 14px}
+.exec-card.surplus{background:linear-gradient(135deg,#e3f2e8,#d7ede1)}
+.exec-card-ic{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:none;background:linear-gradient(135deg,#e0536e,#c23a54);color:#fff;box-shadow:0 6px 14px -6px rgba(217,83,110,.55)}
+.exec-card.surplus .exec-card-ic{background:linear-gradient(135deg,#34a87c,#227a58);box-shadow:0 6px 14px -6px rgba(31,138,97,.5)}
+.exec-card-lab{font-size:10.5px;font-weight:700;color:var(--muted)}
+.exec-card-val{font-size:19px;font-weight:800;color:var(--blue-900);letter-spacing:-.4px;margin:1px 0 6px;line-height:1.1}
+.exec-badge{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.6px;padding:2px 8px;border-radius:20px}
+.exec-badge.lg{font-size:12px;padding:5px 14px;margin:4px 0 10px}
+.exec-card-sub{display:none}
+.exec-eq{flex:1;display:flex;align-items:center;gap:10px;padding:0 4px}
 .exec-eq-item{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0}
-.exec-eq-lab{font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
-.exec-eq-val{font-size:14.5px;font-weight:800;margin:2px 0 10px}
-.exec-eq-bar-track{width:100%;height:90px;display:flex;align-items:flex-end}
-.exec-eq-bar{width:100%;border-radius:6px;min-height:6px}
-.exec-eq-op{flex:none;align-self:center;font-size:20px;font-weight:700;color:var(--muted);padding-bottom:38px}
-.exec-status{flex:none;width:230px;border-left:1px solid #eef0f4;padding-left:22px}
-.exec-status-lab{font-size:12.5px;font-weight:800;color:var(--blue-900);margin-bottom:10px}
-.exec-status-msg{display:flex;gap:8px;font-size:12.5px;font-weight:700;color:var(--blue-900);line-height:1.4;margin-bottom:8px}
+.exec-eq-ic{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;margin-bottom:6px;flex:none}
+.exec-eq-ic svg{width:13px;height:13px}
+.exec-eq-lab{font-size:10.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.exec-eq-val{font-size:14px;font-weight:800;margin:1px 0 8px}
+.exec-eq-bar-track{width:100%;height:50px;display:flex;align-items:flex-end}
+.exec-eq-bar{width:100%;border-radius:6px;min-height:5px}
+.exec-eq-op{flex:none;align-self:center;font-size:17px;font-weight:700;color:var(--muted);padding-bottom:18px}
+.exec-status{flex:none;width:220px;border-left:1px solid #eef0f4;padding-left:20px}
+.exec-status-lab{font-size:11.5px;font-weight:800;color:var(--blue-900);margin-bottom:8px}
+.exec-status-msg{display:flex;gap:7px;font-size:12px;font-weight:700;color:var(--blue-900);line-height:1.35;margin-bottom:7px}
 .exec-status-msg svg{flex:none;margin-top:1px}
-.exec-status-note{font-size:11.5px;color:var(--muted);line-height:1.5}
-@media(max-width:900px){.exec-insight-body{flex-wrap:wrap}.exec-card{width:100%}.exec-status{width:100%;border-left:0;padding-left:0;border-top:1px solid #eef0f4;padding-top:16px}}
+.exec-status-note{font-size:11px;color:var(--muted);line-height:1.45}
+@media(max-width:900px){.exec-insight-body{flex-wrap:wrap}.exec-card{width:100%}.exec-status{width:100%;border-left:0;padding-left:0;border-top:1px solid #eef0f4;padding-top:14px}}
 .divlabel{font-size:11px;font-weight:800;color:var(--blue-900);text-transform:uppercase;letter-spacing:1.4px;margin:32px 0 14px;
   display:flex;align-items:center;gap:10px}
 .divlabel svg.svgic{width:26px;height:26px;padding:6px;box-sizing:border-box;border-radius:9px;
@@ -2971,7 +2975,8 @@ function renderAlert(a){
   const statusBg=deficit?'#fdeef1':'#e3f2e8';
   const maxVal=Math.max(a.rev,a.opex,Math.abs(a.opNet),coverAmt,1);
   const barH=v=>Math.max(6,Math.round(Math.abs(v)/maxVal*90));
-  const barItem=(lab,val,color,grad)=>`<div class="exec-eq-item">
+  const barItem=(lab,val,color,grad,ic,icBg)=>`<div class="exec-eq-item">
+      <div class="exec-eq-ic" style="background:${icBg};color:${color}">${ic}</div>
       <div class="exec-eq-lab">${lab}</div>
       <div class="exec-eq-val" style="color:${color}">${fmtB(Math.abs(val))}</div>
       <div class="exec-eq-bar-track"><div class="exec-eq-bar" style="height:${barH(val)}%;background:${grad}"></div></div>
@@ -2985,31 +2990,30 @@ function renderAlert(a){
     : 'Operations are self-funding this period.';
   const note=deficit?'Continue monitoring cash flow and cost control.':'Maintain expense discipline to sustain the surplus.';
   const icNote=(consolidated&&deficit&&a.finIn>0)?`<div class="exec-status-note" style="margin-top:8px;padding-top:8px;border-top:1px solid #eef0f4">Inter-company financing in scope: IDR ${fmtB(a.finIn)} (excluded above — internal to the group).</div>`:'';
-  el.innerHTML=`<div class="exec-insight">
-    <div class="exec-insight-title">Executive Financial Insight</div>
+  el.innerHTML=`<div class="exec-insight${deficit?'':' surplus'}">
+    <div class="exec-insight-title">${ICON.pulse(13)} Executive Financial Insight</div>
     <div class="exec-insight-body">
       <div class="exec-card${deficit?'':' surplus'}">
-        <div class="exec-card-ic">${deficit?ICON.trendDown(20):ICON.trend(20)}</div>
+        <div class="exec-card-ic">${deficit?ICON.trendDown(19):ICON.trend(19)}</div>
         <div>
           <div class="exec-card-lab">${deficit?'Operating Deficit':'Operating Surplus'}</div>
           <div class="exec-card-val">IDR ${fmtB(Math.abs(a.opNet))}</div>
           <span class="exec-badge" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
-          <div class="exec-card-sub">vs Revenue</div>
         </div>
       </div>
       <div class="exec-eq">
-        ${barItem('Revenue',a.rev,'#1f8a61','linear-gradient(180deg,#6fc79a,#34a87c)')}
+        ${barItem('Revenue',a.rev,'#1f8a61','linear-gradient(180deg,#6fc79a,#34a87c)',ICON.trend(13),'#e3f2e8')}
         <div class="exec-eq-op">–</div>
-        ${barItem('Operating Expenses',a.opex,'#d92d20','linear-gradient(180deg,#f0879e,#d9536e)')}
+        ${barItem('Op. Expenses',a.opex,'#d92d20','linear-gradient(180deg,#f0879e,#d9536e)',ICON.trendDown(13),'#fdeef1')}
         <div class="exec-eq-op">=</div>
-        ${barItem('Operating Result',a.opNet,deficit?'#d92d20':'#1f8a61',deficit?'#e8788a':'linear-gradient(180deg,#6fc79a,#34a87c)')}
+        ${barItem('Op. Result',a.opNet,deficit?'#d92d20':'#1f8a61',deficit?'#e8788a':'linear-gradient(180deg,#6fc79a,#34a87c)',deficit?ICON.warn(13):ICON.check(13),deficit?'#fdeef1':'#e3f2e8')}
         <div class="exec-eq-op">+</div>
-        ${barItem(coverLabel,coverAmt,'#1f8a61','linear-gradient(180deg,#6fc79a,#34a87c)')}
+        ${barItem(coverLabel,coverAmt,'#1f8a61','linear-gradient(180deg,#6fc79a,#34a87c)',ICON.shield(13),'#e3f2e8')}
       </div>
       <div class="exec-status">
         <div class="exec-status-lab">Financial Status</div>
         <span class="exec-badge lg" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
-        <div class="exec-status-msg"><span style="color:${statusColor}">${ICON.shield(16)}</span> ${msg}</div>
+        <div class="exec-status-msg"><span style="color:${statusColor}">${ICON.shield(15)}</span> ${msg}</div>
         <div class="exec-status-note">${note}</div>
         ${icNote}
       </div>
