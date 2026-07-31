@@ -202,6 +202,8 @@ tr:hover td{background:#f7f8fc}
 .tag.cap{background:#fdeed6;color:#a86a1a}
 .tx-doc-chip{display:inline-grid;place-items:center;width:26px;height:26px;border:1px solid #e8d9b0;background:#faf3e2;color:#9a6f0a;border-radius:8px;padding:0;cursor:pointer}
 .tx-doc-chip:hover{background:#f5e8c8}
+.tx-doc-chip-empty{border-style:dashed;background:transparent;color:#c5cbdb}
+.tx-doc-chip-empty:hover{background:#faf3e2;color:#9a6f0a;border-color:#e8d9b0}
 .table-scroll{max-height:430px;overflow:auto;border-radius:12px;scrollbar-width:thin;scrollbar-color:#c5cbdb transparent}
 .table-scroll::-webkit-scrollbar{width:8px;height:8px}
 .table-scroll::-webkit-scrollbar-thumb{background:#e0e3ec;border-radius:8px}
@@ -4101,18 +4103,21 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const amtCls = x.contra ? 'amb' : cls;
   const tagHtml = x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '';
   const entCell = showEntity ? `<td>${pill(x.e)}</td>` : '';
-  // Document view is its own cell, shown to every user regardless of edit permission (viewers
-  // included) — separate from the editor-only ⋮ actions menu, and always positioned immediately
-  // to its left.
-  const docCell = `<td style="white-space:nowrap">${txDocChip(x)}</td>`;
+  const hasDoc=Array.isArray(x.attachments)&&x.attachments.length>0;
+  const bc=(x.id!=null)?encodeURIComponent(backCall).replace(/'/g,'%27'):null;
+  // Document control is its own cell, positioned immediately before the ⋮ actions menu:
+  // - a document already attached shows a solid "view" icon to EVERY user (viewers included),
+  //   since anyone who can see this transaction should be able to open its supporting document.
+  // - no document yet shows an outlined "upload" icon, but only to editors (canEdit) — otherwise
+  //   the cell is left empty rather than showing an upload affordance a viewer can't use.
+  let docCell = `<td></td>`;
+  if(hasDoc){
+    docCell = `<td style="white-space:nowrap">${txDocChip(x)}</td>`;
+  } else if(canEdit && x.id!=null){
+    docCell = `<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerTxDocUpload(${x.id},'${bc}')" title="Upload supporting document">${ICON.file(13)}</button></td>`;
+  }
   let editCell = `<td></td>`;
   if(canEdit && x.id!=null){
-    // encodeURIComponent deliberately leaves ' unescaped (it's in its "safe" set) — but bc is about
-    // to be wrapped in '...' as a JS string argument inside an onclick="..." HTML attribute, so an
-    // unescaped ' would terminate that JS string early. Percent-encode it manually; decodeURIComponent
-    // reverses %27 back to ' exactly like any other percent-escape.
-    const bc=encodeURIComponent(backCall).replace(/'/g,'%27');
-    const hasDoc=Array.isArray(x.attachments)&&x.attachments.length>0;
     const items=[
       menuItem(ICON.history()+' History',`openTxHistory(${x.id},'${bc}')`),
       menuItem(ICON.edit()+' Edit',`openTxEdit(${x.id},'${bc}')`),
