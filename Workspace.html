@@ -3218,7 +3218,7 @@ function renderKpiFin(a){
 function mkOutstanding(o){
   const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
   return {id:o.id,e:o.entity_code,cat:o.category,vendor:o.vendor_name,desc:o.description,invNo:o.invoice_number,inv:o.invoice_date,due:o.due_date,
-    amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date,docUrl:o.document_url,freq:o.frequency||'OTP'};
+    amt,paidAmt,remaining:amt-paidAmt,status:o.status,paidDate:o.paid_date,docUrl:o.document_url,attachments:Array.isArray(o.attachments)?o.attachments:[],freq:o.frequency||'OTP'};
 }
 const FREQ_LABEL={OTP:'One Time Payment',REC:'Monthly Payment',PRG:'By Progress'};
 // Only render a value as a clickable link if it's a plain http(s) URL — guards against a
@@ -4112,16 +4112,16 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   //   the cell is left empty rather than showing an upload affordance a viewer can't use.
   let docCell = `<td></td>`;
   if(hasDoc){
-    docCell = `<td style="white-space:nowrap">${txDocChip(x)}</td>`;
+    docCell = `<td style="white-space:nowrap">${docViewChip('transaction-docs',x.attachments)}</td>`;
   } else if(canEdit && x.id!=null){
-    docCell = `<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerTxDocUpload(${x.id},'${bc}')" title="Upload supporting document">${ICON.file(13)}</button></td>`;
+    docCell = `<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerDocUpload('transactions',${x.id},'${bc}')" title="Upload supporting document">${ICON.file(13)}</button></td>`;
   }
   let editCell = `<td></td>`;
   if(canEdit && x.id!=null){
     const items=[
       menuItem(ICON.history()+' History',`openTxHistory(${x.id},'${bc}')`),
       menuItem(ICON.edit()+' Edit',`openTxEdit(${x.id},'${bc}')`),
-      menuItem((hasDoc?'🔄 Replace Document':'📎 Upload Document'),`triggerTxDocUpload(${x.id},'${bc}')`),
+      menuItem((hasDoc?'🔄 Replace Document':'📎 Upload Document'),`triggerDocUpload('transactions',${x.id},'${bc}')`),
       menuItem(ICON.trash()+' Delete',`deleteTxRow(${x.id},'${bc}')`,'var(--red)'),
     ];
     editCell = `<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${x.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
@@ -4139,56 +4139,87 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
     ${editCell}
   </tr>`;
 }
-// ─── Transaction supporting documents ────────────────────────────────────────────────────────
-// One optional supporting document (receipt/voucher/statement) per transaction row, stored in the
-// private 'transaction-docs' bucket under `${entity_code}/${transaction_id}/...`. RLS on that bucket
-// mirrors the transactions table itself: any user with view access to that entity can open the doc
-// (the "everyone can see it" ask), but only editors/admins can upload/replace one — enforced via
-// allowed_entity()/user_role_of() on storage.objects, not just hidden in the UI.
-const TXDOC_BUCKET='transaction-docs';
-// expiresIn defaults to 1hr for the inline "open now" click; the export flow below passes a
-// longer expiry since the resulting link sits in a downloaded file, not opened immediately.
-async function signTxDocUrl(path,expiresIn){
-  const r=await authedFetch(SB_URL+'/storage/v1/object/sign/'+TXDOC_BUCKET+'/'+path.split('/').map(encodeURIComponent).join('/'),
+// ─── Supporting documents (transactions + outstanding liabilities) ──────────────────────────────
+// One optional supporting document (receipt/voucher/invoice/permit) per row, stored in a private
+// per-feature bucket under `${entity_code}/${row_id}/...`. RLS on each bucket mirrors its table:
+// any user with view access to that entity can open the doc ("everyone can see it"), but only
+// editors/admins can upload/replace one — enforced via allowed_entity()/user_role_of() on
+// storage.objects, not just hidden in the UI. Generic across DOC_TABLES so both features (and any
+// future one) share the same upload/view/import code instead of duplicating it per table.
+const DOC_TABLES={
+  transactions:{bucket:'transaction-docs',arr:()=>TX},
+  outstanding_payables:{bucket:'outstanding-docs',arr:()=>OUTSTANDING},
+};
+// expiresIn defaults to 1hr for the inline "open now" click; the export flow passes a longer
+// expiry since the resulting link sits in a downloaded file, not opened immediately.
+async function signDocUrl(bucket,path,expiresIn){
+  const r=await authedFetch(SB_URL+'/storage/v1/object/sign/'+bucket+'/'+path.split('/').map(encodeURIComponent).join('/'),
     {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expiresIn:expiresIn||3600})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok||!d.signedURL) throw new Error(d.error||d.message||'Could not sign document URL');
   return SB_URL+'/storage/v1'+d.signedURL;
 }
-async function openTxDoc(encPath){
+async function openDoc(bucket,encPath){
   const path=decodeURIComponent(encPath);
-  try{ window.open(await signTxDocUrl(path),'_blank'); }
+  try{ window.open(await signDocUrl(bucket,path),'_blank'); }
   catch(e){ alert('Could not open document: '+e.message); }
 }
-function txDocChip(x){
-  const atts=Array.isArray(x.attachments)?x.attachments:[];
+function docViewChip(bucket,atts){
+  atts=Array.isArray(atts)?atts:[];
   if(!atts.length) return '';
   const a=atts[0];
-  return `<button type="button" class="tx-doc-chip" onclick="event.stopPropagation();openTxDoc('${encodeURIComponent(a.path)}')" title="View ${escH(a.name)}">${ICON.file(13)}</button>`;
+  return `<button type="button" class="tx-doc-chip" onclick="event.stopPropagation();openDoc('${bucket}','${encodeURIComponent(a.path)}')" title="View ${escH(a.name)}">${ICON.file(13)}</button>`;
 }
-function triggerTxDocUpload(id,backCall){
+function triggerDocUpload(table,id,backCall){
   const inp=document.createElement('input');
   inp.type='file'; inp.accept='.pdf,.jpg,.jpeg,.png,.heic,.webp'; inp.style.display='none';
   inp.onchange=async()=>{
     const file=inp.files[0]; inp.remove(); if(!file) return;
-    await saveTxDoc(id,file,backCall);
+    await saveDoc(table,id,file,backCall);
   };
   document.body.appendChild(inp); inp.click();
 }
-async function saveTxDoc(id,file,backCall){
+async function saveDoc(table,id,file,backCall){
   backCall=decodeURIComponent(backCall);
+  const cfg=DOC_TABLES[table];
   try{
     if(file.size>10*1024*1024) throw new Error('File must be under 10MB');
-    const x=TX.find(t=>t.id===id); if(!x) throw new Error('Transaction not found');
-    const path=`${x.e}/${id}/${Date.now()}_${file.name}`;
-    const up=await authedFetch(SB_URL+'/storage/v1/object/'+TXDOC_BUCKET+'/'+path.split('/').map(encodeURIComponent).join('/'),
+    const rec=cfg.arr().find(r=>r.id===id); if(!rec) throw new Error('Record not found');
+    const path=`${rec.e}/${id}/${Date.now()}_${file.name}`;
+    const up=await authedFetch(SB_URL+'/storage/v1/object/'+cfg.bucket+'/'+path.split('/').map(encodeURIComponent).join('/'),
       {method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
     if(!up.ok) throw new Error((await up.text())||('Upload HTTP '+up.status));
     const atts=[{path,name:file.name}];
-    await adminUpdateOne('transactions',id,{attachments:atts});
-    x.attachments=atts;
+    await adminUpdateOne(table,id,{attachments:atts});
+    rec.attachments=atts;
     eval(backCall);
   }catch(e){ alert('Upload failed: '+e.message); }
+}
+// Pulls a Google Drive-shared document (added before real upload existed, e.g. Outstanding
+// Liability's legacy "Document link" field) into our own private storage — via the
+// fetch-external-doc edge function, since the browser can't fetch drive.google.com directly
+// (CORS). Requires the Drive file to be shared "Anyone with the link"; the edge function reports
+// back clearly if it isn't, rather than silently failing.
+async function pullExternalDoc(table,id,encUrl,backCall){
+  const url=decodeURIComponent(encUrl);
+  backCall=decodeURIComponent(backCall);
+  const cfg=DOC_TABLES[table];
+  try{
+    const rec=cfg.arr().find(r=>r.id===id); if(!rec) throw new Error('Record not found');
+    const r=await authedFetch(SB_URL+'/functions/v1/fetch-external-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+    if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.error||('HTTP '+r.status)); }
+    const blob=await r.blob();
+    if(blob.size>10*1024*1024) throw new Error('File is larger than the 10MB storage limit');
+    const ext=((blob.type.split('/')[1]||'bin').replace(/[^a-z0-9]/gi,'').slice(0,10))||'bin';
+    const path=`${rec.e}/${id}/${Date.now()}_imported.${ext}`;
+    const up=await authedFetch(SB_URL+'/storage/v1/object/'+cfg.bucket+'/'+path.split('/').map(encodeURIComponent).join('/'),
+      {method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob});
+    if(!up.ok) throw new Error((await up.text())||('Upload HTTP '+up.status));
+    const atts=[{path,name:'Imported document'}];
+    await adminUpdateOne(table,id,{attachments:atts});
+    rec.attachments=atts;
+    eval(backCall);
+  }catch(e){ alert('Could not import document: '+e.message); }
 }
 function residualRowHtml(label,entCode,amt,cls,isRev,showEntity){
   const entCell = showEntity ? `<td>${label}</td>` : '';
@@ -4513,7 +4544,20 @@ function outstandingRowHtml(o){
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${overdueLabel(o.due,od)}</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
     if(canEdit) items.push(menuItem(ICON.dollar()+' Mark Paid',`openMarkPaidQuick(${o.id},'${o.e}','${OPE_TAB}')`));
   }
+  // Document: an uploaded file (attachments) always wins over the legacy external link — real
+  // upload replaced the old "paste a Drive link" field, which required the link be shared before
+  // any viewer could actually open it. Rows still carrying only the old link get an editor-only
+  // "Pull into secure storage" action to migrate it in (via the fetch-external-doc edge function,
+  // since the browser itself can't fetch drive.google.com — CORS).
+  const hasDoc=Array.isArray(o.attachments)&&o.attachments.length>0;
+  const legacyUrl=safeDocUrl(o.docUrl);
+  const bc=encodeURIComponent(`refreshOutstandingRowsInPlace('${o.e}','${OPE_TAB}',${o.id})`).replace(/'/g,'%27');
   if(canEdit){
+    items.push(menuItem((hasDoc?'🔄 Replace Document':'📎 Upload Document'),`triggerDocUpload('outstanding_payables',${o.id},'${bc}')`));
+    if(legacyUrl && !hasDoc){
+      const encUrl=encodeURIComponent(legacyUrl).replace(/'/g,'%27');
+      items.push(menuItem('⬇️ Pull link into secure storage',`pullExternalDoc('outstanding_payables',${o.id},'${encUrl}','${bc}')`));
+    }
     items.push(menuItem(ICON.edit()+' Edit',`openOutstandingEdit(${o.id},'${o.e}','${OPE_TAB}')`));
     items.push(menuItem(ICON.trash()+' Delete',`deleteOutstanding(${o.id},'${o.e}','${OPE_TAB}')`,'var(--red)'));
   }
@@ -4522,10 +4566,16 @@ function outstandingRowHtml(o){
   const amtCell=(o.status==='open'&&o.paidAmt>0)
     ? `<div>${fmt(o.remaining)}</div><div style="font-size:10px;color:var(--muted);font-weight:400">of ${fmt(o.amt)} — ${fmt(o.paidAmt)} paid</div>`
     : `${fmt(o.amt)}`;
-  const safeUrl=safeDocUrl(o.docUrl);
-  const docCell=safeUrl
-    ? `<a href="${escH(safeUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#b8860b;text-decoration:none">${ICON.doc()} View</a>`
-    : `<span style="font-size:11.5px;color:var(--muted)">—</span>`;
+  let docCell;
+  if(hasDoc){
+    docCell=docViewChip('outstanding-docs',o.attachments);
+  } else if(legacyUrl){
+    docCell=`<a href="${escH(legacyUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#b8860b;text-decoration:none" title="Legacy link — requires the file be shared; use &quot;Pull into secure storage&quot; from the ⋮ menu to fix this">${ICON.doc()} View</a>`;
+  } else if(canEdit){
+    docCell=`<button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerDocUpload('outstanding_payables',${o.id},'${bc}')" title="Upload supporting document">${ICON.file(13)}</button>`;
+  } else {
+    docCell=`<span style="font-size:11.5px;color:var(--muted)">—</span>`;
+  }
   const wrap='word-break:break-word;overflow-wrap:break-word;vertical-align:top';
   const va='vertical-align:top';
   const FREQ_BADGE={REC:'background:#f5e8c8;color:#9a6f0a',PRG:'background:#fdf0d5;color:#a8681f'};
@@ -7668,6 +7718,7 @@ async function renderEntryBody(){
       +'<select id="opd-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<button id="opd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
       +'</div>'
+      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:12px"><b>Legacy document links</b> (older rows still using a pasted Google Drive URL instead of a real upload) require the link be shared before a viewer can open it. <button id="opd-migrate" type="button" style="border:0;background:none;color:#9a6f0a;font-weight:700;text-decoration:underline;cursor:pointer;padding:0;font-size:12px">Migrate all Drive links into secure storage</button> pulls every one it can (must be shared "Anyone with the link") into the same private, always-viewable storage the new upload feature uses.<div id="opd-migrate-msg" style="margin-top:6px;min-height:1px"></div></div>'
       +'<div id="opd-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
@@ -7824,7 +7875,7 @@ async function renderEntryBody(){
       if(withDocs.length) txExpBtn.innerHTML='Signing '+withDocs.length+' document link'+(withDocs.length===1?'':'s')+'…';
       const linkByTxId={};
       await Promise.all(withDocs.map(async t=>{
-        try{ linkByTxId[t.id]=await signTxDocUrl(t.attachments[0].path,604800); }catch(e){ linkByTxId[t.id]=''; }
+        try{ linkByTxId[t.id]=await signDocUrl('transaction-docs',t.attachments[0].path,604800); }catch(e){ linkByTxId[t.id]=''; }
       }));
       const FLBL={opex:'Opex',rev:'Revenue',fin_in:'Financing In',fin_out:'Financing Out'};
       const rows=[['Date','Entity','Flow','Category','Vendor','Description','Amount','Document Link']];
@@ -7934,6 +7985,45 @@ async function renderEntryBody(){
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
       const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
       XLSX.writeFile(wb,'outstanding_payables_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    };
+    // Bulk-migrates every Outstanding Liability still on the legacy "pasted Drive link" field (no
+    // real upload yet) into the same private, always-viewable storage the upload feature uses —
+    // one at a time (not parallel) so 260+ documents don't hammer the Drive/edge-function endpoint
+    // at once. Rows whose Drive file isn't shared "Anyone with the link" fail individually and are
+    // reported, not silently skipped — the migration can't fix a permission it has no control over.
+    const migrateBtn=document.getElementById('opd-migrate');
+    if(migrateBtn) migrateBtn.onclick=async()=>{
+      const msgEl=document.getElementById('opd-migrate-msg');
+      const targets=OUTSTANDING.filter(o=>(!o.attachments||!o.attachments.length)&&safeDocUrl(o.docUrl));
+      if(!targets.length){ msgEl.style.color='#3a4254'; msgEl.textContent='Nothing to migrate — every document is already in secure storage.'; return; }
+      if(!confirm('Migrate '+targets.length+' legacy document link'+(targets.length===1?'':'s')+' into secure storage? This can take a few minutes.')) return;
+      migrateBtn.disabled=true;
+      let ok=0; const failures=[];
+      for(let i=0;i<targets.length;i++){
+        const o=targets[i];
+        msgEl.style.color='#3a4254';
+        msgEl.textContent='Migrating '+(i+1)+' of '+targets.length+'… ('+ok+' done, '+failures.length+' failed)';
+        try{
+          const r=await authedFetch(SB_URL+'/functions/v1/fetch-external-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:safeDocUrl(o.docUrl)})});
+          if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.error||('HTTP '+r.status)); }
+          const blob=await r.blob();
+          if(blob.size>10*1024*1024) throw new Error('File exceeds the 10MB storage limit');
+          const ext=((blob.type.split('/')[1]||'bin').replace(/[^a-z0-9]/gi,'').slice(0,10))||'bin';
+          const path=`${o.e}/${o.id}/${Date.now()}_imported.${ext}`;
+          const up=await authedFetch(SB_URL+'/storage/v1/object/outstanding-docs/'+path.split('/').map(encodeURIComponent).join('/'),
+            {method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob});
+          if(!up.ok) throw new Error((await up.text())||('Upload HTTP '+up.status));
+          const atts=[{path,name:'Imported document'}];
+          await adminUpdateOne('outstanding_payables',o.id,{attachments:atts});
+          o.attachments=atts;
+          ok++;
+        }catch(e){ failures.push({o,msg:e.message}); }
+      }
+      migrateBtn.disabled=false;
+      msgEl.style.color=failures.length?'#b3261e':'#2b7a4b';
+      msgEl.innerHTML=ok+' migrated, '+failures.length+' failed.'
+        +(failures.length?'<div style="margin-top:6px;max-height:160px;overflow:auto;font-size:11px;color:#3a4254">'
+          +failures.map(f=>escH(eName(f.o.e))+' — '+escH(f.o.vendor)+': '+escH(f.msg)).join('<br>')+'</div>':'');
     };
     const opexCats2=cats.filter(c=>c.kind==='opex');
     const tplBtn=document.getElementById('opd-template');
