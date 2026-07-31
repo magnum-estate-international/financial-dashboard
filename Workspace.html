@@ -3091,7 +3091,7 @@ function renderKpiCash(a){
       +`<div class="kpi1-row"><div class="kpi1-fixcost">${fixCostCard()}</div>`
       +`<div class="panel kpi1-entchart"><h2 style="font-size:13px">Revenue vs Op. Expense by Entity</h2>`
       +`<div class="pn-sub" style="font-size:10.5px;color:var(--muted);margin-top:2px">Log scale · click a bar to filter that entity</div>`
-      +`<div class="chart-box" style="height:110px;margin-top:6px"><canvas id="entChartCompact"></canvas></div></div></div>`;
+      +`<div class="chart-box" style="height:150px;margin-top:6px"><canvas id="entChartCompact"></canvas></div></div></div>`;
     renderEntChartCompact();
   }
   const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
@@ -3481,7 +3481,7 @@ function renderEntChartCompact(){
   if(entChartCompact) entChartCompact.destroy();
   Chart.defaults.font.family='Plus Jakarta Sans, sans-serif'; Chart.defaults.color='#3a4254';
   entChartCompact=new Chart(canvas,{type:'bar',
-    data:{labels:ids.map(id=>ENT[id].name),datasets:[
+    data:{labels:ids.map(id=>ENT[id].short),datasets:[
       {label:'Operating Revenue',data:revD,backgroundColor:'#34a87c',borderRadius:3},
       {label:'Operating Expense',data:oxD,backgroundColor:'#f27a9d',borderRadius:3}]},
     options:{responsive:true,maintainAspectRatio:false,
@@ -3489,7 +3489,7 @@ function renderEntChartCompact(){
       plugins:{legend:{display:false},
         tooltip:{callbacks:{title:items=>ENT[ids[items[0].dataIndex]].name,label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
       scales:{y:{type:'logarithmic',display:false},
-        x:{grid:{display:false},ticks:{display:false}}}}});
+        x:{grid:{display:false},ticks:{font:{size:8},maxRotation:60,minRotation:60,autoSkip:false}}}}});
 }
 function renderOpexChart(a){
   const items=Object.entries(a.opexBD).sort((x,y)=>y[1]-x[1]);
