@@ -3198,7 +3198,7 @@ function openIntercompanyOwner(encOwner){
       const cls=r.type==='AP'?'neg':'pos';
       const badge=r.type==='AP'?'background:#fbe9e7;color:#b3261e':'background:#e3f2e8;color:#2b7a4b';
       const net=r.amt-r.setoran;
-      h+=`<tr><td style="font-size:12.5px">${escH(r.cp)}</td><td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span></td>`
+      h+=`<tr class="clickable" style="cursor:pointer" onclick="openIcRowDetail(${r.id},'${encOwner}')"><td style="font-size:12.5px">${escH(r.cp)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span></td>`
         +`<td class="num" style="color:var(--muted)">${fmt(r.amt)}</td>`
         +`<td class="num" style="color:var(--muted)" title="${r.setoranNote?escH(r.setoranNote):''}">${r.setoran?'− '+fmt(r.setoran):'—'}</td>`
         +`<td class="num ${cls}"><strong>${fmt(net)}</strong></td></tr>`;
@@ -3208,6 +3208,30 @@ function openIntercompanyOwner(encOwner){
   }
   h+=`</tbody></table></div>`;
   showModal(owner,h,true);
+}
+// Full-record detail for a single Inter-Company AR/AP entry — surfaces fields the summary row
+// truncates or hides entirely (the full Setoran Modal note, which source file it was imported
+// from), since that row is already the finest granularity this recap data has (one ledger line
+// per owner/counterparty/type combination, not an aggregate of finer sub-transactions).
+function openIcRowDetail(id,encOwner){
+  const r=INTERCOMPANY.find(x=>x.id===id); if(!r) return;
+  const net=r.amt-r.setoran;
+  const cls=r.type==='AP'?'#b3261e':'#2b7a4b';
+  const badge=r.type==='AP'?'background:#fbe9e7;color:#b3261e':'background:#e3f2e8;color:#2b7a4b';
+  const field=(lab,val)=>`<tr><td style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 14px 8px 0;vertical-align:top;white-space:nowrap">${lab}</td><td style="font-size:13px;padding:8px 0">${val}</td></tr>`;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openIntercompanyOwner('${encOwner}')">‹ Back to ${escH(decodeURIComponent(encOwner))}</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(r.owner)} — ${escH(r.cp)}</h4>`;
+  h+=`<table>`
+    +field('Type',`<span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;${badge}">${r.type}</span>`)
+    +field('Owner (PT)',escH(r.owner))
+    +field('Counterparty',escH(r.cp))
+    +field('Gross',fmt(r.amt))
+    +field('Setoran Modal',r.setoran?('− '+fmt(r.setoran)):'—')
+    +(r.setoranNote?field('Setoran Modal note',escH(r.setoranNote)):'')
+    +field('AR/AP Net',`<strong style="color:${cls}">${fmt(net)}</strong>`)
+    +field('Source file',r.source?escH(r.source):'—')
+    +`</table>`;
+  showModal('Inter-Company AR/AP — Detail',h);
 }
 function renderKpiFin(a){
   const pos=a.fullNet>=0;
