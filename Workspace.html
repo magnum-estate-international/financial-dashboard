@@ -91,7 +91,8 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .exec-eq-ic svg{width:11px;height:11px}
 .exec-eq-lab{font-size:9.5px;font-weight:700;color:var(--muted);white-space:nowrap;letter-spacing:.3px}
 .exec-eq-val{font-size:13px;font-weight:800;margin:1px 0 5px}
-.exec-flow-ribbon{width:100%;height:16px;border-radius:8px}
+.exec-flow-ribbon{width:100%;height:56px;border-radius:8px;overflow:hidden}
+.exec-wave-svg{width:100%;height:100%;display:block}
 .exec-flow-tag{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.4px;padding:2px 9px;border-radius:20px;margin-top:8px}
 .exec-flow-desc{font-size:9.5px;color:var(--muted);line-height:1.3;margin-top:4px;max-width:120px}
 .exec-takeaway{display:flex;align-items:center;gap:9px;background:linear-gradient(90deg,#faf3e2,#f7ecd6);border:1px solid #ecdcb8;border-radius:12px;padding:9px 14px;margin-top:12px}
@@ -2985,9 +2986,55 @@ function renderAlert(a){
       <span class="exec-flow-tag" style="background:${tagBg};color:${color}">${tag}</span>
       <div class="exec-flow-desc">${desc}</div>
     </div>`;
-  // one continuous ribbon: green under Revenue, red under Op. Expenses & Op. Result (or green
-  // if a surplus), back to green under Capital Deposits — soft blends at each quarter boundary
-  const flowGradient=`linear-gradient(90deg,#34a87c 0%,#34a87c 22%,${resultColor} 28%,${resultColor} 72%,#34a87c 78%,#34a87c 100%)`;
+  // The ribbon is a real waterfall/cash-flow wave, not a flat bar: it rises for Revenue, dips
+  // below the zero baseline for the Op. Expenses/Op. Result deficit, then climbs back toward (or
+  // past) zero once Capital Deposits are added — so the shape itself shows the shortfall, using
+  // the same rev/opNet/coverAmt figures already computed above (nothing fabricated).
+  const buildWaveSVG=()=>{
+    const W=800,H=90,baseY=48,amp=34;
+    // Positive and negative excursions are scaled independently (each against its own max) so a
+    // deficit that's small next to revenue in absolute IDR still reads as a clear, real dip below
+    // the zero line rather than disappearing under revenue's much larger scale — the exact figures
+    // are already printed as text above each point, so this only affects the shape's readability,
+    // not what numbers are reported.
+    const finalNet=a.opNet+coverAmt;
+    const posMax=Math.max(a.rev,Math.max(a.opNet,0),Math.max(finalNet,0),1);
+    const negMax=Math.max(Math.max(-a.opNet,0),Math.max(-finalNet,0),1);
+    const y=v=>Math.round((v>=0?baseY-(v/posMax)*amp:baseY+(Math.abs(v)/negMax)*amp)*100)/100;
+    const pts=[{x:0,y:baseY},{x:100,y:y(a.rev)},{x:300,y:y(a.opNet)},{x:500,y:y(a.opNet)},{x:700,y:y(a.opNet+coverAmt)},{x:800,y:y(a.opNet+coverAmt)}];
+    let d=`M ${pts[0].x} ${pts[0].y}`;
+    for(let i=1;i<pts.length;i++){
+      const p0=pts[i-1],p1=pts[i],midX=(p0.x+p1.x)/2;
+      d+=` C ${midX} ${p0.y}, ${midX} ${p1.y}, ${p1.x} ${p1.y}`;
+    }
+    const areaD=`${d} L 800 ${baseY} L 0 ${baseY} Z`;
+    const markers=[[100,a.rev],[300,a.opNet],[700,a.opNet+coverAmt]]
+      .map(([x,v])=>`<circle cx="${x}" cy="${y(v)}" r="4.5" fill="#fff" stroke="${v>=0?'#1f8a61':'#d9536e'}" stroke-width="2.5"/>`).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="exec-wave-svg">
+      <defs>
+        <linearGradient id="waveFill" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#34a87c" stop-opacity=".35"/>
+          <stop offset="22%" stop-color="#34a87c" stop-opacity=".35"/>
+          <stop offset="30%" stop-color="${resultColor}" stop-opacity=".3"/>
+          <stop offset="70%" stop-color="${resultColor}" stop-opacity=".3"/>
+          <stop offset="78%" stop-color="#34a87c" stop-opacity=".35"/>
+          <stop offset="100%" stop-color="#34a87c" stop-opacity=".35"/>
+        </linearGradient>
+        <linearGradient id="waveStroke" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#1f8a61"/>
+          <stop offset="22%" stop-color="#1f8a61"/>
+          <stop offset="30%" stop-color="${resultColor}"/>
+          <stop offset="70%" stop-color="${resultColor}"/>
+          <stop offset="78%" stop-color="#1f8a61"/>
+          <stop offset="100%" stop-color="#1f8a61"/>
+        </linearGradient>
+      </defs>
+      <line x1="0" y1="${baseY}" x2="800" y2="${baseY}" stroke="#d8dbe3" stroke-width="1.5" stroke-dasharray="3,4"/>
+      <path d="${areaD}" fill="url(#waveFill)"/>
+      <path d="${d}" fill="none" stroke="url(#waveStroke)" stroke-width="3.5" stroke-linecap="round"/>
+      ${markers}
+    </svg>`;
+  };
   const msg=deficit
     ? (covered
         ? `Deficit is covered by ${consolidated?'shareholder capital deposits':'financing support'}.`
@@ -3021,7 +3068,7 @@ function renderAlert(a){
           ${flowItem('Op. Result',a.opNet,resultColor,deficit?ICON.warn(13):ICON.check(13),deficit?'#fdeef1':'#e3f2e8',deficit?'Deficit':'Surplus',deficit?'#fdeef1':'#e3f2e8',`Operating result (${deficit?'deficit':'surplus'})`)}
           ${flowItem(coverLabel,coverAmt,'#1f8a61',ICON.shield(13),'#e3f2e8','Coverage','#e3f2e8',consolidated?'Shareholder capital deposits':'Financing received')}
         </div>
-        <div class="exec-flow-ribbon" style="background:${flowGradient}"></div>
+        <div class="exec-flow-ribbon">${buildWaveSVG()}</div>
       </div>
     </div>
     <div class="exec-takeaway">
