@@ -121,6 +121,15 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .pos{color:var(--green)}.neg{color:var(--red)}.amb{color:var(--amber)}
 .grid{display:grid;gap:16px}
 .cols-eq{grid-template-columns:1fr 1fr}
+.cols-3{grid-template-columns:repeat(3,1fr)}
+.health-row{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+.health-row:last-child{margin-bottom:0}
+.health-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;background:linear-gradient(135deg,#faf3e2,#f5e8c8);color:#9a6f0a}
+.health-bar-track{flex:1;height:7px;border-radius:4px;background:#edeff5;overflow:hidden;margin-top:4px}
+.health-bar-fill{height:100%;border-radius:4px}
+.health-label{font-size:12.5px;font-weight:700;color:var(--blue-900);display:flex;justify-content:space-between}
+.ic-summary-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid #f0f1f6;font-size:12.5px}
+.ic-summary-row:last-child{border-bottom:0}
 .panel{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);padding:24px;border:var(--border)}
 .panel h2{font-size:17px;font-weight:800;color:var(--blue-900);margin-bottom:2px;letter-spacing:-.2px}
 .panel .pn-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
@@ -240,8 +249,8 @@ footer::before{content:"";display:block;width:56px;height:4px;margin:0 auto 16px
 .pcard.bal.b-none .bic{background:#eef0f5;filter:grayscale(.4);opacity:.75}
 a{color:#9a6f0a}
 :focus-visible{outline:2px solid #b8860b;outline-offset:2px}
-@media(max-width:980px){.kpi4,.kpi3,.cols-eq{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 14px 40px}.toolbar{position:static}}
-@media(max-width:600px){.kpi4,.kpi3,.kpi2,.cols-eq{grid-template-columns:1fr}}
+@media(max-width:980px){.kpi4,.kpi3,.cols-eq,.cols-3{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 14px 40px}.toolbar{position:static}}
+@media(max-width:600px){.kpi4,.kpi3,.kpi2,.cols-eq,.cols-3{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
 @media print{.toolbar{display:none}}
 </style>
@@ -328,6 +337,39 @@ a{color:#9a6f0a}
 <div class="kpi2" id="kpiCash"></div>
 
 <div id="alertBox"></div>
+
+<div class="divlabel" id="secOverviewLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Dashboard Overview</div>
+<div class="grid cols-3" style="margin-bottom:16px">
+  <div class="panel">
+    <h2>Financial Health</h2>
+    <div class="pn-sub" style="font-size:11.5px;color:var(--muted);margin-top:2px">Computed from figures already on this dashboard</div>
+    <div id="finHealth" style="margin-top:16px"></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Cash In vs Cash Out</h2></div>
+    <div class="pn-sub" style="font-size:11.5px;color:var(--muted);margin-top:2px">Revenue+financing in vs Expenses+financing out, by month</div>
+    <div class="chart-box" style="height:230px;margin-top:10px"><canvas id="cashInOutChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Revenue by Entity</h2><a href="#" onclick="event.preventDefault();openDetail('rev')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+    <div class="chart-box" style="height:170px;margin-top:10px"><canvas id="revByEntChart"></canvas></div>
+    <div id="revByEntLegend" style="margin-top:10px"></div>
+  </div>
+</div>
+<div class="grid cols-3" style="margin-bottom:16px">
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Top Expense Categories</h2><span class="pn-sub" style="margin:0;font-size:11.5px;color:var(--muted)">This period</span></div>
+    <div id="topExpCats" style="margin-top:14px"></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Outstanding Liability Aging</h2><a href="#" onclick="event.preventDefault();openOutstanding('category')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+    <div class="chart-box" style="height:210px;margin-top:10px"><canvas id="agingChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Inter-Company AR/AP Summary</h2><span class="pn-sub" style="margin:0;font-size:11.5px;color:var(--muted)">All time</span></div>
+    <div id="icSummary" style="margin-top:12px"></div>
+  </div>
+</div>
 
 <div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Inter-Company AR/AP</div>
 <div class="kpi1" id="kpiIntercompany"></div>
@@ -5928,11 +5970,149 @@ function renderBalances(){
   tb.innerHTML=rows;
 }
 
+// ─── DASHBOARD OVERVIEW PANELS (Financial Health / Cash In-Out / Revenue by Entity /
+// Top Expense Categories / Outstanding Aging / Inter-Company Summary) — every figure here is
+// derived from data already computed elsewhere on this dashboard (agg(), effMonth(), OUTSTANDING,
+// FIXCOST, INTERCOMPANY). Metrics that would need data we don't have (true balance-sheet ratios
+// like Liquidity/Debt Ratio, a project-level revenue breakdown, monthly cash-position history)
+// are intentionally substituted with the closest honestly-computable equivalent rather than
+// guessed at — see the caption under Financial Health for exactly what each metric means. ───
+function healthBar2(pct,color){
+  const w=Math.max(0,Math.min(100,pct));
+  return `<div class="health-bar-track"><div class="health-bar-fill" style="width:${w}%;background:${color}"></div></div>`;
+}
+function renderFinancialHealth(a){
+  const el=document.getElementById('finHealth'); if(!el) return;
+  const revCov=a.opex>0?(a.rev/a.opex*100):null;
+  const fcBase=fixCostInScope().reduce((s,f)=>s+f.amt,0);
+  const fcAdh=(a.opex>0&&fcBase>0)?(fcBase/a.opex*100):null;
+  const open=outstandingOpen();
+  const openTot=open.reduce((s,o)=>s+o.remaining,0);
+  const overdueTot=open.filter(o=>daysOverdue(o.due)>0).reduce((s,o)=>s+o.remaining,0);
+  const overdueRate=openTot>0?(overdueTot/openTot*100):null;
+  const paid=outstandingPaid();
+  const onTimeN=paid.filter(o=>o.paidDate&&o.due&&o.paidDate<=o.due).length;
+  const onTimeRate=paid.length>0?(onTimeN/paid.length*100):null;
+  const rows=[
+    {ic:ICON.trend(15),lab:'Revenue Coverage',val:revCov,color:revCov==null?'#c5cbdb':revCov>=100?'#1f8a61':revCov>=80?'#e09a3a':'#d92d20'},
+    {ic:ICON.refresh(15),lab:'Fixed Cost Adherence',val:fcAdh,color:fcAdh==null?'#c5cbdb':(fcAdh>=90&&fcAdh<=110)?'#1f8a61':'#e09a3a'},
+    {ic:ICON.warn(15),lab:'Overdue Rate',val:overdueRate,color:overdueRate==null?'#c5cbdb':overdueRate<=15?'#1f8a61':overdueRate<=35?'#e09a3a':'#d92d20'},
+    {ic:ICON.check(15),lab:'On-time Payment',val:onTimeRate,color:onTimeRate==null?'#c5cbdb':onTimeRate>=80?'#1f8a61':onTimeRate>=60?'#e09a3a':'#d92d20'}
+  ];
+  el.innerHTML=rows.map(r=>`<div class="health-row">
+      <div class="health-ic">${r.ic}</div>
+      <div style="flex:1">
+        <div class="health-label"><span>${r.lab}</span><span style="color:${r.color}">${r.val==null?'—':r.val.toFixed(0)+'%'}</span></div>
+        ${healthBar2(r.val==null?0:r.val,r.color)}
+      </div>
+    </div>`).join('')
+    +`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.5">Revenue Coverage = revenue ÷ opex · Fixed Cost Adherence = fixed-cost baseline ÷ actual opex · Overdue Rate = overdue ÷ open payables · On-time Payment = share of paid invoices settled by their due date.</div>`;
+}
+let cashInOutChart=null;
+function renderCashInOutChart(){
+  const canvas=document.getElementById('cashInOutChart'); if(!canvas) return;
+  const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
+  const cashIn=[],cashOut=[],net=[];
+  Q2_MONTHS.forEach(mo=>{
+    let ci=0,co=0;
+    ids.forEach(id=>{ const m=effMonth(id,mo); if(m){ ci+=m.rev+m.finIn; co+=m.opex+m.finOut; } });
+    cashIn.push(ci); cashOut.push(co); net.push(ci-co);
+  });
+  const labels=Q2_MONTHS.map(mo=>MONTHS[mo].split(' ')[0]);
+  if(cashInOutChart) cashInOutChart.destroy();
+  Chart.defaults.font.family='Plus Jakarta Sans, sans-serif'; Chart.defaults.color='#3a4254';
+  cashInOutChart=new Chart(canvas,{type:'line',
+    data:{labels,datasets:[
+      {label:'Cash In',data:cashIn,borderColor:'#34a87c',backgroundColor:'#34a87c22',fill:true,tension:.35,pointRadius:3},
+      {label:'Cash Out',data:cashOut,borderColor:'#f27a9d',backgroundColor:'#f27a9d22',fill:true,tension:.35,pointRadius:3},
+      {label:'Net Cash Flow',data:net,borderColor:'#e09a3a',borderDash:[5,4],fill:false,tension:.35,pointRadius:3}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top',labels:{boxWidth:11,padding:12,font:{size:10.5}}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>fmtB(v)},grid:{color:'#edeff5'}},x:{grid:{display:false}}}}});
+}
+let revByEntChart=null;
+function renderRevByEntChart(){
+  const canvas=document.getElementById('revByEntChart'); if(!canvas) return;
+  const sorted=scopeIds().filter(id=>eff(id).rev>0).sort((x,y)=>eff(y).rev-eff(x).rev);
+  const labels=sorted.map(id=>ENT[id].name);
+  const vals=sorted.map(id=>eff(id).rev);
+  const cols=sorted.map(id=>ENT[id].color);
+  const tot=vals.reduce((s,v)=>s+v,0);
+  if(revByEntChart) revByEntChart.destroy();
+  revByEntChart=new Chart(canvas,{type:'doughnut',
+    data:{labels,datasets:[{data:vals,backgroundColor:cols,borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:c=>` ${c.label}: IDR ${fmt(c.parsed)}${tot>0?' ('+(c.parsed/tot*100).toFixed(1)+'%)':''}`}}}}});
+  const legend=document.getElementById('revByEntLegend');
+  if(legend){
+    legend.innerHTML=tot<=0?'<div style="font-size:12px;color:var(--muted)">No revenue in this scope</div>':sorted.slice(0,5).map((id,i)=>
+      `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0">
+        <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:9px;height:9px;border-radius:50%;background:${cols[i]};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ENT[id].short?ENT[id].short.join(' '):ENT[id].name}</span></span>
+        <span style="font-weight:700;color:var(--blue-900);flex:none;margin-left:8px">${(vals[i]/tot*100).toFixed(0)}%</span>
+      </div>`).join('');
+  }
+}
+function renderTopExpCats(a){
+  const el=document.getElementById('topExpCats'); if(!el) return;
+  const items=Object.entries(a.opexBD).sort((x,y)=>y[1]-x[1]).slice(0,6);
+  const max=items.length?items[0][1]:1;
+  el.innerHTML=items.length?items.map(([label,val],i)=>`<div style="margin-bottom:11px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span style="color:var(--blue-900);font-weight:600">${escH(label)}</span><span style="font-weight:700">${fmtB(val)}</span></div>
+      <div class="bd-bar"><div style="width:${(val/max*100).toFixed(1)}%;height:100%;background:${CATCOLORS[i%CATCOLORS.length]}"></div></div>
+    </div>`).join(''):'<div style="font-size:12.5px;color:var(--muted)">No expenses recorded in this scope.</div>';
+}
+function agingBuckets(){
+  const b=[0,0,0,0];
+  outstandingOpen().forEach(o=>{ const d=Math.max(0,daysOverdue(o.due));
+    if(d<=30) b[0]+=o.remaining; else if(d<=60) b[1]+=o.remaining; else if(d<=90) b[2]+=o.remaining; else b[3]+=o.remaining;
+  });
+  return b;
+}
+let agingChart=null;
+function renderAgingChart(){
+  const canvas=document.getElementById('agingChart'); if(!canvas) return;
+  const b=agingBuckets();
+  const tot=b.reduce((s,v)=>s+v,0);
+  const labels=['Current (0–30 days)','30 Days (31–60 days)','60 Days (61–90 days)','90+ Days (>90 days)'];
+  const cols=['#d9a92c','#8a6d1a','#1f8a61','#d92d20'];
+  if(agingChart) agingChart.destroy();
+  agingChart=new Chart(canvas,{type:'doughnut',
+    data:{labels,datasets:[{data:b,backgroundColor:cols,borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',
+      plugins:{legend:{position:'right',labels:{boxWidth:9,padding:8,font:{size:10}}},
+        tooltip:{callbacks:{label:c=>` ${c.label}: IDR ${fmt(c.parsed)}${tot>0?' ('+(c.parsed/tot*100).toFixed(0)+'%)':''}`}}}},
+    plugins:[{id:'agingCenterTot',afterDraw(chart){
+      const {ctx,chartArea}=chart; if(!chartArea) return;
+      const cx=(chartArea.left+chartArea.right)/2, cy=(chartArea.top+chartArea.bottom)/2;
+      ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font='700 15px Plus Jakarta Sans, sans-serif'; ctx.fillStyle='#141b2d'; ctx.fillText(tot>0?fmtB(tot):'—',cx,cy-8);
+      ctx.font='600 10px Plus Jakarta Sans, sans-serif'; ctx.fillStyle='#8891a8'; ctx.fillText('Total',cx,cy+10);
+      ctx.restore();
+    }}]});
+}
+function renderIcSummary(){
+  const el=document.getElementById('icSummary'); if(!el) return;
+  if(!INTERCOMPANY.length){ el.innerHTML='<div style="font-size:12.5px;color:var(--muted)">No inter-company recap loaded yet.</div>'; return; }
+  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
+  const net=totAR-totAP;
+  const byOwner={};
+  INTERCOMPANY.forEach(r=>{ const v=(r.type==='AR'?1:-1)*(r.amt-r.setoran); byOwner[r.owner]=(byOwner[r.owner]||0)+v; });
+  const rows=Object.entries(byOwner).sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,5);
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12.5px"><span style="color:var(--muted)">Total Receivable</span><b style="color:#1f8a61">${fmtB(totAR)}</b></div>`
+    +`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:12.5px"><span style="color:var(--muted)">Total Payable</span><b style="color:#d92d20">${fmtB(totAP)}</b></div>`
+    +`<div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid #eef2f7;margin-bottom:6px;font-size:12.5px"><span style="font-weight:700;color:var(--blue-900)">Net Balance</span><b style="color:${net>=0?'#1f8a61':'#d92d20'}">${net>=0?'+':''}${fmtB(net)}</b></div>`
+    +rows.map(([owner,v])=>`<div class="ic-summary-row"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%">${escH(owner)}</span><b style="color:${v>=0?'#1f8a61':'#d92d20'}">${v>=0?'+':''}${fmtB(v)}</b></div>`).join('');
+}
 function renderAll(){
   const a=agg();
   renderBanner();renderKpiCash(a);renderAlert(a);renderKpiOp(a);renderKpiFin(a);renderRecos(a);renderLiabTopVendor();renderLiabPriority();renderBalances();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
+  renderFinancialHealth(a);renderCashInOutChart();renderRevByEntChart();renderTopExpCats(a);renderAgingChart();renderIcSummary();
 }
 
 /* ══════════ SUPABASE LIVE DATA LAYER (added to connect this dashboard to the database) ══════════
