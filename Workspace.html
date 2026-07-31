@@ -4146,15 +4146,19 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
 // (the "everyone can see it" ask), but only editors/admins can upload/replace one — enforced via
 // allowed_entity()/user_role_of() on storage.objects, not just hidden in the UI.
 const TXDOC_BUCKET='transaction-docs';
+// expiresIn defaults to 1hr for the inline "open now" click; the export flow below passes a
+// longer expiry since the resulting link sits in a downloaded file, not opened immediately.
+async function signTxDocUrl(path,expiresIn){
+  const r=await authedFetch(SB_URL+'/storage/v1/object/sign/'+TXDOC_BUCKET+'/'+path.split('/').map(encodeURIComponent).join('/'),
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expiresIn:expiresIn||3600})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok||!d.signedURL) throw new Error(d.error||d.message||'Could not sign document URL');
+  return SB_URL+'/storage/v1'+d.signedURL;
+}
 async function openTxDoc(encPath){
   const path=decodeURIComponent(encPath);
-  try{
-    const r=await authedFetch(SB_URL+'/storage/v1/object/sign/'+TXDOC_BUCKET+'/'+path.split('/').map(encodeURIComponent).join('/'),
-      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expiresIn:3600})});
-    const d=await r.json().catch(()=>({}));
-    if(!r.ok||!d.signedURL) throw new Error(d.error||d.message||'Could not open document');
-    window.open(SB_URL+'/storage/v1'+d.signedURL,'_blank');
-  }catch(e){ alert('Could not open document: '+e.message); }
+  try{ window.open(await signTxDocUrl(path),'_blank'); }
+  catch(e){ alert('Could not open document: '+e.message); }
 }
 function txDocChip(x){
   const atts=Array.isArray(x.attachments)?x.attachments:[];
@@ -7801,26 +7805,41 @@ async function renderEntryBody(){
   body.innerHTML=h;
   const setMsg=(id,t,ok)=>{const m=document.getElementById(id); if(m){m.style.color=ok?'#2b7a4b':'#b3261e'; m.textContent=t;}};
   const txExpBtn=document.getElementById('tx-export');
-  if(txExpBtn) txExpBtn.onclick=()=>{
-    const entSel=document.getElementById('tx-export-ent').value;
-    const rows=[['Date','Entity','Flow','Category','Vendor','Description','Amount']];
-    const FLBL={opex:'Opex',rev:'Revenue',fin_in:'Financing In',fin_out:'Financing Out'};
-    const MON_ORDER={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
-    TX.filter(t=>(entSel==='all'||t.e===entSel)).sort((a,b)=>{
-      if(a.e!==b.e) return a.e<b.e?-1:1;
-      if(a.mo!==b.mo) return (MON_ORDER[a.mo]||99)-(MON_ORDER[b.mo]||99);
-      return (a.d||'')<(b.d||'')?-1:1;
-    }).forEach(t=>{
-      rows.push([isoFromDayLabel(t.d)||t.d,eName(t.e),FLBL[t.type]||t.type,t.k,t.vendor||'',t.desc,t.amt]);
-    });
-    const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet(rows);
-    // explicit column widths — the default is narrow enough that 9-10 digit IDR amounts render as
-    // "###" (looks like a blank/missing Amount column at a glance) until the user manually widens it
-    ws['!cols']=[{wch:12},{wch:32},{wch:10},{wch:22},{wch:20},{wch:50},{wch:16}];
-    XLSX.utils.book_append_sheet(wb,ws,'Transactions');
-    const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
-    XLSX.writeFile(wb,'transactions_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  if(txExpBtn) txExpBtn.onclick=async()=>{
+    txExpBtn.disabled=true;
+    const origLabel=txExpBtn.innerHTML;
+    try{
+      const entSel=document.getElementById('tx-export-ent').value;
+      const MON_ORDER={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+      const list=TX.filter(t=>(entSel==='all'||t.e===entSel)).sort((a,b)=>{
+        if(a.e!==b.e) return a.e<b.e?-1:1;
+        if(a.mo!==b.mo) return (MON_ORDER[a.mo]||99)-(MON_ORDER[b.mo]||99);
+        return (a.d||'')<(b.d||'')?-1:1;
+      });
+      // Uploaded documents are sitting in a private bucket, so a plain storage path is useless to
+      // paste into a browser — resolve each one to a signed URL up front (7-day expiry, long enough
+      // to actually use the export before it goes stale; re-exporting refreshes them) so "pull the
+      // documents from the export" means an actual clickable link, not a dead reference.
+      const withDocs=list.filter(t=>Array.isArray(t.attachments)&&t.attachments.length);
+      if(withDocs.length) txExpBtn.innerHTML='Signing '+withDocs.length+' document link'+(withDocs.length===1?'':'s')+'…';
+      const linkByTxId={};
+      await Promise.all(withDocs.map(async t=>{
+        try{ linkByTxId[t.id]=await signTxDocUrl(t.attachments[0].path,604800); }catch(e){ linkByTxId[t.id]=''; }
+      }));
+      const FLBL={opex:'Opex',rev:'Revenue',fin_in:'Financing In',fin_out:'Financing Out'};
+      const rows=[['Date','Entity','Flow','Category','Vendor','Description','Amount','Document Link']];
+      list.forEach(t=>{
+        rows.push([isoFromDayLabel(t.d)||t.d,eName(t.e),FLBL[t.type]||t.type,t.k,t.vendor||'',t.desc,t.amt,linkByTxId[t.id]||'']);
+      });
+      const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.aoa_to_sheet(rows);
+      // explicit column widths — the default is narrow enough that 9-10 digit IDR amounts render as
+      // "###" (looks like a blank/missing Amount column at a glance) until the user manually widens it
+      ws['!cols']=[{wch:12},{wch:32},{wch:10},{wch:22},{wch:20},{wch:50},{wch:16},{wch:60}];
+      XLSX.utils.book_append_sheet(wb,ws,'Transactions');
+      const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
+      XLSX.writeFile(wb,'transactions_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    } finally { txExpBtn.disabled=false; txExpBtn.innerHTML=origLabel; }
   };
   const txTplBtn=document.getElementById('tx-template');
   if(txTplBtn) txTplBtn.onclick=async()=>{
