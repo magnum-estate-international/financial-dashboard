@@ -74,32 +74,36 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .exec-insight{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);border:var(--border);border-top:3px solid #c89a4a;padding:12px 22px 13px;margin-bottom:16px}
 .exec-insight-title{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:var(--blue-900);text-transform:uppercase;margin-bottom:9px}
 .exec-insight-title svg{width:13px;height:13px;color:#c9974a}
-.exec-insight-body{display:flex;align-items:center;gap:22px}
-.exec-left{flex:none;width:270px;display:flex;flex-direction:column;gap:10px}
-.exec-card{flex:none;width:auto;display:flex;gap:10px;align-items:center;background:linear-gradient(135deg,#faf3e2,#f5e8c8);border-radius:13px;padding:9px 12px}
-.exec-card-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;background:linear-gradient(135deg,#e0536e,#c23a54);color:#fff;box-shadow:0 5px 12px -6px rgba(217,83,110,.55)}
-.exec-card.surplus .exec-card-ic{background:linear-gradient(135deg,#34a87c,#227a58);box-shadow:0 5px 12px -6px rgba(31,138,97,.5)}
-.exec-card-lab{font-size:10px;font-weight:700;color:var(--muted)}
-.exec-card-val{font-size:16.5px;font-weight:800;color:var(--blue-900);letter-spacing:-.3px;margin:0 0 4px;line-height:1.1}
-.exec-badge{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.6px;padding:2px 7px;border-radius:20px}
+.exec-summary{display:flex;align-items:stretch;gap:16px}
+.exec-op-box{flex:none;width:140px;display:flex;flex-direction:column;justify-content:center;gap:2px;background:linear-gradient(135deg,#fdeef1,#fbdfe4);border-radius:13px;padding:12px 14px}
+.exec-op-box.surplus{background:linear-gradient(135deg,#e3f2e8,#d7ecdf)}
+.exec-op-ic{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(135deg,#e0536e,#c23a54);color:#fff;margin-bottom:6px}
+.exec-op-box.surplus .exec-op-ic{background:linear-gradient(135deg,#34a87c,#227a58)}
+.exec-op-lab{font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.exec-op-val{font-size:16px;font-weight:800;color:var(--blue-900);margin:2px 0 5px;letter-spacing:-.3px}
+.exec-badge{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.6px;padding:2px 7px;border-radius:20px;width:fit-content}
 .exec-badge.lg{font-size:11.5px;padding:4px 13px;margin:3px 0 8px}
-.exec-card-sub{display:none}
-.exec-flow{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
-.exec-flow-top{display:flex;gap:6px}
-.exec-flow-item{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;text-align:center}
-.exec-eq-ic{width:20px;height:20px;border-radius:7px;display:grid;place-items:center;margin-bottom:4px;flex:none}
-.exec-eq-ic svg{width:11px;height:11px}
-.exec-eq-lab{font-size:9.5px;font-weight:700;color:var(--muted);white-space:nowrap;letter-spacing:.3px}
-.exec-eq-val{font-size:13px;font-weight:800;margin:1px 0 5px}
-.exec-flow-ribbon{width:100%;height:56px;border-radius:8px;overflow:hidden}
-.exec-wave-svg{width:100%;height:100%;display:block}
-.exec-flow-tag{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.4px;padding:2px 9px;border-radius:20px;margin-top:8px}
-.exec-flow-desc{font-size:9.5px;color:var(--muted);line-height:1.3;margin-top:4px;max-width:120px}
+.exec-op-sub{font-size:9.5px;color:var(--muted);margin-top:5px}
+.exec-eq{flex:1;display:flex;align-items:center;gap:8px;min-width:0}
+.exec-eq-col{flex:1;min-width:0;text-align:center}
+.exec-eq-op{flex:none;font-size:15px;font-weight:800;color:#c5cbdb}
+.exec-eq-lab2{font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+.exec-eq-val2{font-size:14px;font-weight:800;margin:4px 0 3px;letter-spacing:-.2px;white-space:nowrap}
+.exec-eq-trend{font-size:9.5px;font-weight:700}
+.exec-net-box{flex:none;width:120px;background:linear-gradient(135deg,#faf3e2,#f5e8c8);border-radius:13px;padding:10px 12px;text-align:center}
+.exec-net-box.deficit{background:linear-gradient(135deg,#fdeef1,#fbdfe4)}
+.exec-net-ic{width:24px;height:24px;border-radius:8px;background:#c89a4a;color:#fff;display:grid;place-items:center;margin:0 auto 6px}
+.exec-net-lab{font-size:9px;font-weight:800;color:#8a6d1a;text-transform:uppercase;letter-spacing:.5px}
+.exec-net-val{font-size:14.5px;font-weight:800;color:var(--blue-900);margin:3px 0 5px;white-space:nowrap}
+.exec-status-panel{flex:none;width:170px;border-left:1px solid #eef0f4;padding-left:16px;display:flex;flex-direction:column;gap:6px}
+.exec-status-lab2{font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.exec-status-msg2{font-size:11px;color:var(--blue-900);line-height:1.35}
+.exec-status-link{font-size:10.5px;font-weight:700;color:#9a6f0a;cursor:pointer;margin-top:2px}
 .exec-takeaway{display:flex;align-items:center;gap:9px;background:linear-gradient(90deg,#faf3e2,#f7ecd6);border:1px solid #ecdcb8;border-radius:12px;padding:9px 14px;margin-top:12px}
 .exec-takeaway-ic{width:26px;height:26px;border-radius:8px;background:#c89a4a;color:#fff;display:grid;place-items:center;flex:none}
 .exec-takeaway-lab{font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#8a6d1a;flex:none}
 .exec-takeaway-text{font-size:12px;color:var(--blue-900);line-height:1.4}
-@media(max-width:900px){.exec-insight-body{flex-wrap:wrap}.exec-left{width:100%}}
+@media(max-width:1100px){.exec-summary{flex-wrap:wrap}.exec-eq{width:100%;order:3;flex-wrap:wrap;justify-content:center}.exec-status-panel{border-left:none;border-top:1px solid #eef0f4;padding-left:0;padding-top:10px;width:100%}}
 .divlabel{font-size:11px;font-weight:800;color:var(--blue-900);text-transform:uppercase;letter-spacing:1.4px;margin:32px 0 14px;
   display:flex;align-items:center;gap:10px}
 .divlabel svg.svgic{width:26px;height:26px;padding:6px;box-sizing:border-box;border-radius:9px;
@@ -2970,91 +2974,73 @@ function renderAlert(a){
   const consolidated=EF==='all';
   const coverAmt=consolidated?a.capDep:a.finIn;
   const coverLabel=consolidated?'Capital Deposits':'Financing Support';
+  const covered=coverAmt>=Math.abs(a.opNet);
   const statusLabel=deficit?'CRITICAL':'HEALTHY';
   const statusColor=deficit?'#d92d20':'#1f8a61';
   const statusBg=deficit?'#fdeef1':'#e3f2e8';
   const resultColor=deficit?'#d9536e':'#34a87c';
-  const flowItem=(lab,val,color,ic,icBg,tag,tagBg,desc)=>`<div class="exec-flow-item">
-      <div class="exec-eq-ic" style="background:${icBg};color:${color}">${ic}</div>
-      <div class="exec-eq-lab">${lab}</div>
-      <div class="exec-eq-val" style="color:${color}">${fmtB(Math.abs(val))}</div>
-      <span class="exec-flow-tag" style="background:${tagBg};color:${color}">${tag}</span>
-      <div class="exec-flow-desc">${desc}</div>
-    </div>`;
-  // The ribbon is a real waterfall/cash-flow wave, not a flat bar: it rises for Revenue, dips
-  // below the zero baseline for the Op. Expenses/Op. Result deficit, then climbs back toward (or
-  // past) zero once Capital Deposits are added — so the shape itself shows the shortfall, using
-  // the same rev/opNet/coverAmt figures already computed above (nothing fabricated).
-  const buildWaveSVG=()=>{
-    const W=800,H=90,baseY=48,amp=34;
-    // Revenue and Op. Expenses each plot at their own real magnitude (both rising up from the
-    // baseline) so whichever is actually larger reads as the taller peak — a direct visual
-    // comparison of inflow vs outflow size. Op. Result then shows the true net effect, dipping
-    // below the zero line when it's a deficit, and Capital Deposits shows the recovery. Positive
-    // and negative excursions are scaled independently (each against its own max) so a deficit
-    // that's small next to revenue in absolute IDR still reads as a clear, real dip rather than
-    // disappearing under revenue's larger scale — the exact figures are already printed as text
-    // above each point, so this only affects the shape's readability, not what's reported.
-    const finalNet=a.opNet+coverAmt;
-    const posMax=Math.max(a.rev,a.opex,Math.max(a.opNet,0),Math.max(finalNet,0),1);
-    const negMax=Math.max(Math.max(-a.opNet,0),Math.max(-finalNet,0),1);
-    const y=v=>Math.round((v>=0?baseY-(v/posMax)*amp:baseY+(Math.abs(v)/negMax)*amp)*100)/100;
-    const pts=[{x:0,y:baseY},{x:100,y:y(a.rev)},{x:300,y:y(a.opex)},{x:500,y:y(a.opNet)},{x:700,y:y(finalNet)},{x:800,y:y(finalNet)}];
-    let d=`M ${pts[0].x} ${pts[0].y}`;
-    for(let i=1;i<pts.length;i++){
-      const p0=pts[i-1],p1=pts[i],midX=(p0.x+p1.x)/2;
-      d+=` C ${midX} ${p0.y}, ${midX} ${p1.y}, ${p1.x} ${p1.y}`;
+  const finalNet=a.opNet+coverAmt;
+  const netPos=finalNet>=0;
+  // "vs Last Month" trends reuse the same single-month comparison already computed for the
+  // Revenue/Expenses KPI cards (trendBadge/monthTotals) — only shown when the active filter is a
+  // single month with a real prior month in scope. Op. Result's trend is derived from those same
+  // two prior-month figures. Coverage and Net Result have no reliable prior-month equivalent
+  // (capital deposits/financing aren't tracked the same way month-to-month), so they're left
+  // without a trend rather than approximating one.
+  const prevMo=PREV_MONTH_OF[MONTH];
+  let opNetTrendHtml='';
+  if(prevMo){
+    const pt=monthTotals(prevMo), prevOpNet=pt.rev-pt.opex;
+    if(prevOpNet){
+      const pct=(a.opNet-prevOpNet)/Math.abs(prevOpNet)*100, up=pct>=0;
+      opNetTrendHtml=`<div class="exec-eq-trend" style="color:${up?'#1f8a61':'var(--red)'}">${up?'▲':'▼'} ${Math.abs(pct).toFixed(0)}%</div>`;
     }
-    const areaD=`${d} L 800 ${baseY} L 0 ${baseY} Z`;
-    const markers=[[100,a.rev],[300,a.opex],[500,a.opNet],[700,finalNet]]
-      .map(([x,v])=>`<circle cx="${x}" cy="${y(v)}" r="4.5" fill="#fff" stroke="${v>=0?'#1f8a61':'#d9536e'}" stroke-width="2.5"/>`).join('');
-    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="exec-wave-svg">
-      <defs>
-        <linearGradient id="waveFill" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stop-color="#34a87c" stop-opacity=".35"/>
-          <stop offset="22%" stop-color="#34a87c" stop-opacity=".35"/>
-          <stop offset="30%" stop-color="${resultColor}" stop-opacity=".3"/>
-          <stop offset="70%" stop-color="${resultColor}" stop-opacity=".3"/>
-          <stop offset="78%" stop-color="#34a87c" stop-opacity=".35"/>
-          <stop offset="100%" stop-color="#34a87c" stop-opacity=".35"/>
-        </linearGradient>
-        <linearGradient id="waveStroke" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stop-color="#1f8a61"/>
-          <stop offset="22%" stop-color="#1f8a61"/>
-          <stop offset="30%" stop-color="${resultColor}"/>
-          <stop offset="70%" stop-color="${resultColor}"/>
-          <stop offset="78%" stop-color="#1f8a61"/>
-          <stop offset="100%" stop-color="#1f8a61"/>
-        </linearGradient>
-      </defs>
-      <line x1="0" y1="${baseY}" x2="800" y2="${baseY}" stroke="#d8dbe3" stroke-width="1.5" stroke-dasharray="3,4"/>
-      <path d="${areaD}" fill="url(#waveFill)"/>
-      <path d="${d}" fill="none" stroke="url(#waveStroke)" stroke-width="3.5" stroke-linecap="round"/>
-      ${markers}
-    </svg>`;
-  };
+  }
+  const eqCol=(lab,valHtml,color,trendHtml)=>`<div class="exec-eq-col">
+      <div class="exec-eq-lab2">${lab}</div>
+      <div class="exec-eq-val2" style="color:${color}">${valHtml}</div>
+      ${trendHtml||''}
+    </div>`;
+  const eqOp=sym=>`<div class="exec-eq-op">${sym}</div>`;
   const note=deficit?'Continue monitoring cash flow and cost control.':'Maintain expense discipline to sustain the surplus.';
+  const msg=deficit
+    ? (covered
+        ? `Deficit is covered by ${consolidated?'shareholder capital deposits':'financing support'}.`
+        : consolidated
+          ? `Not covered by outside capital — the gap is funded through IDR ${fmtB(a.finIn)} of inter-company loans between group entities, which net to zero at full consolidation.${a.capDep>0?` Shareholder deposits cover only IDR ${fmtB(a.capDep)}.`:''}`
+          : `Deficit is NOT fully covered — cash shortfall of IDR ${fmtB(Math.abs(a.opNet)-a.finIn)}.`)
+    : 'Operations are self-funding this period.';
   el.innerHTML=`<div class="exec-insight${deficit?'':' surplus'}">
-    <div class="exec-insight-title">${ICON.pulse(13)} Executive Financial Insight</div>
-    <div class="exec-insight-body">
-      <div class="exec-left">
-        <div class="exec-card${deficit?'':' surplus'}">
-          <div class="exec-card-ic">${deficit?ICON.trendDown(19):ICON.trend(19)}</div>
-          <div>
-            <div class="exec-card-lab">${deficit?'Operating Deficit':'Operating Surplus'}</div>
-            <div class="exec-card-val">IDR ${fmtB(Math.abs(a.opNet))}</div>
-            <span class="exec-badge" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
-          </div>
-        </div>
+    <div class="exec-insight-title">${ICON.pulse(13)} Operating Summary</div>
+    <div class="exec-summary">
+      <div class="exec-op-box${deficit?'':' surplus'}">
+        <div class="exec-op-ic">${deficit?ICON.trendDown(15):ICON.trend(15)}</div>
+        <div class="exec-op-lab">${deficit?'Operating Deficit':'Operating Surplus'}</div>
+        <div class="exec-op-val">IDR ${fmtB(Math.abs(a.opNet))}</div>
+        <span class="exec-badge" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
+        <div class="exec-op-sub">${a.rev>0?(Math.abs(a.opNet)/a.rev*100).toFixed(1)+'% of revenue':''}</div>
       </div>
-      <div class="exec-flow">
-        <div class="exec-flow-top">
-          ${flowItem('Revenue',a.rev,'#1f8a61',ICON.trend(13),'#e3f2e8','Inflow','#e3f2e8','Total revenue generated')}
-          ${flowItem('Op. Expenses',a.opex,'#d9536e',ICON.trendDown(13),'#fdeef1','Outflow','#fdeef1','Total operating expenses')}
-          ${flowItem('Op. Result',a.opNet,resultColor,deficit?ICON.warn(13):ICON.check(13),deficit?'#fdeef1':'#e3f2e8',deficit?'Deficit':'Surplus',deficit?'#fdeef1':'#e3f2e8',`Operating result (${deficit?'deficit':'surplus'})`)}
-          ${flowItem(coverLabel,coverAmt,'#1f8a61',ICON.shield(13),'#e3f2e8','Coverage','#e3f2e8',consolidated?'Shareholder capital deposits':'Financing received')}
-        </div>
-        <div class="exec-flow-ribbon">${buildWaveSVG()}</div>
+      <div class="exec-eq">
+        ${eqCol('Revenue',fmtB(a.rev),'#1f8a61',trendBadge(a.rev,'rev').replace('kpi-trend','exec-eq-trend'))}
+        ${eqOp('−')}
+        ${eqCol('Op. Expenses',fmtB(a.opex),'#d9536e',trendBadge(a.opex,'opex').replace('kpi-trend','exec-eq-trend'))}
+        ${eqOp('=')}
+        ${eqCol('Op. Result',fmtB(Math.abs(a.opNet)),resultColor,opNetTrendHtml)}
+        ${eqOp('+')}
+        ${eqCol(coverLabel,fmtB(coverAmt),'#1f8a61','')}
+        ${eqOp('=')}
+      </div>
+      <div class="exec-net-box${netPos?'':' deficit'}">
+        <div class="exec-net-ic">${ICON.dollar(14)}</div>
+        <div class="exec-net-lab">Net Result</div>
+        <div class="exec-net-val">${netPos?'+':'−'} ${fmtB(Math.abs(finalNet))}</div>
+        <span class="exec-badge" style="background:${netPos?'#e3f2e8':'#fdeef1'};color:${netPos?'#1f8a61':'#d92d20'}">${netPos?'SURPLUS':'DEFICIT'}</span>
+      </div>
+      <div class="exec-status-panel">
+        <div class="exec-status-lab2">Financial Status</div>
+        <span class="exec-badge" style="background:${statusBg};color:${statusColor}">${ICON.shield(11)} ${statusLabel}</span>
+        <div class="exec-status-msg2">${msg}</div>
+        <div class="exec-status-link" onclick="openDetail('opnet')">View Details ›</div>
       </div>
     </div>
     <div class="exec-takeaway">
