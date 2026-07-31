@@ -114,11 +114,7 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .kpi5>.pcard{flex:1 1 200px}
 .kpi2{display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
 .kpi1{display:grid;grid-template-columns:minmax(200px,340px);gap:15px;margin-bottom:15px}
-.kpi1-row{display:flex;gap:15px;margin-bottom:15px;align-items:stretch}
-.kpi1-fixcost{flex:none;width:100%;max-width:340px;min-width:200px}
-.kpi1-fixcost .pcard{height:100%;box-sizing:border-box}
-.kpi1-entchart{flex:1;min-width:0;padding:16px 20px}
-@media(max-width:760px){.kpi1-row{flex-wrap:wrap}.kpi1-fixcost{max-width:none}}
+.kpi1-entchart{padding:16px 20px;margin-bottom:16px}
 .pcard{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);padding:21px 22px;
   border:var(--border);position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
 .pcard::after{content:"";position:absolute;right:-40px;bottom:-60px;width:150px;height:150px;border-radius:50%;
@@ -3087,11 +3083,10 @@ function renderKpiCash(a){
   const kc=document.getElementById('kpiCash');
   if(kc){
     kc.className='';
-    kc.innerHTML=`<div class="kpi4">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}${outstandingCard()}</div>`
-      +`<div class="kpi1-row"><div class="kpi1-fixcost">${fixCostCard()}</div>`
+    kc.innerHTML=`<div class="kpi5">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}${outstandingCard()}${fixCostCard()}</div>`
       +`<div class="panel kpi1-entchart"><h2 style="font-size:13px">Revenue vs Op. Expense by Entity</h2>`
       +`<div class="pn-sub" style="font-size:10.5px;color:var(--muted);margin-top:2px">Log scale · click a bar to filter that entity</div>`
-      +`<div class="chart-box" style="height:150px;margin-top:6px"><canvas id="entChartCompact"></canvas></div></div></div>`;
+      +`<div class="chart-box" style="height:150px;margin-top:6px"><canvas id="entChartCompact"></canvas></div></div>`;
     renderEntChartCompact();
   }
   const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
