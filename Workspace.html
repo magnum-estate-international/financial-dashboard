@@ -3141,9 +3141,15 @@ function onIcSearchInput(v){ IC_SEARCH=v; IC_SEARCH_FOCUS=true; openIntercompany
 let IC_SEARCH_FOCUS=false;
 function openIntercompany(){
   const q=IC_SEARCH.trim().toLowerCase();
-  const totAP=INTERCOMPANY.filter(r=>r.type==='AP').reduce((s,r)=>s+(r.amt-r.setoran),0);
-  const totAR=INTERCOMPANY.filter(r=>r.type==='AR').reduce((s,r)=>s+(r.amt-r.setoran),0);
-  let h=`<div class="pn-sub" style="margin-bottom:8px">Recap of inter-company receivables (AR) and payables (AP) between PTs in the wider group — imported from the group's own AR/AP recap spreadsheets. Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT.</div>`;
+  // Only owners that match one of this dashboard's own 16 tracked entities — many owner labels
+  // in the raw recap are holding/investment PTs never onboarded here (e.g. "PT Indonesia Capital
+  // Pecatu/Nirwana/Batubelig", "PT Tirta Digital Indonesia"), which would otherwise clutter this
+  // list with PTs nobody using this dashboard can drill into elsewhere. Totals below are recomputed
+  // from this filtered set too, so the stat cards stay consistent with the table under them.
+  let rows=icOwnerSummary().filter(g=>findEntityByNameG(g.owner));
+  const totAP=rows.reduce((s,g)=>s+g.ap,0);
+  const totAR=rows.reduce((s,g)=>s+g.ar,0);
+  let h=`<div class="pn-sub" style="margin-bottom:8px">Recap of inter-company receivables (AR) and payables (AP) between PTs in the wider group — imported from the group's own AR/AP recap spreadsheets. Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT. Only PTs tracked in this dashboard are shown.</div>`;
   h+=icStatCards(totAP,totAR);
   if(!INTERCOMPANY.length){
     h+=`<p style="color:var(--muted);font-size:12.5px">No recap data loaded yet.</p>`;
@@ -3154,7 +3160,7 @@ function openIntercompany(){
       <div style="font-size:12.5px;color:var(--muted)">By PT (owner) — click a row for full counterparty detail</div>
       ${icSearchInput()}
     </div>`;
-  let rows=icOwnerSummary().filter(g=>!q||g.owner.toLowerCase().includes(q));
+  rows=rows.filter(g=>!q||g.owner.toLowerCase().includes(q));
   rows.sort((a,b)=>b.net-a.net);
   h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>PT (Owner)</th><th class="num">Counterparties</th><th class="num">Payable (AP)</th><th class="num">Receivable (AR)</th><th class="num">Net Balance</th></tr></thead><tbody>`;
   if(rows.length){
