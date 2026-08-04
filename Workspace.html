@@ -3298,11 +3298,19 @@ function outstandingCard(){
 }
 // ─── FIXED COST MANAGEMENT (recurring monthly costs — mirrors Outstanding Liability's shape) ───
 function mkFixCost(f){
-  return {id:f.id,e:f.entity_code,cat:f.category,vendor:f.vendor,desc:f.description,amt:+f.amount_idr,at:f.created_at};
+  return {id:f.id,e:f.entity_code,cat:f.category,vendor:f.vendor,desc:f.description,amt:+f.amount_idr,at:f.created_at,
+    status:f.status||'active',terminatedAt:f.terminated_at||null,terminationNote:f.termination_note||null};
 }
+// Terminated items (contract ended, vendor no longer engaged) drop out of every Monthly Fix Cost
+// total/breakdown/vs-actual comparison automatically since they all read fixCostInScope() — but
+// stay queryable via fixCostTerminatedInScope() for history, never deleted outright.
 function fixCostInScope(){
   const ids=new Set(scopeIds());
-  return FIXCOST.filter(f=>ids.has(f.e));
+  return FIXCOST.filter(f=>ids.has(f.e) && f.status!=='terminated');
+}
+function fixCostTerminatedInScope(){
+  const ids=new Set(scopeIds());
+  return FIXCOST.filter(f=>ids.has(f.e) && f.status==='terminated');
 }
 function fixCostCard(){
   const rows=fixCostInScope();
@@ -5887,14 +5895,15 @@ function openFixCostVsActualCategory(id,catEnc){
   showModal(`${ENT[id]?ENT[id].name:id} — ${cat}`,h,true);
   if(tx.length||Math.abs(residual)>0.5){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-fcva',totalId:'txd-total-fcva'}; updateTxdFilterIndicators(); }
 }
-function openFixCostEntity(id){ openFixCostDetailView('entity',id); }
-function openFixCostCategory(catEnc){ openFixCostDetailView('category',decodeURIComponent(catEnc)); }
-function openFixCostVendor(vendorEnc){ openFixCostDetailView('vendor',decodeURIComponent(vendorEnc)); }
-function computeFceRows(scopeType,value){
-  return fixCostInScope().filter(f=>scopeType==='entity'?f.e===value:scopeType==='vendor'?(f.vendor||'—')===value:(f.cat||'—')===value)
+function openFixCostEntity(id,tab){ openFixCostDetailView('entity',id,tab); }
+function openFixCostCategory(catEnc,tab){ openFixCostDetailView('category',decodeURIComponent(catEnc),tab); }
+function openFixCostVendor(vendorEnc,tab){ openFixCostDetailView('vendor',decodeURIComponent(vendorEnc),tab); }
+function computeFceRows(scopeType,value,tab){
+  const src=(tab||FCE_TAB)==='terminated'?fixCostTerminatedInScope():fixCostInScope();
+  return src.filter(f=>scopeType==='entity'?f.e===value:scopeType==='vendor'?(f.vendor||'—')===value:(f.cat||'—')===value)
     .sort((a,b)=>b.amt-a.amt);
 }
-let FCE_ID=null, FCE_ROWS=[], FCE_SCOPE_TYPE='entity';
+let FCE_ID=null, FCE_ROWS=[], FCE_SCOPE_TYPE='entity', FCE_TAB='active';
 const FCE_FKEYS={ent:['fcef-ent'],cat:['fcef-cat'],vendor:['fcef-vendor'],desc:['fcef-desc'],amt:['fcef-amt-min','fcef-amt-max']};
 function thFilterableFc(label,key,controlsHtml){
   return `<th><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="fcef-btn-${key}" onclick="toggleFcFilterPop('${key}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
@@ -5946,13 +5955,18 @@ function updateFcFilterIndicators(){
 }
 function fcTxt(id,ph){ return `<input id="${id}" type="text" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box" oninput="renderFixCostRows()">`; }
 function fcNum(id,ph){ return `<input id="${id}" type="number" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" oninput="renderFixCostRows()">`; }
-function openFixCostDetailView(scopeType,value){
-  FCE_ID=value; FCE_SCOPE_TYPE=scopeType;
-  FCE_ROWS=computeFceRows(scopeType,value);
+function openFixCostDetailView(scopeType,value,tab){
+  FCE_ID=value; FCE_SCOPE_TYPE=scopeType; FCE_TAB=tab=tab||'active';
+  FCE_ROWS=computeFceRows(scopeType,value,tab);
   const title=scopeType==='entity'?(ENT[value]?ENT[value].name:value):escH(value);
+  const detailOnclick=(t)=>scopeType==='entity'?`openFixCostEntity('${value}','${t}')`:scopeType==='category'?`openFixCostCategory('${encodeURIComponent(value)}','${t}')`:`openFixCostVendor('${encodeURIComponent(value)}','${t}')`;
+  const tabBtn=(t,label)=>`<button class="btn ${tab===t?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${tab===t?';background:#d9a92c;color:#2a1c02;border:0':''}" onclick="${detailOnclick(t)}">${label}</button>`;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCost('${scopeType}')">‹ Back to breakdown</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${title} — Monthly Fix Cost</h4>`;
-  h+=`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearFixCostFilters()">Clear all filters</button></div>`;
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px">${tabBtn('active','Active')}${tabBtn('terminated','Terminated')}</div>
+    <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearFixCostFilters()">Clear all filters</button>
+  </div>`;
   h+=`<div class="table-scroll" style="max-height:440px"><table style="table-layout:fixed;width:100%">`
     +`<colgroup>${scopeType!=='entity'?'<col style="width:150px">':''}<col style="width:160px"><col style="width:150px"><col><col style="width:120px"><col style="width:40px"></colgroup>`
     +`<thead><tr>`
@@ -5990,26 +6004,55 @@ function renderFixCostRows(){
 }
 function fixCostRowHtml(f){
   const canEdit=MY_ROLE==='editor';
+  const terminated=f.status==='terminated';
   const items=[];
   if(canEdit){
     items.push(menuItem(ICON.edit()+' Edit',`openFixCostEdit(${f.id})`));
+    items.push(terminated
+      ? menuItem(ICON.undo()+' Mark as Active',`markFixCostActive(${f.id})`)
+      : menuItem(ICON.warn()+' Mark as Terminated',`markFixCostTerminated(${f.id})`,'#a8681f'));
     items.push(menuItem(ICON.trash()+' Delete',`deleteFixCostRow(${f.id})`,'var(--red)'));
   }
   const actionCell=items.length?(`<button type="button" onclick="toggleFcRowMenu(${f.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
-    +`<div id="fc-menu-${f.id}" class="fc-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div>`):'';
+    +`<div id="fc-menu-${f.id}" class="fc-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>`):'';
   const wrap='word-break:break-word;overflow-wrap:break-word;vertical-align:top';
   // Entity pill defaults to white-space:nowrap (see .pill), which overflows a narrow fixed-width
   // column and visually spills into the next cell for long entity names — override to normal/wrap
   // here, same fix already applied to the Outstanding Liability rows for the same layout.
   const entPill=`<span class="pill" style="background:${ENT[f.e].color}22;color:${ENT[f.e].color};white-space:normal;line-height:1.3">${escH(ENT[f.e].name)}</span>`;
+  const statusBadge=terminated?`<div><span style="display:inline-block;margin-top:4px;font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:20px;background:#eef0f5;color:#5f5e5a;white-space:nowrap">Terminated${f.terminatedAt?' · '+f.terminatedAt:''}</span></div>`:'';
   return `<tr data-fc-id="${f.id}">
     ${FCE_SCOPE_TYPE!=='entity'?`<td style="${wrap}">${entPill}</td>`:''}
     <td style="font-size:12.5px;${wrap}">${escH(f.cat||'—')}</td>
-    <td style="font-size:12.5px;${wrap}">${f.vendor?escH(f.vendor):'—'}</td>
+    <td style="font-size:12.5px;${wrap}">${f.vendor?escH(f.vendor):'—'}${statusBadge}</td>
     <td style="font-size:12.5px;${wrap}">${escH(f.desc||'')}</td>
     <td class="num neg" style="white-space:nowrap;vertical-align:top">${fmt(f.amt)}</td>
     <td style="white-space:nowrap;vertical-align:top">${actionCell}</td>
   </tr>`;
+}
+async function markFixCostTerminated(id){
+  if(!confirm('Mark this fixed cost as terminated? It stops counting toward Monthly Fix Cost but stays visible in history under the Terminated tab.')) return;
+  try{
+    const at=new Date().toISOString().slice(0,10);
+    const r=await authedFetch(SB_URL+'/rest/v1/entity_fixed_costs?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({status:'terminated',terminated_at:at})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const f=FIXCOST.find(x=>x.id===id); if(f){ f.status='terminated'; f.terminatedAt=at; }
+    renderKpiCash(agg());
+    openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID,FCE_TAB);
+  }catch(e){ alert('Failed: '+e.message); }
+}
+async function markFixCostActive(id){
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/entity_fixed_costs?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({status:'active',terminated_at:null})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const f=FIXCOST.find(x=>x.id===id); if(f){ f.status='active'; f.terminatedAt=null; }
+    renderKpiCash(agg());
+    openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID,FCE_TAB);
+  }catch(e){ alert('Failed: '+e.message); }
 }
 async function openFixCostEdit(id){
   const cats=await ensureOpexCatsG();
