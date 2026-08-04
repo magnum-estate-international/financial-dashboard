@@ -5677,7 +5677,12 @@ function openFixCost(view){
     showModal('Monthly Fix Cost',h);
     return;
   }
-  const rows=fixCostInScope();
+  // Active/Terminated status toggle — same idea as the per-vendor detail view's tabs, but at the
+  // breakdown level too, so "which vendors have finished their contract" has a direct answer
+  // instead of requiring you to already know which vendor to drill into.
+  const statusBtn=(t,label)=>`<button class="btn ${FC_TAB===t?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${FC_TAB===t?';background:#d9a92c;color:#2a1c02;border:0':''}" onclick="setFcStatusTab('${t}')">${label}</button>`;
+  const terminated=FC_TAB==='terminated';
+  const rows=terminated?fixCostTerminatedInScope():fixCostInScope();
   const tot=rows.reduce((s,f)=>s+f.amt,0);
   const keyOf=view==='entity'?(f=>f.e):view==='vendor'?(f=>f.vendor||'—'):(f=>f.cat||'—');
   const byGroup={}; rows.forEach(f=>{const k=keyOf(f); const g=byGroup[k]=byGroup[k]||{tot:0,n:0}; g.tot+=f.amt; g.n++;});
@@ -5687,24 +5692,28 @@ function openFixCost(view){
     .filter(([k])=>!q||searchText(k).toLowerCase().includes(q))
     .sort((a,b)=>b[1].tot-a[1].tot);
   grouped=sortApply('fixcost',grouped,([,v])=>v.tot);
-  let h=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">`
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px">${statusBtn('active','Active')}${statusBtn('terminated','Terminated')}</div>
+  </div>`;
+  h+=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">`
     +tabsRow
     +`<input id="fc-search" type="text" placeholder="🔍 Search…" value="${escH(FC_SEARCH)}" oninput="onFcSearchInput(this.value)" style="margin-left:auto;padding:7px 13px;border:1px solid #e4e7ef;border-radius:999px;font-size:12.5px;min-width:170px;box-sizing:border-box">`
     +`</div>`;
-  h+=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total monthly fix cost in this scope: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${rows.length} item${rows.length===1?'':'s'})</div>`;
+  h+=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Total ${terminated?'terminated':'monthly'} fix cost in this scope: <b style="color:var(--red);font-size:15px">${fmt(tot)}</b> (${rows.length} item${rows.length===1?'':'s'})</div>`;
   const colLabel=view==='entity'?'Entity':view==='vendor'?'Vendor':'Cost Category';
   const rowLabel=k=>view==='entity'?pill(k):escH(k);
-  const rowOnclick=k=>view==='entity'?`openFixCostEntity('${k}')`:view==='vendor'?`openFixCostVendor('${encodeURIComponent(k)}')`:`openFixCostCategory('${encodeURIComponent(k)}')`;
+  const rowOnclick=k=>view==='entity'?`openFixCostEntity('${k}','${FC_TAB}')`:view==='vendor'?`openFixCostVendor('${encodeURIComponent(k)}','${FC_TAB}')`:`openFixCostCategory('${encodeURIComponent(k)}','${FC_TAB}')`;
   const isSorted=!!sortActiveKey('fixcost');
   h+=`<table><thead><tr><th>${colLabel}</th><th class="num" style="text-align:right">Items</th><th class="num" style="text-align:right">${sortHeader('fixcost','Amount (IDR)','amt')}</th></tr></thead><tbody>`
-    +(grouped.length?((view==='category'&&!isSorted)?fixCostCatRowsGrouped(grouped):grouped.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join(''))
-      :`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':''} fixed cost in this scope</td></tr>`)
+    +(grouped.length?((view==='category'&&!isSorted&&!terminated)?fixCostCatRowsGrouped(grouped):grouped.map(([k,v])=>`<tr class="clickable" style="cursor:pointer" onclick="${rowOnclick(k)}"><td>${rowLabel(k)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num" style="text-align:right">${v.n}</td><td class="num neg" style="text-align:right">${fmt(v.tot)}</td></tr>`).join(''))
+      :`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':(terminated?'terminated':'')} fixed cost in this scope</td></tr>`)
     +`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num" style="text-align:right">${rows.length}</td><td class="num neg" style="text-align:right"><strong>${fmt(tot)}</strong></td></tr>`
     +`</tbody></table>`;
   showModal('Monthly Fix Cost',h);
   const si=document.getElementById('fc-search');
   if(si && document.activeElement!==si && FC_SEARCH_FOCUS){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
 }
+function setFcStatusTab(t){ FC_TAB=t; openFixCost(FC_VIEW); }
 function onFcSearchInput(v){ FC_SEARCH=v; FC_SEARCH_FOCUS=true; openFixCost(FC_VIEW); }
 // ── Fix Cost vs Actual — budget-vs-actual comparison, reusing fixCostInScope() (the flat monthly
 // baseline) against eff(id).opex / opexEntityBreakdown(id) (this month's real transactions) ──
@@ -5899,11 +5908,11 @@ function openFixCostEntity(id,tab){ openFixCostDetailView('entity',id,tab); }
 function openFixCostCategory(catEnc,tab){ openFixCostDetailView('category',decodeURIComponent(catEnc),tab); }
 function openFixCostVendor(vendorEnc,tab){ openFixCostDetailView('vendor',decodeURIComponent(vendorEnc),tab); }
 function computeFceRows(scopeType,value,tab){
-  const src=(tab||FCE_TAB)==='terminated'?fixCostTerminatedInScope():fixCostInScope();
+  const src=(tab||FC_TAB)==='terminated'?fixCostTerminatedInScope():fixCostInScope();
   return src.filter(f=>scopeType==='entity'?f.e===value:scopeType==='vendor'?(f.vendor||'—')===value:(f.cat||'—')===value)
     .sort((a,b)=>b.amt-a.amt);
 }
-let FCE_ID=null, FCE_ROWS=[], FCE_SCOPE_TYPE='entity', FCE_TAB='active';
+let FCE_ID=null, FCE_ROWS=[], FCE_SCOPE_TYPE='entity', FC_TAB='active';
 const FCE_FKEYS={ent:['fcef-ent'],cat:['fcef-cat'],vendor:['fcef-vendor'],desc:['fcef-desc'],amt:['fcef-amt-min','fcef-amt-max']};
 function thFilterableFc(label,key,controlsHtml){
   return `<th><span style="display:inline-flex;align-items:center;gap:3px">${label}<button type="button" id="fcef-btn-${key}" onclick="toggleFcFilterPop('${key}',this)" title="Filter" style="border:0;background:none;cursor:pointer;padding:1px 2px;color:var(--muted);font-size:11px;line-height:1">▾</button></span>`
@@ -5956,7 +5965,7 @@ function updateFcFilterIndicators(){
 function fcTxt(id,ph){ return `<input id="${id}" type="text" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box" oninput="renderFixCostRows()">`; }
 function fcNum(id,ph){ return `<input id="${id}" type="number" placeholder="${ph}" style="width:100%;padding:6px 8px;font-size:12px;box-sizing:border-box;margin-bottom:4px" oninput="renderFixCostRows()">`; }
 function openFixCostDetailView(scopeType,value,tab){
-  FCE_ID=value; FCE_SCOPE_TYPE=scopeType; FCE_TAB=tab=tab||'active';
+  FCE_ID=value; FCE_SCOPE_TYPE=scopeType; FC_TAB=tab=tab||'active';
   FCE_ROWS=computeFceRows(scopeType,value,tab);
   const title=scopeType==='entity'?(ENT[value]?ENT[value].name:value):escH(value);
   const detailOnclick=(t)=>scopeType==='entity'?`openFixCostEntity('${value}','${t}')`:scopeType==='category'?`openFixCostCategory('${encodeURIComponent(value)}','${t}')`:`openFixCostVendor('${encodeURIComponent(value)}','${t}')`;
@@ -6040,7 +6049,7 @@ async function markFixCostTerminated(id){
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const f=FIXCOST.find(x=>x.id===id); if(f){ f.status='terminated'; f.terminatedAt=at; }
     renderKpiCash(agg());
-    openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID,FCE_TAB);
+    openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID,FC_TAB);
   }catch(e){ alert('Failed: '+e.message); }
 }
 async function markFixCostActive(id){
@@ -6051,7 +6060,7 @@ async function markFixCostActive(id){
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const f=FIXCOST.find(x=>x.id===id); if(f){ f.status='active'; f.terminatedAt=null; }
     renderKpiCash(agg());
-    openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID,FCE_TAB);
+    openFixCostDetailView(FCE_SCOPE_TYPE,FCE_ID,FC_TAB);
   }catch(e){ alert('Failed: '+e.message); }
 }
 async function openFixCostEdit(id){
