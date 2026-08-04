@@ -6019,7 +6019,7 @@ function fixCostRowHtml(f){
     items.push(menuItem(ICON.edit()+' Edit',`openFixCostEdit(${f.id})`));
     items.push(terminated
       ? menuItem(ICON.undo()+' Mark as Active',`markFixCostActive(${f.id})`)
-      : menuItem(ICON.warn()+' Mark as Terminated',`markFixCostTerminated(${f.id})`,'#a8681f'));
+      : menuItem(ICON.warn()+' Contract Finished/Terminated',`markFixCostTerminated(${f.id})`,'#a8681f'));
     items.push(menuItem(ICON.trash()+' Delete',`deleteFixCostRow(${f.id})`,'var(--red)'));
   }
   const actionCell=items.length?(`<button type="button" onclick="toggleFcRowMenu(${f.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
