@@ -6012,7 +6012,10 @@ function renderFixCostRows(){
   updateFcFilterIndicators();
 }
 function fixCostRowHtml(f){
-  const canEdit=MY_ROLE==='editor';
+  // Explicit admin-or-editor check rather than relying solely on the login flow's IS_ADMIN→
+  // MY_ROLE='editor' promotion — Edit/Contract Finished-Terminated/Delete stay admin+editor-only
+  // even if that promotion logic ever changes elsewhere.
+  const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const terminated=f.status==='terminated';
   const items=[];
   if(canEdit){
