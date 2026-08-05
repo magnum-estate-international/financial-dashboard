@@ -4007,8 +4007,20 @@ function openDetail(kind){
       g.tot+=b.balance; g.n++; if(!g.latest||(b.asOf||'')>g.latest) g.latest=b.asOf;
     });
     let rows=Object.values(byEnt);
-    rows.sort((x,y)=>y.tot-x.tot);
-    rows=sortApply('cashpos',rows,r=>r.tot);
+    if(sortActiveKey('cashpos')){
+      rows.sort((x,y)=>y.tot-x.tot);
+      rows=sortApply('cashpos',rows,r=>r.tot);
+    } else {
+      // Default order groups PTs the same way the group/entity filter does (same-group PTs stay
+      // adjacent, e.g. all 3 Sky Stars entities together) instead of scattering them by balance.
+      const groupOrder=[]; const seen=new Set();
+      EIDS.forEach(id=>{ const g=ENT[id]&&ENT[id].grp; if(g!=null&&!seen.has(g)){ seen.add(g); groupOrder.push(g); } });
+      rows.sort((x,y)=>{
+        const gx=groupOrder.indexOf(ENT[x.entity]&&ENT[x.entity].grp), gy=groupOrder.indexOf(ENT[y.entity]&&ENT[y.entity].grp);
+        if(gx!==gy) return gx-gy;
+        return EIDS.indexOf(x.entity)-EIDS.indexOf(y.entity);
+      });
+    }
     let h;
     if(!rows.length){
       h=`<p style="color:var(--muted);font-size:12.5px">No bank accounts logged yet for this scope — add them via <b>Update Data → Manage Bank Accounts</b>.</p>`;
