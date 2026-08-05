@@ -8598,10 +8598,12 @@ async function renderEntryBody(){
       try{
         await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
         const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
+        const cpSuggestions=[...new Set([...EIDS.map(id=>ENT[id].name),...IC_TX.map(t=>t.cp)])].filter(Boolean).sort();
         await downloadValidatedTemplate('bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'.xlsx','Bank Ledger',
           ['Date','Kode','Keterangan','Debit','Kredit','Saldo','Kategori','Vendor','Counterparty (PT)'],
           ['2026-07-01',BL_CODE_LBL.opex,'Sample transaction',1000000,'',9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor',''],
-          [{col:'B',values:Object.values(BL_CODE_LBL)},{col:'G',values:opexCatsTpl.concat(revCatsTpl)},{col:'H',values:VENDORS_G||[]}]);
+          [{col:'B',values:Object.values(BL_CODE_LBL)},{col:'G',values:opexCatsTpl.concat(revCatsTpl)},
+           {col:'H',values:VENDORS_G||[]},{col:'I',values:cpSuggestions}]);
       } finally { blTplBtn.disabled=false; }
     };
     if(blFileInp) blFileInp.onchange=async()=>{
