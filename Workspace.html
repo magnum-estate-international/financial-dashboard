@@ -5327,67 +5327,56 @@ function renderIcTxPreview(){
     }
   };
 }
-// ── Cash Position import preview — one row per PT, no duplicate detection needed since each
-// upload upserts (merge-duplicates on entity_code) rather than adding a new ledger row. ──
+// ── Cash Position import preview — one row per bank account, matched by No. Rekening (already
+// set up under Manage Bank Accounts) rather than by entity, since balance now lives per account. ──
 let CPOS_ROWS=[];
 function computeCposRow(r){
   let error=null;
-  if(!r.entityMatch) error='Entity not recognized';
+  if(!r.acctMatch) error='No. Rekening not recognized — add the account under Manage Bank Accounts first';
   else if(!r.amt||r.amt<0||isNaN(r.amt)) error='Invalid amount';
   r.error=error;
-}
-function cposEntityCell(r,i){
-  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('cpos-fix-ent-'+i,`fixCposField(${i},this.value)`);
-}
-function fixCposField(i,value){
-  const r=CPOS_ROWS[i]; if(!r) return;
-  r.entityMatch=value||null;
-  computeCposRow(r);
-  renderCposPreview();
 }
 function renderCposPreview(){
   const el=document.getElementById('cpos-preview'); if(!el) return;
   if(!CPOS_ROWS.length){ el.innerHTML=''; return; }
   const valid=CPOS_ROWS.filter(r=>!r.error);
-  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Entity</th><th class="num" style="text-align:right">Cash Position</th><th>As of Date</th><th>Status</th></tr></thead><tbody>';
+  const eName=id=>(ENT[id]?ENT[id].name:id);
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>No. Rekening</th><th>PT / Bank</th><th class="num" style="text-align:right">New Saldo</th><th>As of Date</th><th>Status</th></tr></thead><tbody>';
   CPOS_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':'';
     const status=r.error?escH(r.error):'OK';
+    const acct=r.acctMatch;
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
-      +'<td style="font-size:12px">'+cposEntityCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+escH(r.acctNo||'—')+'</td>'
+      +'<td style="font-size:12px">'+(acct?escH(eName(acct.entity)+' — '+acct.bank):'—')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'today')+'</td>'
       +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+status+'</td></tr>';
   });
   h+='</tbody></table></div>';
-  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will set '+valid.length+' PT'+(valid.length===1?"'s":"s'")+' cash position</b> — '+valid.length+' of '+CPOS_ROWS.length+' row(s) ready'
-    +(CPOS_ROWS.length>valid.length?'. Fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
-  h+='<button id="cpos-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Update '+valid.length+' cash position'+(valid.length===1?'':'s')+'</button>';
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will correct '+valid.length+' account'+(valid.length===1?'':'s')+"' saldo</b> — "+valid.length+' of '+CPOS_ROWS.length+' row(s) ready'
+    +(CPOS_ROWS.length>valid.length?'. Fix the flagged rows in the file and re-upload':'')+'.</div>';
+  h+='<button id="cpos-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Update '+valid.length+' account'+(valid.length===1?'':'s')+'</button>';
   h+='<div id="cpos-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
   const impBtn=document.getElementById('cpos-import');
   if(impBtn) impBtn.onclick=async()=>{
     impBtn.disabled=true; impBtn.textContent='Saving…';
     try{
-      const rows=valid.map(r=>{
-        const at=r.date?new Date(r.date+'T00:00:00Z').toISOString():new Date().toISOString();
-        return {entity_code:r.entityMatch,cash_idr:r.amt,updated_by:MY_EMAIL,updated_at:at};
-      });
-      for(const cp of rows){
-        const r=await authedFetch(SB_URL+'/rest/v1/entity_cash_position',{method:'POST',
-          headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(cp)});
-        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
-        CASHPOS[cp.entity_code]={cash:cp.cash_idr,at:cp.updated_at};
+      for(const r of valid){
+        const dateStr=r.date||new Date().toISOString().slice(0,10);
+        await adminUpdateOne('bank_accounts',r.acctMatch.id,{opening_balance:r.amt,opening_date:dateStr});
+        r.acctMatch.opening=r.amt; r.acctMatch.openingDate=dateStr;
       }
       CPOS_ROWS=[];
       document.getElementById('cpos-import-msg').style.color='#2b7a4b';
-      document.getElementById('cpos-import-msg').textContent='✓ Updated '+rows.length+' cash position'+(rows.length===1?'':'s')+'.';
+      document.getElementById('cpos-import-msg').textContent='✓ Updated '+valid.length+' account'+(valid.length===1?'':'s')+'.';
       impBtn.textContent='Saved ✓';
-      renderKpiCash();
+      renderKpiCash(agg());
     }catch(e){
       document.getElementById('cpos-import-msg').style.color='#b3261e';
       document.getElementById('cpos-import-msg').textContent='Import failed: '+e.message;
-      impBtn.disabled=false; impBtn.textContent='Update '+valid.length+' cash position'+(valid.length===1?'':'s');
+      impBtn.disabled=false; impBtn.textContent='Update '+valid.length+' account'+(valid.length===1?'':'s');
     }
   };
 }
@@ -8062,15 +8051,15 @@ async function renderEntryBody(){
       +'<div id="ebal-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
   }
-  // ── Update Cash Position — a single current-value snapshot per entity, meant to be refreshed
-  // daily (unlike Update Entity Balance above, which is a per-month reconciliation benchmark).
-  // Feeds the "Cash Position" column in Entity Performance Summary. Same one-at-a-time / Excel
-  // bulk-import tab pattern as Outstanding Liability/Fixed Cost — each row upserts (merge-duplicates
-  // on entity_code), so re-uploading the same PT just refreshes its snapshot instead of duplicating. ──
+  // ── Update Cash Position — now a per-bank-account correction, not a per-entity snapshot: Cash
+  // Position is computed live from bank_accounts.opening_balance + bank_ledger_entries, so "setting"
+  // it for a PT no longer means anything without picking which specific account. Saving here PATCHes
+  // that account's opening_balance and resets opening_date to the date typed (today by default) —
+  // the same effect as editing it in "Manage Bank Accounts" above, just a faster one-field shortcut. ──
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Update Cash Position</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Log the current bank cash balance per PT — meant to be updated daily as a quick snapshot of what\'s in the bank right now (separate from the monthly opening/closing balance above). Uploading a PT that already has a snapshot replaces it.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Correct a specific bank account\'s current balance — pick the PT, then the exact rekening, then the real balance as of a date. This resets that account\'s Saldo Awal to the value/date you enter (same effect as editing it in "Manage Bank Accounts" above).</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="cpos-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
       +'<button id="cpos-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
@@ -8078,13 +8067,15 @@ async function renderEntryBody(){
       +'<div id="cpos-single">'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
       +'<select id="cpos-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<input id="cpos-amt" inputmode="numeric" placeholder="Cash position (IDR)" style="'+inp+'">'
+      +'<select id="cpos-acct" style="'+inp+'"></select>'
+      +'<input id="cpos-amt" inputmode="numeric" placeholder="Saldo (IDR)" style="'+inp+'">'
+      +'<input id="cpos-date" type="date" style="'+inp+'">'
       +'</div>'
       +'<button id="cpos-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save cash position</button>'
       +'<div id="cpos-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div>'
       +'<div id="cpos-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns: <b>Entity (PT), Cash Position (IDR), As of Date</b> (optional — defaults to today if left blank). One row per PT — each upload replaces that PT\'s current snapshot.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns: <b>No. Rekening, New Saldo (IDR), As of Date</b> (optional — defaults to today). Matched by No. Rekening, which must already exist under "Manage Bank Accounts" above — this only corrects an existing account\'s balance, it doesn\'t create new accounts.</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="cpos-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
       +'<label for="cpos-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
@@ -8671,38 +8662,50 @@ async function renderEntryBody(){
       balBtn.disabled=false; balBtn.textContent='Save balance';
     };
   }
-  // ── Wire the "Update Cash Position" box ──
+  // ── Wire the "Update Cash Position" box — Entity select filters which accounts show up in the
+  // Account select, so the two stay in sync as the user picks a PT then a specific rekening. ──
   {
-    const cposEnt=document.getElementById('cpos-ent'), cposAmt=document.getElementById('cpos-amt'),
+    const cposEnt=document.getElementById('cpos-ent'), cposAcct=document.getElementById('cpos-acct'),
+      cposAmt=document.getElementById('cpos-amt'), cposDate=document.getElementById('cpos-date'),
       cposBtn=document.getElementById('cpos-send'), cposMsg=document.getElementById('cpos-msg');
-    const prefillCashPos=()=>{
-      if(!cposEnt) return;
-      const c=CASHPOS[cposEnt.value];
-      cposAmt.value = c ? c.cash : '';
+    const acctLabel=a=>a.bank+(a.label?' ('+a.label+')':'')+' · '+(a.acctNo||'—');
+    const refillAccts=()=>{
+      if(!cposAcct||!cposEnt) return;
+      const accts=BANK_ACCOUNTS.filter(a=>a.entity===cposEnt.value);
+      cposAcct.innerHTML=accts.map(a=>'<option value="'+a.id+'">'+escH(acctLabel(a))+'</option>').join('')
+        ||'<option value="">No accounts for this PT — add one above</option>';
+      prefillCashPos();
     };
-    if(cposEnt) cposEnt.onchange=prefillCashPos;
-    prefillCashPos();
+    const prefillCashPos=()=>{
+      if(!cposAcct||!cposAmt) return;
+      const a=BANK_ACCOUNTS.find(x=>String(x.id)===cposAcct.value);
+      cposAmt.value = a ? bankAccountBalance(a).balance : '';
+      if(cposDate) cposDate.value = new Date().toISOString().slice(0,10);
+    };
+    if(cposEnt) cposEnt.onchange=refillAccts;
+    if(cposAcct) cposAcct.onchange=prefillCashPos;
+    refillAccts();
     if(cposBtn) cposBtn.onclick=async()=>{
       cposMsg.style.color='#b3261e'; cposMsg.textContent='';
-      const entity=cposEnt.value;
+      const acctId=Number(cposAcct.value);
+      const acct=BANK_ACCOUNTS.find(a=>a.id===acctId);
+      if(!acct) return void(cposMsg.textContent='Pick a bank account first.');
       const raw=(cposAmt.value||'').replace(/[^0-9-]/g,'');
-      if(raw==='') return void(cposMsg.textContent='Enter a cash position.');
+      if(raw==='') return void(cposMsg.textContent='Enter a saldo.');
       const amt=Number(raw);
       if(!isFinite(amt)||amt<0) return void(cposMsg.textContent='Invalid amount.');
+      const dateStr=cposDate.value||new Date().toISOString().slice(0,10);
       cposBtn.disabled=true; cposBtn.textContent='Saving…';
       try{
-        const nowIso=new Date().toISOString();
-        const cp={entity_code:entity,cash_idr:amt,updated_by:MY_EMAIL,updated_at:nowIso};
-        const r=await authedFetch(SB_URL+'/rest/v1/entity_cash_position',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(cp)});
-        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
-        CASHPOS[entity]={cash:amt,at:nowIso};
-        renderKpiCash();
+        await adminUpdateOne('bank_accounts',acctId,{opening_balance:amt,opening_date:dateStr});
+        acct.opening=amt; acct.openingDate=dateStr;
+        renderKpiCash(agg()); renderBankAccList();
         cposMsg.style.color='#2b7a4b'; cposMsg.textContent='Saved.';
       }catch(e){ cposMsg.textContent='Failed to save: '+e.message; }
       cposBtn.disabled=false; cposBtn.textContent='Save cash position';
     };
   }
-  // ── Cash Position: tab toggle + bulk Excel import ──
+  // ── Cash Position: tab toggle + bulk Excel import (matched by No. Rekening) ──
   {
     const tabOneCp=document.getElementById('cpos-tab-one'), tabBulkCp=document.getElementById('cpos-tab-bulk');
     const paneOneCp=document.getElementById('cpos-single'), paneBulkCp=document.getElementById('cpos-bulk');
@@ -8719,10 +8722,10 @@ async function renderEntryBody(){
     if(cposTplBtn) cposTplBtn.onclick=async()=>{
       cposTplBtn.disabled=true;
       try{
+        const sample=BANK_ACCOUNTS[0];
         await downloadValidatedTemplate('cash_position_template.xlsx','Cash Position',
-          ['Entity (PT)','Cash Position (IDR)','As of Date'],
-          [eName(EIDS[0]),100000000,'2026-07-31'],
-          [{col:'A',values:EIDS.map(eName)}]);
+          ['No. Rekening','New Saldo (IDR)','As of Date'],
+          [sample?sample.acctNo:'04205703883',100000000,'2026-07-31'],[]);
       } finally { cposTplBtn.disabled=false; }
     };
     const cposFileInp=document.getElementById('cpos-file');
@@ -8737,13 +8740,15 @@ async function renderEntryBody(){
       if(!rows.length){ CPOS_ROWS=[]; renderCposPreview(); return; }
       const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
       const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
-      const kEnt=col(['entity (pt)','entity','pt']), kAmt=col(['cash position (idr)','cash position','amount','amount (idr)']),
+      const kNo=col(['no. rekening','no rekening','account no','rekening']),
+        kAmt=col(['new saldo (idr)','new saldo','saldo','cash position (idr)','cash position','amount']),
         kDate=col(['as of date','date']);
       CPOS_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
-        const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameG(entityRaw);
+        const acctNo=kNo!=null?String(r[kNo]||'').trim():'';
+        const acctMatch=BANK_ACCOUNTS.find(a=>(a.acctNo||'').trim()===acctNo)||null;
         const amt=kAmt!=null?Number(r[kAmt]):NaN;
         const date=kDate!=null?parseFlexDate(r[kDate]):null;
-        const row={entityRaw,entityMatch,amt,date};
+        const row={acctNo,acctMatch,amt,date};
         computeCposRow(row);
         return row;
       });
