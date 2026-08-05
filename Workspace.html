@@ -5327,6 +5327,154 @@ function renderIcTxPreview(){
     }
   };
 }
+// ── Bank Ledger import preview — the unified Debit/Kredit recap. Kode routes each row: Revenue/
+// Opex also insert into `transactions` (and patch entity_period_totals) exactly like Import
+// Transactions above; AR/AP also insert into `intercompany_transactions` exactly like Import Loan
+// Affiliate Transactions above; Pinbuk only ever touches bank_ledger_entries. Every row, regardless
+// of Kode, gets its own bank_ledger_entries row so the account's running balance stays complete. ──
+let BL_ROWS=[];
+const BL_CODES=['revenue','opex','ar','ap','pinbuk'];
+const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk'};
+function computeBlRow(r){
+  let error=null;
+  const debit=Number(r.debitRaw)||0, kredit=Number(r.kreditRaw)||0;
+  r.debit=debit; r.kredit=kredit;
+  if(!r.acctMatch) error='Rekening Bank not recognized';
+  else if(!r.date) error='Invalid date';
+  else if(!r.code) error='Kode must be Revenue, Opex, AR, AP or Pinbuk';
+  else if((debit>0)===(kredit>0)) error='Exactly one of Debit or Kredit must be filled';
+  else if(r.code==='revenue'&&debit>0) error='Revenue must be entered as Kredit, not Debit';
+  else if(r.code==='opex'&&kredit>0) error='Opex must be entered as Debit, not Kredit';
+  else if(r.code==='ar'&&kredit>0) error='AR must be entered as Debit (uang keluar), not Kredit';
+  else if(r.code==='ap'&&debit>0) error='AP must be entered as Kredit (uang masuk), not Debit';
+  else if((r.code==='revenue'||r.code==='opex')&&!r.catMatch) error='Kategori is required for Revenue/Opex';
+  else if((r.code==='ar'||r.code==='ap')&&!r.cp) error='Counterparty is required for AR/AP';
+  r.error=error;
+  r.amt=debit>0?debit:kredit;
+  r.category=r.catMatch||r.catRaw||'';
+  r.vendor=r.vendorMatch||r.vendorRaw||'';
+}
+function fixBlField(i,field,value){
+  const r=BL_ROWS[i]; if(!r) return;
+  if(field==='acct') r.acctMatch=BANK_ACCOUNTS.find(a=>String(a.id)===String(value))||null;
+  else if(field==='code') r.code=value||null;
+  else if(field==='cat') r.catMatch=value||null;
+  else if(field==='vendor') r.vendorMatch=value||null;
+  computeBlRow(r);
+  renderBlPreview();
+}
+function blAcctCell(r,i){
+  return r.acctMatch?escH(bankAccountLabel(r.acctMatch)):searchableSelectHtml('bl-fix-acct-'+i,
+    BANK_ACCOUNTS.map(a=>({value:a.id,label:bankAccountLabel(a)})),'',
+    {placeholder:'— pick account —',style:'font-size:11px;padding:3px 4px;max-width:200px',onchange:`fixBlField(${i},'acct',this.value)`});
+}
+function blCodeCell(r,i){
+  if(r.code) return BL_CODE_LBL[r.code];
+  return `<select id="bl-fix-code-${i}" style="font-size:11px;padding:3px 4px" onchange="fixBlField(${i},'code',this.value)"><option value="">— pick —</option>${BL_CODES.map(c=>`<option value="${c}">${BL_CODE_LBL[c]}</option>`).join('')}</select>`;
+}
+function blCatCell(r,i){
+  if(r.code!=='revenue'&&r.code!=='opex') return '—';
+  if(r.catMatch) return escH(r.catMatch);
+  const opts=r.code==='revenue'?(CATS_BY_KIND_G.revenue||[]):(OPEX_CATS_G||[]);
+  return fixPickCellHtml('bl-fix-cat-'+i,`fixBlField(${i},'cat',this.value)`,opts,'— pick category —','category');
+}
+function blVendorCell(r,i){
+  if(r.code!=='opex') return '—';
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('bl-fix-vendor-'+i,`fixBlField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+}
+function renderBlPreview(){
+  const el=document.getElementById('bl-preview'); if(!el) return;
+  if(!BL_ROWS.length){ el.innerHTML=''; return; }
+  const valid=BL_ROWS.filter(r=>!r.error);
+  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Rekening Bank</th><th>Kode</th><th>Kategori</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Kredit</th><th>Status</th></tr></thead><tbody>';
+  BL_ROWS.forEach((r,i)=>{
+    const rowBg=r.error?'#fbe9e7':'';
+    const status=r.error?escH(r.error):'OK';
+    h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
+      +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
+      +'<td style="font-size:12px">'+blAcctCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+blCodeCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+blCatCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+blVendorCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+((r.code==='ar'||r.code==='ap')?escH(r.cp||'—'):'—')+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px">'+(r.debit?fmtIDR(r.debit):'')+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px">'+(r.kredit?fmtIDR(r.kredit):'')+'</td>'
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+status+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> ledger entr'+(valid.length===1?'y':'ies')+' — '+valid.length+' of '+BL_ROWS.length+' row(s) ready'
+    +(BL_ROWS.length>valid.length?'. Fix the flagged rows above and they\'ll be included automatically':'')+'.</div>';
+  h+='<button id="bl-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' entr'+(valid.length===1?'y':'ies')+'</button>';
+  h+='<div id="bl-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
+  el.innerHTML=h;
+  const impBtn=document.getElementById('bl-import');
+  if(impBtn) impBtn.onclick=async()=>{
+    impBtn.disabled=true; impBtn.textContent='Importing…';
+    try{
+      // 1) Every row becomes its own bank_ledger_entries row, regardless of Kode.
+      const ledgerRows=valid.map(r=>({
+        bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:r.date,code:r.code,
+        debit:r.debit,kredit:r.kredit,description:r.desc||null,
+        category:(r.code==='revenue'||r.code==='opex')?r.category:null,
+        vendor:r.code==='opex'?r.vendor:null,
+        counterparty_label:(r.code==='ar'||r.code==='ap')?r.cp:null,
+        source_label:'Excel import',created_by:MY_EMAIL}));
+      const ledgerResp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',
+        headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(ledgerRows)});
+      if(!ledgerResp.ok) throw new Error((await ledgerResp.text())||('HTTP '+ledgerResp.status));
+      (await ledgerResp.json()).forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
+      // 2) Revenue/Opex rows also land in `transactions`, same row shape as Import Transactions,
+      // and patch entity_period_totals additively (never overwrite) so headline KPIs stay in sync.
+      const revOpex=valid.filter(r=>r.code==='revenue'||r.code==='opex');
+      if(revOpex.length){
+        const baseOrd=Math.floor(Date.now()/1000);
+        const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
+        const txRows=revOpex.map((r,i)=>({
+          source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDateG(r.date).code,flow:r.code==='revenue'?'rev':'opex',
+          entity_code:r.acctMatch.entity,day_label:dayLbl(r.date),
+          description:String(r.desc||'').slice(0,200),raw_label:r.category,
+          source_label:'Bank Ledger import',upload_batch:batchId,amount_idr:r.amt,contra:false}));
+        await adminAddBatch('transactions',txRows);
+        const touched={};
+        revOpex.forEach(r=>{ const per=periodFromDateG(r.date).code; (touched[r.acctMatch.entity]=touched[r.acctMatch.entity]||new Set()).add(per); });
+        for(const ent of Object.keys(touched)){
+          for(const per of touched[ent]){
+            const added=revOpex.filter(r=>r.acctMatch.entity===ent && periodFromDateG(r.date).code===per);
+            const inc={revenue:0,opex:0};
+            added.forEach(r=>{ inc[r.code==='revenue'?'revenue':'opex']+=r.amt; });
+            const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
+            const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
+            await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+              headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+              body:JSON.stringify({entity_code:ent,period_code:per,
+                revenue:Number(c.revenue||0)+inc.revenue, opex:Number(c.opex||0)+inc.opex,
+                financing_in:Number(c.financing_in||0), financing_out:Number(c.financing_out||0)})});
+          }
+        }
+      }
+      // 3) AR/AP rows also land in `intercompany_transactions`, same row shape as Import Loan
+      // Affiliate Transactions, using this account's own PT as the owner.
+      const arAp=valid.filter(r=>r.code==='ar'||r.code==='ap');
+      if(arAp.length){
+        const icRows=arAp.map(r=>({owner_label:(ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity),counterparty_label:r.cp,
+          type:r.code.toUpperCase(),tx_date:r.date,description:r.desc||null,amount_idr:r.amt,source_label:'Bank Ledger import'}));
+        await adminAddBatch('intercompany_transactions',icRows);
+        const freshIc=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
+        IC_TX=freshIc.map(mkIcTx);
+      }
+      BL_ROWS=[];
+      document.getElementById('bl-import-msg').style.color='#2b7a4b';
+      document.getElementById('bl-import-msg').textContent='✓ Added '+valid.length+' ledger entr'+(valid.length===1?'y':'ies')+'.';
+      impBtn.textContent='Imported ✓';
+      renderKpiCash(agg());
+      ENTRY_DIRTY=true;
+    }catch(e){
+      document.getElementById('bl-import-msg').style.color='#b3261e';
+      document.getElementById('bl-import-msg').textContent='Import failed: '+e.message;
+      impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' entr'+(valid.length===1?'y':'ies');
+    }
+  };
+}
 // ── Cash Position import preview — one row per bank account, matched by No. Rekening (already
 // set up under Manage Bank Accounts) rather than by entity, since balance now lives per account. ──
 let CPOS_ROWS=[];
@@ -6735,7 +6883,18 @@ function mkBankLedger(r){
     vendor:r.vendor||'',cp:r.counterparty_label||'',source:r.source_label,createdAt:r.created_at};
 }
 function bankAccountLabel(a){
-  return a.entity+' — '+a.bank+(a.label?' ('+a.label+')':'');
+  const eNm=ENT[a.entity]?ENT[a.entity].name:a.entity;
+  return eNm+' — '+a.bank+(a.label?' ('+a.label+')':'')+' · '+(a.acctNo||'');
+}
+// Matches primarily by the exact canonical label (what the Excel dropdown offers), falling back to
+// finding the account whose No. Rekening appears in the cell text — covers a user retyping/trimming
+// the label but leaving the (unique) account number intact.
+function findBankAccountByLabel(raw){
+  const s=String(raw||'').trim();
+  if(!s) return null;
+  const exact=BANK_ACCOUNTS.find(a=>bankAccountLabel(a)===s);
+  if(exact) return exact;
+  return BANK_ACCOUNTS.find(a=>a.acctNo && s.includes(a.acctNo))||null;
 }
 function bankAccountBalance(a){
   const rows=BANK_LEDGER.filter(r=>r.acctId===a.id);
@@ -8406,6 +8565,57 @@ async function renderEntryBody(){
       msg.style.color='#2b7a4b'; msg.textContent='Account added.';
     }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
     bankaccBtn.disabled=false; bankaccBtn.textContent='Add account';
+  };
+  // ── Import Bank Ledger wiring ──
+  const blTplBtn=document.getElementById('bl-template');
+  if(blTplBtn) blTplBtn.onclick=async()=>{
+    blTplBtn.disabled=true;
+    try{
+      await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
+      const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
+      const sample=BANK_ACCOUNTS[0];
+      await downloadValidatedTemplate('bank_ledger_template.xlsx','Bank Ledger',
+        ['Date','Rekening Bank','Kode','Keterangan','Debit','Kredit','Kategori','Vendor','Counterparty (PT)'],
+        ['2026-07-01',sample?bankAccountLabel(sample):'',BL_CODE_LBL.opex,'Sample transaction',1000000,'',opexCatsTpl[0]||'Other Operating Expense','Sample Vendor',''],
+        [{col:'B',values:BANK_ACCOUNTS.map(bankAccountLabel)},{col:'C',values:Object.values(BL_CODE_LBL)},
+         {col:'G',values:opexCatsTpl.concat(revCatsTpl)},{col:'H',values:VENDORS_G||[]}]);
+    } finally { blTplBtn.disabled=false; }
+  };
+  const blFileInp=document.getElementById('bl-file');
+  if(blFileInp) blFileInp.onchange=async()=>{
+    const f=blFileInp.files[0]; if(!f) return;
+    document.getElementById('bl-filename').textContent=f.name;
+    await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
+    let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
+      document.getElementById('bl-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
+    }
+    const sheet=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+    if(!rows.length){ BL_ROWS=[]; renderBlPreview(); return; }
+    const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
+    const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
+    const kDate=col(['date','tanggal']), kAcct=col(['rekening bank','rekening','bank account']),
+      kCode=col(['kode','code']), kDesc=col(['keterangan','description']),
+      kDebit=col(['debit']), kKredit=col(['kredit','credit']),
+      kCat=col(['kategori','category']), kVendor=col(['vendor']), kCp=col(['counterparty (pt)','counterparty']);
+    BL_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+      const date=kDate!=null?parseFlexDate(r[kDate]):null;
+      const acctRaw=kAcct!=null?String(r[kAcct]||'').trim():'';
+      const acctMatch=findBankAccountByLabel(acctRaw);
+      const codeRaw=kCode!=null?String(r[kCode]||'').trim().toLowerCase():'';
+      const code=BL_CODES.includes(codeRaw)?codeRaw:null;
+      const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
+      const debitRaw=kDebit!=null?r[kDebit]:'', kreditRaw=kKredit!=null?r[kKredit]:'';
+      const catRaw=kCat!=null?String(r[kCat]||'').trim():'';
+      const catMatch=findCategoryByFlow(catRaw,code==='revenue'?'rev':'opex');
+      const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
+      const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
+      const cp=kCp!=null?String(r[kCp]||'').trim():'';
+      const row={date,acctRaw,acctMatch,code,desc,debitRaw,kreditRaw,catRaw,catMatch,vendorRaw,vendorMatch,cp};
+      computeBlRow(row);
+      return row;
+    });
+    renderBlPreview();
   };
   const opdSend=document.getElementById('opd-send');
   if(opdSend) opdSend.onclick=async()=>{
