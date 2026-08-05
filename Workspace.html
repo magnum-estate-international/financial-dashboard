@@ -4000,27 +4000,32 @@ function openDetail(kind){
   else if(kind==='cashpos'){
     SORT_RERENDER['cashpos']=()=>openDetail('cashpos');
     const eName=id=>(ENT[id]?ENT[id].name:id);
-    let rows=BANK_ACCOUNTS.filter(acc=>scopeIds().includes(acc.entity)).map(acc=>({acc,...bankAccountBalance(acc)}));
-    rows.sort((x,y)=>y.balance-x.balance);
-    rows=sortApply('cashpos',rows,r=>r.balance);
+    const byEnt={};
+    BANK_ACCOUNTS.filter(acc=>scopeIds().includes(acc.entity)).forEach(acc=>{
+      const b=bankAccountBalance(acc);
+      const g=byEnt[acc.entity]=byEnt[acc.entity]||{entity:acc.entity,tot:0,n:0,latest:null};
+      g.tot+=b.balance; g.n++; if(!g.latest||(b.asOf||'')>g.latest) g.latest=b.asOf;
+    });
+    let rows=Object.values(byEnt);
+    rows.sort((x,y)=>y.tot-x.tot);
+    rows=sortApply('cashpos',rows,r=>r.tot);
     let h;
     if(!rows.length){
       h=`<p style="color:var(--muted);font-size:12.5px">No bank accounts logged yet for this scope — add them via <b>Update Data → Manage Bank Accounts</b>.</p>`;
     } else {
       let tot=0;
-      h=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>Entity</th><th>Bank</th><th>Label</th><th class="num">${sortHeader('cashpos','Saldo (IDR)','balance')}</th><th>As of</th></tr></thead><tbody>`;
-      rows.forEach(r=>{ tot+=r.balance;
-        h+=`<tr class="clickable" style="cursor:pointer" onclick="openBankAccountLedger(${r.acc.id})">
-          <td style="font-size:12.5px">${escH(eName(r.acc.entity))}</td>
-          <td style="font-size:12.5px">${escH(r.acc.bank)}</td>
-          <td style="font-size:12px;color:var(--muted)">${escH(r.acc.label||USAGE_LBL[r.acc.usage]||'—')} <span style="color:var(--blue-300);font-weight:700">›</span></td>
-          <td class="num">${fmt(r.balance)}</td>
-          <td style="font-size:12px;color:var(--muted)">${r.asOf?new Date(r.asOf).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+      h=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>Entity</th><th class="num">Accounts</th><th class="num">${sortHeader('cashpos','Saldo (IDR)','tot')}</th><th>As of</th></tr></thead><tbody>`;
+      rows.forEach(r=>{ tot+=r.tot;
+        h+=`<tr class="clickable" style="cursor:pointer" onclick="openCashPosEntity('${r.entity}')">
+          <td style="font-size:12.5px">${escH(eName(r.entity))} <span style="color:var(--blue-300);font-weight:700">›</span></td>
+          <td class="num" style="color:var(--muted)">${r.n}</td>
+          <td class="num">${fmt(r.tot)}</td>
+          <td style="font-size:12px;color:var(--muted)">${r.latest?new Date(r.latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
         </tr>`;});
-      h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table></div>`;
-      h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click a row to see that account\'s full ledger (Debit/Kredit/Saldo).</p>`;
+      h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num"></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table></div>`;
+      h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click a PT to see its individual bank accounts.</p>`;
     }
-    showModal('Cash Position — by Bank Account',h,true);
+    showModal('Cash Position — by Entity',h,true);
   }
   else if(kind==='finin'){
     let h=finTableHtml('finIn');
@@ -6795,11 +6800,35 @@ async function deleteBankAcc(id){
     renderBankAccList(); renderKpiCash(agg());
   }catch(e){ alert('Failed to delete: '+e.message); }
 }
+function openCashPosEntity(entity){
+  const eName=id=>(ENT[id]?ENT[id].name:id);
+  let rows=BANK_ACCOUNTS.filter(a=>a.entity===entity).map(a=>({acc:a,...bankAccountBalance(a)}));
+  rows.sort((x,y)=>y.balance-x.balance);
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openDetail('cashpos')">‹ Back to all PTs</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(eName(entity))}</h4>`;
+  if(!rows.length){
+    h+=`<p style="color:var(--muted);font-size:12.5px">No bank accounts logged for this PT.</p>`;
+  } else {
+    let tot=0;
+    h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Bank</th><th>No. Rekening</th><th>Label</th><th class="num">Saldo (IDR)</th><th>As of</th></tr></thead><tbody>`;
+    rows.forEach(r=>{ tot+=r.balance;
+      h+=`<tr class="clickable" style="cursor:pointer" onclick="openBankAccountLedger(${r.acc.id})">
+        <td style="font-size:12.5px">${escH(r.acc.bank)}</td>
+        <td style="font-size:12px;color:var(--muted)">${escH(r.acc.acctNo||'—')}</td>
+        <td style="font-size:12px;color:var(--muted)">${escH(r.acc.label||USAGE_LBL[r.acc.usage]||'—')} <span style="color:var(--blue-300);font-weight:700">›</span></td>
+        <td class="num">${fmt(r.balance)}</td>
+        <td style="font-size:12px;color:var(--muted)">${r.asOf?new Date(r.asOf).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+      </tr>`;});
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table></div>`;
+    h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click an account to see its full ledger (Debit/Kredit/Saldo).</p>`;
+  }
+  showModal(eName(entity),h,true);
+}
 function openBankAccountLedger(id){
   const a=BANK_ACCOUNTS.find(x=>x.id===id); if(!a) return;
   const eName=eid=>(ENT[eid]?ENT[eid].name:eid);
   const rows=BANK_LEDGER.filter(r=>r.acctId===id).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openDetail('cashpos')">‹ Back to all accounts</button>`;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openCashPosEntity('${a.entity}')">‹ Back to ${escH(eName(a.entity))}</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 4px">${escH(eName(a.entity))} — ${escH(a.bank)}${a.label?' ('+escH(a.label)+')':''}</h4>`;
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">No. Rekening: ${escH(a.acctNo||'—')} · Penggunaan: ${USAGE_LBL[a.usage]||a.usage} · Saldo Awal ${fmt(a.opening)} per ${a.openingDate||'—'}</div>`;
   h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Date</th><th>Kode</th><th>Description</th><th class="num">Debit</th><th class="num">Kredit</th><th class="num">Saldo</th></tr></thead><tbody>`;
