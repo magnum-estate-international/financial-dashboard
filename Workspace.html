@@ -5354,6 +5354,28 @@ function computeBlRow(r){
   r.category=r.catMatch||r.catRaw||'';
   r.vendor=r.vendorMatch||r.vendorRaw||'';
 }
+// Cross-checks the optional Saldo column against a running balance computed per account (starting
+// from that account's current live balance, then accumulating each row's Debit/Kredit in date
+// order) — the same trick that caught real typos in the ICG recap earlier this session. A row with
+// no error but a Saldo that doesn't match its own bank-statement arithmetic is a strong signal the
+// Debit/Kredit amount itself was mistyped, so it's flagged rather than silently imported. ──
+function recomputeBlSaldos(){
+  const byAcct={};
+  BL_ROWS.forEach((r,i)=>{ if(r.acctMatch) (byAcct[r.acctMatch.id]=byAcct[r.acctMatch.id]||[]).push({r,i}); });
+  Object.values(byAcct).forEach(list=>{
+    list.sort((a,b)=>(a.r.date||'').localeCompare(b.r.date||'')||a.i-b.i);
+    let running=bankAccountBalance(list[0].r.acctMatch).balance;
+    list.forEach(({r})=>{
+      if(r.error){ r.expectedSaldo=null; return; }
+      running+=(r.kredit||0)-(r.debit||0);
+      r.expectedSaldo=running;
+      if(r.saldoRaw!=null&&r.saldoRaw!==''&&!isNaN(Number(r.saldoRaw))){
+        const given=Number(r.saldoRaw);
+        if(Math.abs(given-running)>=1) r.error='Saldo tidak sesuai — seharusnya '+fmt(running)+', tertulis '+fmt(given);
+      }
+    });
+  });
+}
 function fixBlField(i,field,value){
   const r=BL_ROWS[i]; if(!r) return;
   if(field==='acct') r.acctMatch=BANK_ACCOUNTS.find(a=>String(a.id)===String(value))||null;
@@ -5361,6 +5383,7 @@ function fixBlField(i,field,value){
   else if(field==='cat') r.catMatch=value||null;
   else if(field==='vendor') r.vendorMatch=value||null;
   computeBlRow(r);
+  recomputeBlSaldos();
   renderBlPreview();
 }
 function blAcctCell(r,i){
@@ -5386,7 +5409,7 @@ function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
   if(!BL_ROWS.length){ el.innerHTML=''; return; }
   const valid=BL_ROWS.filter(r=>!r.error);
-  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Rekening Bank</th><th>Kode</th><th>Kategori</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Kredit</th><th>Status</th></tr></thead><tbody>';
+  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Rekening Bank</th><th>Kode</th><th>Kategori</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Kredit</th><th class="num" style="text-align:right">Saldo</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':'';
     const status=r.error?escH(r.error):'OK';
@@ -5399,6 +5422,7 @@ function renderBlPreview(){
       +'<td style="font-size:12px">'+((r.code==='ar'||r.code==='ap')?escH(r.cp||'—'):'—')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.debit?fmtIDR(r.debit):'')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.kredit?fmtIDR(r.kredit):'')+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px;font-weight:700">'+(r.expectedSaldo!=null?fmtIDR(r.expectedSaldo):'—')+'</td>'
       +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+status+'</td></tr>';
   });
   h+='</tbody></table></div>';
@@ -8191,7 +8215,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per bank mutation (Tanggal, Rekening Bank, Kode, Keterangan, Debit or Kredit, plus Kategori/Vendor for Revenue/Opex or Counterparty for AR/AP), then upload. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate; <b>Pinbuk</b> (internal transfer between the group\'s own accounts) only affects this account\'s balance and appears nowhere else.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatnya seperti buku bank/mutasi rekening: satu baris per transaksi dengan Debit, Kredit dan Saldo, ditambah <b>Kode</b> untuk menentukan tujuannya. <b>Saldo</b> opsional tapi kalau diisi (sesuai kolom saldo di rekening koran Anda) akan otomatis dicocokkan dengan hasil hitungan sistem — kalau tidak sama, baris itu akan ditandai supaya Anda tahu ada Debit/Kredit yang mungkin salah ketik. <b>Revenue</b>/<b>Opex</b> juga masuk ke box Revenue/Expenses; <b>AR</b>/<b>AP</b> juga masuk ke Loan Affiliate; <b>Pinbuk</b> (transfer antar rekening sendiri) hanya memengaruhi saldo rekening ini, tidak muncul di box lain.</div>'
       +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first — the template needs a bank account to attach each row to.</div>')
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="bl-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px"'+(BANK_ACCOUNTS.length?'':' disabled')+'>'+ICON.download()+'Download template (.xlsx)</button>'
@@ -8575,10 +8599,10 @@ async function renderEntryBody(){
       const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
       const sample=BANK_ACCOUNTS[0];
       await downloadValidatedTemplate('bank_ledger_template.xlsx','Bank Ledger',
-        ['Date','Rekening Bank','Kode','Keterangan','Debit','Kredit','Kategori','Vendor','Counterparty (PT)'],
-        ['2026-07-01',sample?bankAccountLabel(sample):'',BL_CODE_LBL.opex,'Sample transaction',1000000,'',opexCatsTpl[0]||'Other Operating Expense','Sample Vendor',''],
+        ['Date','Rekening Bank','Kode','Keterangan','Debit','Kredit','Saldo','Kategori','Vendor','Counterparty (PT)'],
+        ['2026-07-01',sample?bankAccountLabel(sample):'',BL_CODE_LBL.opex,'Sample transaction',1000000,'',9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor',''],
         [{col:'B',values:BANK_ACCOUNTS.map(bankAccountLabel)},{col:'C',values:Object.values(BL_CODE_LBL)},
-         {col:'G',values:opexCatsTpl.concat(revCatsTpl)},{col:'H',values:VENDORS_G||[]}]);
+         {col:'H',values:opexCatsTpl.concat(revCatsTpl)},{col:'I',values:VENDORS_G||[]}]);
     } finally { blTplBtn.disabled=false; }
   };
   const blFileInp=document.getElementById('bl-file');
@@ -8596,7 +8620,7 @@ async function renderEntryBody(){
     const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
     const kDate=col(['date','tanggal']), kAcct=col(['rekening bank','rekening','bank account']),
       kCode=col(['kode','code']), kDesc=col(['keterangan','description']),
-      kDebit=col(['debit']), kKredit=col(['kredit','credit']),
+      kDebit=col(['debit']), kKredit=col(['kredit','credit']), kSaldo=col(['saldo','balance']),
       kCat=col(['kategori','category']), kVendor=col(['vendor']), kCp=col(['counterparty (pt)','counterparty']);
     BL_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
       const date=kDate!=null?parseFlexDate(r[kDate]):null;
@@ -8606,15 +8630,17 @@ async function renderEntryBody(){
       const code=BL_CODES.includes(codeRaw)?codeRaw:null;
       const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
       const debitRaw=kDebit!=null?r[kDebit]:'', kreditRaw=kKredit!=null?r[kKredit]:'';
+      const saldoRaw=kSaldo!=null?r[kSaldo]:'';
       const catRaw=kCat!=null?String(r[kCat]||'').trim():'';
       const catMatch=findCategoryByFlow(catRaw,code==='revenue'?'rev':'opex');
       const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
       const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
       const cp=kCp!=null?String(r[kCp]||'').trim():'';
-      const row={date,acctRaw,acctMatch,code,desc,debitRaw,kreditRaw,catRaw,catMatch,vendorRaw,vendorMatch,cp};
+      const row={date,acctRaw,acctMatch,code,desc,debitRaw,kreditRaw,saldoRaw,catRaw,catMatch,vendorRaw,vendorMatch,cp};
       computeBlRow(row);
       return row;
     });
+    recomputeBlSaldos();
     renderBlPreview();
   };
   const opdSend=document.getElementById('opd-send');
