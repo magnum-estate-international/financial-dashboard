@@ -5378,18 +5378,12 @@ function recomputeBlSaldos(){
 }
 function fixBlField(i,field,value){
   const r=BL_ROWS[i]; if(!r) return;
-  if(field==='acct') r.acctMatch=BANK_ACCOUNTS.find(a=>String(a.id)===String(value))||null;
-  else if(field==='code') r.code=value||null;
+  if(field==='code') r.code=value||null;
   else if(field==='cat') r.catMatch=value||null;
   else if(field==='vendor') r.vendorMatch=value||null;
   computeBlRow(r);
   recomputeBlSaldos();
   renderBlPreview();
-}
-function blAcctCell(r,i){
-  return r.acctMatch?escH(bankAccountLabel(r.acctMatch)):searchableSelectHtml('bl-fix-acct-'+i,
-    BANK_ACCOUNTS.map(a=>({value:a.id,label:bankAccountLabel(a)})),'',
-    {placeholder:'— pick account —',style:'font-size:11px;padding:3px 4px;max-width:200px',onchange:`fixBlField(${i},'acct',this.value)`});
 }
 function blCodeCell(r,i){
   if(r.code) return BL_CODE_LBL[r.code];
@@ -5409,13 +5403,12 @@ function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
   if(!BL_ROWS.length){ el.innerHTML=''; return; }
   const valid=BL_ROWS.filter(r=>!r.error);
-  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Rekening Bank</th><th>Kode</th><th>Kategori</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Kredit</th><th class="num" style="text-align:right">Saldo</th><th>Status</th></tr></thead><tbody>';
+  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Kode</th><th>Kategori</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Kredit</th><th class="num" style="text-align:right">Saldo</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':'';
     const status=r.error?escH(r.error):'OK';
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
-      +'<td style="font-size:12px">'+blAcctCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+blCodeCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+blCatCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+blVendorCell(r,i)+'</td>'
@@ -6910,16 +6903,6 @@ function bankAccountLabel(a){
   const eNm=ENT[a.entity]?ENT[a.entity].name:a.entity;
   return eNm+' — '+a.bank+(a.label?' ('+a.label+')':'')+' · '+(a.acctNo||'');
 }
-// Matches primarily by the exact canonical label (what the Excel dropdown offers), falling back to
-// finding the account whose No. Rekening appears in the cell text — covers a user retyping/trimming
-// the label but leaving the (unique) account number intact.
-function findBankAccountByLabel(raw){
-  const s=String(raw||'').trim();
-  if(!s) return null;
-  const exact=BANK_ACCOUNTS.find(a=>bankAccountLabel(a)===s);
-  if(exact) return exact;
-  return BANK_ACCOUNTS.find(a=>a.acctNo && s.includes(a.acctNo))||null;
-}
 function bankAccountBalance(a){
   const rows=BANK_LEDGER.filter(r=>r.acctId===a.id);
   const net=rows.reduce((s,r)=>s+r.kredit-r.debit,0);
@@ -8215,12 +8198,15 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatnya seperti buku bank/mutasi rekening: satu baris per transaksi dengan Debit, Kredit dan Saldo, ditambah <b>Kode</b> untuk menentukan tujuannya. <b>Saldo</b> opsional tapi kalau diisi (sesuai kolom saldo di rekening koran Anda) akan otomatis dicocokkan dengan hasil hitungan sistem — kalau tidak sama, baris itu akan ditandai supaya Anda tahu ada Debit/Kredit yang mungkin salah ketik. <b>Revenue</b>/<b>Opex</b> juga masuk ke box Revenue/Expenses; <b>AR</b>/<b>AP</b> juga masuk ke Loan Affiliate; <b>Pinbuk</b> (transfer antar rekening sendiri) hanya memengaruhi saldo rekening ini, tidak muncul di box lain.</div>'
-      +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first — the template needs a bank account to attach each row to.</div>')
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatnya seperti buku bank/mutasi rekening: satu baris per transaksi dengan Debit, Kredit dan Saldo, ditambah <b>Kode</b> untuk menentukan tujuannya. Import selalu untuk <b>satu rekening spesifik</b> — pilih dulu rekeningnya di bawah, karena Debit/Kredit/Saldo harus balance secara berurutan dalam satu rekening, tidak bisa dicampur beberapa rekening dalam satu file. <b>Revenue</b>/<b>Opex</b> juga masuk ke box Revenue/Expenses; <b>AR</b>/<b>AP</b> juga masuk ke Loan Affiliate; <b>Pinbuk</b> (transfer antar rekening sendiri) hanya memengaruhi saldo rekening ini, tidak muncul di box lain.</div>'
+      +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first.</div>')
+      +'<div style="margin-bottom:12px">'
+      +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pilih rekening —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabel(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
+      +'</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-      +'<button id="bl-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px"'+(BANK_ACCOUNTS.length?'':' disabled')+'>'+ICON.download()+'Download template (.xlsx)</button>'
-      +'<label for="bl-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
-      +'<input id="bl-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'<button id="bl-template" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<label for="bl-file" id="bl-file-label" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#e4e7ef;color:#9aa1b1;font-size:12px;font-weight:700;padding:7px 14px;cursor:not-allowed">'+ICON.clip()+'Choose Excel/CSV file</label>'
+      +'<input id="bl-file" type="file" accept=".xlsx,.xls,.csv" style="display:none" disabled>'
       +'</div>'
       +'<span id="bl-filename" style="font-size:12px;color:#3a4254"></span>'
       +'<div id="bl-preview" style="margin-top:12px"></div>'
@@ -8590,59 +8576,72 @@ async function renderEntryBody(){
     }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
     bankaccBtn.disabled=false; bankaccBtn.textContent='Add account';
   };
-  // ── Import Bank Ledger wiring ──
-  const blTplBtn=document.getElementById('bl-template');
-  if(blTplBtn) blTplBtn.onclick=async()=>{
-    blTplBtn.disabled=true;
-    try{
+  // ── Import Bank Ledger wiring — scoped to ONE selected bank account at a time, since Debit/
+  // Kredit/Saldo only balance sequentially within a single account's own history; picking the
+  // account first (rather than a per-row "Rekening Bank" column) removes any account-matching
+  // ambiguity and keeps the template a straightforward one-account buku bank layout. ──
+  {
+    const blAcctSel=document.getElementById('bl-acct'), blTplBtn=document.getElementById('bl-template'),
+      blFileInp=document.getElementById('bl-file'), blFileLabel=document.getElementById('bl-file-label');
+    const setBlAcctEnabled=()=>{
+      const has=!!(blAcctSel&&blAcctSel.value);
+      if(blTplBtn) blTplBtn.disabled=!has;
+      if(blFileInp) blFileInp.disabled=!has;
+      if(blFileLabel){ blFileLabel.style.background=has?'#f5e8c8':'#e4e7ef'; blFileLabel.style.color=has?'#9a6f0a':'#9aa1b1'; blFileLabel.style.cursor=has?'pointer':'not-allowed'; }
+      BL_ROWS=[]; renderBlPreview();
+      document.getElementById('bl-filename').textContent='';
+    };
+    if(blAcctSel) blAcctSel.onchange=setBlAcctEnabled;
+    if(blTplBtn) blTplBtn.onclick=async()=>{
+      const acct=BANK_ACCOUNTS.find(a=>String(a.id)===blAcctSel.value); if(!acct) return;
+      blTplBtn.disabled=true;
+      try{
+        await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
+        const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
+        await downloadValidatedTemplate('bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'.xlsx','Bank Ledger',
+          ['Date','Kode','Keterangan','Debit','Kredit','Saldo','Kategori','Vendor','Counterparty (PT)'],
+          ['2026-07-01',BL_CODE_LBL.opex,'Sample transaction',1000000,'',9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor',''],
+          [{col:'B',values:Object.values(BL_CODE_LBL)},{col:'G',values:opexCatsTpl.concat(revCatsTpl)},{col:'H',values:VENDORS_G||[]}]);
+      } finally { blTplBtn.disabled=false; }
+    };
+    if(blFileInp) blFileInp.onchange=async()=>{
+      const acct=BANK_ACCOUNTS.find(a=>String(a.id)===blAcctSel.value); if(!acct) return;
+      const f=blFileInp.files[0]; if(!f) return;
+      document.getElementById('bl-filename').textContent=f.name;
       await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
-      const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
-      const sample=BANK_ACCOUNTS[0];
-      await downloadValidatedTemplate('bank_ledger_template.xlsx','Bank Ledger',
-        ['Date','Rekening Bank','Kode','Keterangan','Debit','Kredit','Saldo','Kategori','Vendor','Counterparty (PT)'],
-        ['2026-07-01',sample?bankAccountLabel(sample):'',BL_CODE_LBL.opex,'Sample transaction',1000000,'',9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor',''],
-        [{col:'B',values:BANK_ACCOUNTS.map(bankAccountLabel)},{col:'C',values:Object.values(BL_CODE_LBL)},
-         {col:'H',values:opexCatsTpl.concat(revCatsTpl)},{col:'I',values:VENDORS_G||[]}]);
-    } finally { blTplBtn.disabled=false; }
-  };
-  const blFileInp=document.getElementById('bl-file');
-  if(blFileInp) blFileInp.onchange=async()=>{
-    const f=blFileInp.files[0]; if(!f) return;
-    document.getElementById('bl-filename').textContent=f.name;
-    await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
-    let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
-      document.getElementById('bl-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
-    }
-    const sheet=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
-    if(!rows.length){ BL_ROWS=[]; renderBlPreview(); return; }
-    const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
-    const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
-    const kDate=col(['date','tanggal']), kAcct=col(['rekening bank','rekening','bank account']),
-      kCode=col(['kode','code']), kDesc=col(['keterangan','description']),
-      kDebit=col(['debit']), kKredit=col(['kredit','credit']), kSaldo=col(['saldo','balance']),
-      kCat=col(['kategori','category']), kVendor=col(['vendor']), kCp=col(['counterparty (pt)','counterparty']);
-    BL_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
-      const date=kDate!=null?parseFlexDate(r[kDate]):null;
-      const acctRaw=kAcct!=null?String(r[kAcct]||'').trim():'';
-      const acctMatch=findBankAccountByLabel(acctRaw);
-      const codeRaw=kCode!=null?String(r[kCode]||'').trim().toLowerCase():'';
-      const code=BL_CODES.includes(codeRaw)?codeRaw:null;
-      const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
-      const debitRaw=kDebit!=null?r[kDebit]:'', kreditRaw=kKredit!=null?r[kKredit]:'';
-      const saldoRaw=kSaldo!=null?r[kSaldo]:'';
-      const catRaw=kCat!=null?String(r[kCat]||'').trim():'';
-      const catMatch=findCategoryByFlow(catRaw,code==='revenue'?'rev':'opex');
-      const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
-      const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
-      const cp=kCp!=null?String(r[kCp]||'').trim():'';
-      const row={date,acctRaw,acctMatch,code,desc,debitRaw,kreditRaw,saldoRaw,catRaw,catMatch,vendorRaw,vendorMatch,cp};
-      computeBlRow(row);
-      return row;
-    });
-    recomputeBlSaldos();
-    renderBlPreview();
-  };
+      let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
+        document.getElementById('bl-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
+      }
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+      if(!rows.length){ BL_ROWS=[]; renderBlPreview(); return; }
+      const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
+      const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
+      const kDate=col(['date','tanggal']),
+        kCode=col(['kode','code']), kDesc=col(['keterangan','description']),
+        kDebit=col(['debit']), kKredit=col(['kredit','credit']), kSaldo=col(['saldo','balance']),
+        kCat=col(['kategori','category']), kVendor=col(['vendor']), kCp=col(['counterparty (pt)','counterparty']);
+      BL_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+        const date=kDate!=null?parseFlexDate(r[kDate]):null;
+        const codeRaw=kCode!=null?String(r[kCode]||'').trim().toLowerCase():'';
+        const code=BL_CODES.includes(codeRaw)?codeRaw:null;
+        const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
+        const debitRaw=kDebit!=null?r[kDebit]:'', kreditRaw=kKredit!=null?r[kKredit]:'';
+        const saldoRaw=kSaldo!=null?r[kSaldo]:'';
+        const catRaw=kCat!=null?String(r[kCat]||'').trim():'';
+        const catMatch=findCategoryByFlow(catRaw,code==='revenue'?'rev':'opex');
+        const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
+        const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
+        const cp=kCp!=null?String(r[kCp]||'').trim():'';
+        const row={date,acctMatch:acct,code,desc,debitRaw,kreditRaw,saldoRaw,catRaw,catMatch,vendorRaw,vendorMatch,cp};
+        computeBlRow(row);
+        return row;
+      });
+      recomputeBlSaldos();
+      renderBlPreview();
+    };
+    setBlAcctEnabled();
+  }
   const opdSend=document.getElementById('opd-send');
   if(opdSend) opdSend.onclick=async()=>{
     const msg=document.getElementById('opd-msg'); setMsg('opd-msg','');
