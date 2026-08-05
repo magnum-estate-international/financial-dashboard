@@ -4259,6 +4259,7 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
 const DOC_TABLES={
   transactions:{bucket:'transaction-docs',arr:()=>TX},
   outstanding_payables:{bucket:'outstanding-docs',arr:()=>OUTSTANDING},
+  bank_ledger_entries:{bucket:'bank-ledger-docs',arr:()=>BANK_LEDGER},
 };
 // expiresIn defaults to 1hr for the inline "open now" click; the export flow passes a longer
 // expiry since the resulting link sits in a downloaded file, not opened immediately.
@@ -4295,7 +4296,7 @@ async function saveDoc(table,id,file,backCall){
   try{
     if(file.size>10*1024*1024) throw new Error('File must be under 10MB');
     const rec=cfg.arr().find(r=>r.id===id); if(!rec) throw new Error('Record not found');
-    const path=`${rec.e}/${id}/${Date.now()}_${file.name}`;
+    const path=`${rec.e||rec.entity}/${id}/${Date.now()}_${file.name}`;
     const up=await authedFetch(SB_URL+'/storage/v1/object/'+cfg.bucket+'/'+path.split('/').map(encodeURIComponent).join('/'),
       {method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
     if(!up.ok) throw new Error((await up.text())||('Upload HTTP '+up.status));
@@ -4321,7 +4322,7 @@ async function pullExternalDoc(table,id,encUrl,backCall){
     const blob=await r.blob();
     if(blob.size>10*1024*1024) throw new Error('File is larger than the 10MB storage limit');
     const ext=((blob.type.split('/')[1]||'bin').replace(/[^a-z0-9]/gi,'').slice(0,10))||'bin';
-    const path=`${rec.e}/${id}/${Date.now()}_imported.${ext}`;
+    const path=`${rec.e||rec.entity}/${id}/${Date.now()}_imported.${ext}`;
     const up=await authedFetch(SB_URL+'/storage/v1/object/'+cfg.bucket+'/'+path.split('/').map(encodeURIComponent).join('/'),
       {method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob});
     if(!up.ok) throw new Error((await up.text())||('Upload HTTP '+up.status));
@@ -6897,7 +6898,8 @@ function mkBankAccount(r){
 function mkBankLedger(r){
   return {id:r.id,acctId:r.bank_account_id,entity:r.entity_code,date:r.tx_date,code:r.code,
     debit:+r.debit,kredit:+r.kredit,desc:r.description||'',category:r.category||'',
-    vendor:r.vendor||'',cp:r.counterparty_label||'',source:r.source_label,createdAt:r.created_at};
+    vendor:r.vendor||'',cp:r.counterparty_label||'',source:r.source_label,createdAt:r.created_at,
+    attachments:Array.isArray(r.attachments)?r.attachments:[]};
 }
 function bankAccountLabel(a){
   const eNm=ENT[a.entity]?ENT[a.entity].name:a.entity;
@@ -7007,15 +7009,21 @@ function openBankAccountLedger(id){
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openCashPosEntity('${a.entity}')">‹ Back to ${escH(eName(a.entity))}</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 4px">${escH(eName(a.entity))} — ${escH(a.bank)}${a.label?' ('+escH(a.label)+')':''}</h4>`;
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">No. Rekening: ${escH(a.acctNo||'—')} · Penggunaan: ${USAGE_LBL[a.usage]||a.usage} · Saldo Awal ${fmt(a.opening)} per ${a.openingDate||'—'}</div>`;
-  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Date</th><th>Kode</th><th>Description</th><th class="num">Debit</th><th class="num">Kredit</th><th class="num">Saldo</th></tr></thead><tbody>`;
+  const canEdit=IS_ADMIN||MY_ROLE==='editor';
+  const backCall=encodeURIComponent(`openBankAccountLedger(${id})`);
+  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Date</th><th>Kode</th><th>Description</th><th class="num">Debit</th><th class="num">Kredit</th><th class="num">Saldo</th><th></th></tr></thead><tbody>`;
   let saldo=a.opening;
-  h+=`<tr style="background:#f7f8fb"><td colspan="5" style="font-size:12px;color:var(--muted)">Saldo Awal (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td></tr>`;
+  h+=`<tr style="background:#f7f8fb"><td colspan="5" style="font-size:12px;color:var(--muted)">Saldo Awal (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td></tr>`;
   if(!rows.length){
-    h+=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No ledger entries yet for this account — import via <b>Update Data → Import Bank Ledger</b>.</td></tr>`;
+    h+=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No ledger entries yet for this account — import via <b>Update Data → Import Bank Ledger</b>.</td></tr>`;
   } else {
     rows.forEach(r=>{
       saldo+=r.kredit-r.debit;
       const saldoPos=saldo>=0;
+      const hasDoc=Array.isArray(r.attachments)&&r.attachments.length>0;
+      let docCell='<td></td>';
+      if(hasDoc) docCell=`<td style="white-space:nowrap">${docViewChip('bank-ledger-docs',r.attachments)}</td>`;
+      else if(canEdit) docCell=`<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerDocUpload('bank_ledger_entries',${r.id},'${backCall}')" title="Upload supporting document">${ICON.file(13)}</button></td>`;
       h+=`<tr>
         <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
         <td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;background:#eef2f7;color:#3a4254;text-transform:capitalize">${escH(r.code)}</span></td>
@@ -7023,6 +7031,7 @@ function openBankAccountLedger(id){
         <td class="num neg">${r.debit?fmt(r.debit):''}</td>
         <td class="num pos">${r.kredit?fmt(r.kredit):''}</td>
         <td class="num" style="font-weight:800;color:${saldoPos?'#2b7a4b':'#b3261e'}">${fmt(saldo)}</td>
+        ${docCell}
       </tr>`;
     });
   }
