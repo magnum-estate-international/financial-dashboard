@@ -4306,27 +4306,35 @@ async function saveDoc(table,id,file,backCall){
     eval(backCall);
   }catch(e){ alert('Upload failed: '+e.message); }
 }
+// Fetches a shared document link (Google Drive "Anyone with the link", or any other directly
+// fetchable URL) server-side via the fetch-external-doc edge function — the browser can't fetch
+// most of these directly (CORS) — and stores it in the given bucket at the usual
+// `${entityCode}/${id}/...` path. Returns the {path,name} attachment object; does NOT touch the
+// DB row itself, so callers (a single "pull this link" action, or a bulk import attaching many
+// links at once) decide how/when to PATCH `attachments`.
+async function fetchAndAttachDoc(bucket,entityCode,id,url){
+  const r=await authedFetch(SB_URL+'/functions/v1/fetch-external-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+  if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.error||('HTTP '+r.status)); }
+  const blob=await r.blob();
+  if(blob.size>10*1024*1024) throw new Error('File is larger than the 10MB storage limit');
+  const ext=((blob.type.split('/')[1]||'bin').replace(/[^a-z0-9]/gi,'').slice(0,10))||'bin';
+  const path=`${entityCode}/${id}/${Date.now()}_imported.${ext}`;
+  const up=await authedFetch(SB_URL+'/storage/v1/object/'+bucket+'/'+path.split('/').map(encodeURIComponent).join('/'),
+    {method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob});
+  if(!up.ok) throw new Error((await up.text())||('Upload HTTP '+up.status));
+  return {path,name:'Imported document'};
+}
 // Pulls a Google Drive-shared document (added before real upload existed, e.g. Outstanding
-// Liability's legacy "Document link" field) into our own private storage — via the
-// fetch-external-doc edge function, since the browser can't fetch drive.google.com directly
-// (CORS). Requires the Drive file to be shared "Anyone with the link"; the edge function reports
-// back clearly if it isn't, rather than silently failing.
+// Liability's legacy "Document link" field) into our own private storage. Requires the Drive file
+// to be shared "Anyone with the link"; the edge function reports back clearly if it isn't, rather
+// than silently failing.
 async function pullExternalDoc(table,id,encUrl,backCall){
   const url=decodeURIComponent(encUrl);
   backCall=decodeURIComponent(backCall);
   const cfg=DOC_TABLES[table];
   try{
     const rec=cfg.arr().find(r=>r.id===id); if(!rec) throw new Error('Record not found');
-    const r=await authedFetch(SB_URL+'/functions/v1/fetch-external-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-    if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.error||('HTTP '+r.status)); }
-    const blob=await r.blob();
-    if(blob.size>10*1024*1024) throw new Error('File is larger than the 10MB storage limit');
-    const ext=((blob.type.split('/')[1]||'bin').replace(/[^a-z0-9]/gi,'').slice(0,10))||'bin';
-    const path=`${rec.e||rec.entity}/${id}/${Date.now()}_imported.${ext}`;
-    const up=await authedFetch(SB_URL+'/storage/v1/object/'+cfg.bucket+'/'+path.split('/').map(encodeURIComponent).join('/'),
-      {method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob});
-    if(!up.ok) throw new Error((await up.text())||('Upload HTTP '+up.status));
-    const atts=[{path,name:'Imported document'}];
+    const atts=[await fetchAndAttachDoc(cfg.bucket,rec.e||rec.entity,id,url)];
     await adminUpdateOne(table,id,{attachments:atts});
     rec.attachments=atts;
     eval(backCall);
@@ -5404,7 +5412,7 @@ function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
   if(!BL_ROWS.length){ el.innerHTML=''; return; }
   const valid=BL_ROWS.filter(r=>!r.error);
-  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Kode</th><th>Kategori</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Kredit</th><th class="num" style="text-align:right">Saldo</th><th>Status</th></tr></thead><tbody>';
+  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Kode</th><th>Kategori</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Kredit</th><th class="num" style="text-align:right">Saldo</th><th>Dok?</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':'';
     const status=r.error?escH(r.error):'OK';
@@ -5417,6 +5425,7 @@ function renderBlPreview(){
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.debit?fmtIDR(r.debit):'')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.kredit?fmtIDR(r.kredit):'')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px;font-weight:700">'+(r.expectedSaldo!=null?fmtIDR(r.expectedSaldo):'—')+'</td>'
+      +'<td style="font-size:12px;text-align:center">'+(r.docLink?'📎':'—')+'</td>'
       +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+status+'</td></tr>';
   });
   h+='</tbody></table></div>';
@@ -5440,7 +5449,22 @@ function renderBlPreview(){
       const ledgerResp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',
         headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(ledgerRows)});
       if(!ledgerResp.ok) throw new Error((await ledgerResp.text())||('HTTP '+ledgerResp.status));
-      (await ledgerResp.json()).forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
+      const savedLedgerRows=await ledgerResp.json();
+      savedLedgerRows.forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
+      // 1b) Rows with a document link get that link pulled into secure storage and attached —
+      // relies on the insert response preserving submission order (true for a plain PostgREST
+      // bulk insert) to match each saved row back to its source row's Link Dokumen.
+      let docOk=0,docFail=0;
+      for(let i=0;i<valid.length;i++){
+        const link=(valid[i].docLink||'').trim(); if(!link) continue;
+        const saved=savedLedgerRows[i]; if(!saved) continue;
+        try{
+          const att=await fetchAndAttachDoc('bank-ledger-docs',saved.entity_code,saved.id,link);
+          await adminUpdateOne('bank_ledger_entries',saved.id,{attachments:[att]});
+          const rec=BANK_LEDGER.find(x=>x.id===saved.id); if(rec) rec.attachments=[att];
+          docOk++;
+        }catch(e){ docFail++; }
+      }
       // 2) Revenue/Opex rows also land in `transactions`, same row shape as Import Transactions,
       // and patch entity_period_totals additively (never overwrite) so headline KPIs stay in sync.
       const revOpex=valid.filter(r=>r.code==='revenue'||r.code==='opex');
@@ -5482,7 +5506,9 @@ function renderBlPreview(){
       }
       BL_ROWS=[];
       document.getElementById('bl-import-msg').style.color='#2b7a4b';
-      document.getElementById('bl-import-msg').textContent='✓ Added '+valid.length+' ledger entr'+(valid.length===1?'y':'ies')+'.';
+      document.getElementById('bl-import-msg').textContent='✓ Added '+valid.length+' ledger entr'+(valid.length===1?'y':'ies')
+        +(docOk?', '+docOk+' document'+(docOk===1?'':'s')+' attached':'')
+        +(docFail?', '+docFail+' document link'+(docFail===1?'':'s')+' failed to import (check they\'re shared "Anyone with the link")':'')+'.';
       impBtn.textContent='Imported ✓';
       renderKpiCash(agg());
       ENTRY_DIRTY=true;
@@ -8207,7 +8233,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatnya seperti buku bank/mutasi rekening: satu baris per transaksi dengan Debit, Kredit dan Saldo, ditambah <b>Kode</b> untuk menentukan tujuannya. Import selalu untuk <b>satu rekening spesifik</b> — pilih dulu rekeningnya di bawah, karena Debit/Kredit/Saldo harus balance secara berurutan dalam satu rekening, tidak bisa dicampur beberapa rekening dalam satu file. <b>Revenue</b>/<b>Opex</b> juga masuk ke box Revenue/Expenses; <b>AR</b>/<b>AP</b> juga masuk ke Loan Affiliate; <b>Pinbuk</b> (transfer antar rekening sendiri) hanya memengaruhi saldo rekening ini, tidak muncul di box lain.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatnya seperti buku bank/mutasi rekening: satu baris per transaksi dengan Debit, Kredit dan Saldo, ditambah <b>Kode</b> untuk menentukan tujuannya. Import selalu untuk <b>satu rekening spesifik</b> — pilih dulu rekeningnya di bawah, karena Debit/Kredit/Saldo harus balance secara berurutan dalam satu rekening, tidak bisa dicampur beberapa rekening dalam satu file. <b>Revenue</b>/<b>Opex</b> juga masuk ke box Revenue/Expenses; <b>AR</b>/<b>AP</b> juga masuk ke Loan Affiliate; <b>Pinbuk</b> (transfer antar rekening sendiri) hanya memengaruhi saldo rekening ini, tidak muncul di box lain. Isi kolom <b>Link Dokumen</b> (link Google Drive, dishare "Anyone with the link") untuk melampirkan bukti transaksi — sistem otomatis menariknya ke penyimpanan aman, jadi saat viewer melihat detail biaya/opex di dashboard, dokumen pendukungnya langsung bisa dibuka di sana. Kosongkan kalau belum ada dokumennya, bisa dilampirkan menyusul lewat ikon 📎 di tampilan ledger.</div>'
       +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first.</div>')
       +'<div style="margin-bottom:12px">'
       +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pilih rekening —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabel(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
@@ -8609,8 +8635,8 @@ async function renderEntryBody(){
         const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
         const cpSuggestions=[...new Set([...EIDS.map(id=>ENT[id].name),...IC_TX.map(t=>t.cp)])].filter(Boolean).sort();
         await downloadValidatedTemplate('bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'.xlsx','Bank Ledger',
-          ['Date','Kode','Keterangan','Debit','Kredit','Saldo','Kategori','Vendor','Counterparty (PT)'],
-          ['2026-07-01',BL_CODE_LBL.opex,'Sample transaction',1000000,'',9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor',''],
+          ['Date','Kode','Keterangan','Debit','Kredit','Saldo','Kategori','Vendor','Counterparty (PT)','Link Dokumen'],
+          ['2026-07-01',BL_CODE_LBL.opex,'Sample transaction',1000000,'',9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
           [{col:'B',values:Object.values(BL_CODE_LBL)},{col:'G',values:opexCatsTpl.concat(revCatsTpl)},
            {col:'H',values:VENDORS_G||[]},{col:'I',values:cpSuggestions}]);
       } finally { blTplBtn.disabled=false; }
@@ -8631,7 +8657,8 @@ async function renderEntryBody(){
       const kDate=col(['date','tanggal']),
         kCode=col(['kode','code']), kDesc=col(['keterangan','description']),
         kDebit=col(['debit']), kKredit=col(['kredit','credit']), kSaldo=col(['saldo','balance']),
-        kCat=col(['kategori','category']), kVendor=col(['vendor']), kCp=col(['counterparty (pt)','counterparty']);
+        kCat=col(['kategori','category']), kVendor=col(['vendor']), kCp=col(['counterparty (pt)','counterparty']),
+        kDocLink=col(['link dokumen','dokumen','document link','link']);
       BL_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
         const date=kDate!=null?parseFlexDate(r[kDate]):null;
         const codeRaw=kCode!=null?String(r[kCode]||'').trim().toLowerCase():'';
@@ -8644,7 +8671,8 @@ async function renderEntryBody(){
         const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
         const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
         const cp=kCp!=null?String(r[kCp]||'').trim():'';
-        const row={date,acctMatch:acct,code,desc,debitRaw,kreditRaw,saldoRaw,catRaw,catMatch,vendorRaw,vendorMatch,cp};
+        const docLink=kDocLink!=null?String(r[kDocLink]||'').trim():'';
+        const row={date,acctMatch:acct,code,desc,debitRaw,kreditRaw,saldoRaw,catRaw,catMatch,vendorRaw,vendorMatch,cp,docLink};
         computeBlRow(row);
         return row;
       });
