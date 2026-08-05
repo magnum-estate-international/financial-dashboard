@@ -2990,20 +2990,23 @@ function renderAlert(a){
   </div>`;
 }
 
-// Cash Position is a headline Operational Performance card (not tucked into a table) — a single
-// current-value snapshot per entity (entity_cash_position, meant to be refreshed daily), summed
-// across whatever's in scope. Deliberately separate from the monthly opening/closing balance used
-// by Balance Reconciliation (that one's a reconciliation benchmark, this is "what's in the bank now").
+// Cash Position is a headline Operational Performance card (not tucked into a table) — computed
+// live from each in-scope bank account's opening_balance + its bank_ledger_entries (see
+// bankAccountBalance()), not a manually-typed snapshot. Deliberately separate from the monthly
+// opening/closing balance used by Balance Reconciliation (that one's a reconciliation benchmark,
+// this is "what's in the bank now", broken down per real bank account on click — see openDetail).
 function cashPositionCard(){
   const ids=scopeIds();
-  let tot=0,n=0,latest=null;
-  ids.forEach(id=>{ const c=CASHPOS[id]; if(c){ tot+=c.cash; n++; if(!latest||c.at>latest) latest=c.at; } });
+  const accts=BANK_ACCOUNTS.filter(a=>ids.includes(a.entity));
+  let tot=0,latest=null;
+  accts.forEach(a=>{ const b=bankAccountBalance(a); tot+=b.balance; if(!latest||(b.asOf||'')>latest) latest=b.asOf; });
   const asOf=latest?new Date(latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):null;
+  const nEnt=new Set(accts.map(a=>a.entity)).size;
   return `<div class="pcard boxed gold-hl clickable" onclick="openDetail('cashpos')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.dollar(17)}</div><div class="lab">Cash Position</div></div>
-      <div class="big">${n?fmt(tot):'—'}</div>
-      <div class="meta">${n?`${n} of ${ids.length} entit${ids.length===1?'y':'ies'} logged · latest as of ${asOf}`:'No cash position logged yet — add it via Update Data'}</div>
+      <div class="big">${accts.length?fmt(tot):'—'}</div>
+      <div class="meta">${accts.length?`${accts.length} bank account${accts.length===1?'':'s'} across ${nEnt} entit${nEnt===1?'y':'ies'} · latest as of ${asOf}`:'No bank accounts logged yet — add them via Update Data'}</div>
     </div>`;
 }
 // Real month-over-month comparison, used only when the active filter is a single month
@@ -3996,21 +3999,28 @@ function openDetail(kind){
   else if(kind==='opex') openOpexBreakdown(OPEX_BD_VIEW);
   else if(kind==='cashpos'){
     SORT_RERENDER['cashpos']=()=>openDetail('cashpos');
-    let ids=scopeIds().filter(id=>CASHPOS[id]).sort((x,y)=>CASHPOS[y].cash-CASHPOS[x].cash);
-    ids=sortApply('cashpos',ids,id=>CASHPOS[id].cash);
-    const missing=scopeIds().filter(id=>!CASHPOS[id]);
+    const eName=id=>(ENT[id]?ENT[id].name:id);
+    let rows=BANK_ACCOUNTS.filter(acc=>scopeIds().includes(acc.entity)).map(acc=>({acc,...bankAccountBalance(acc)}));
+    rows.sort((x,y)=>y.balance-x.balance);
+    rows=sortApply('cashpos',rows,r=>r.balance);
     let h;
-    if(!ids.length){
-      h=`<p style="color:var(--muted);font-size:12.5px">No cash position logged yet for this scope — add it via <b>Update Data → Update Cash Position</b>.</p>`;
+    if(!rows.length){
+      h=`<p style="color:var(--muted);font-size:12.5px">No bank accounts logged yet for this scope — add them via <b>Update Data → Manage Bank Accounts</b>.</p>`;
     } else {
       let tot=0;
-      h=`<table><thead><tr><th>Entity</th><th class="num">${sortHeader('cashpos','Cash Position (IDR)','amt')}</th><th>As of</th></tr></thead><tbody>`;
-      ids.forEach(id=>{ const c=CASHPOS[id]; tot+=c.cash;
-        h+=`<tr><td>${pill(id)}</td><td class="num">${fmt(c.cash)}</td><td style="font-size:12px;color:var(--muted)">${new Date(c.at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td></tr>`;});
-      h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table>`;
-      if(missing.length) h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">${missing.length} entit${missing.length===1?'y':'ies'} in scope without a logged cash position: ${missing.map(id=>ENT[id]?ENT[id].name:id).join(', ')}.</p>`;
+      h=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>Entity</th><th>Bank</th><th>Label</th><th class="num">${sortHeader('cashpos','Saldo (IDR)','balance')}</th><th>As of</th></tr></thead><tbody>`;
+      rows.forEach(r=>{ tot+=r.balance;
+        h+=`<tr class="clickable" style="cursor:pointer" onclick="openBankAccountLedger(${r.acc.id})">
+          <td style="font-size:12.5px">${escH(eName(r.acc.entity))}</td>
+          <td style="font-size:12.5px">${escH(r.acc.bank)}</td>
+          <td style="font-size:12px;color:var(--muted)">${escH(r.acc.label||USAGE_LBL[r.acc.usage]||'—')} <span style="color:var(--blue-300);font-weight:700">›</span></td>
+          <td class="num">${fmt(r.balance)}</td>
+          <td style="font-size:12px;color:var(--muted)">${r.asOf?new Date(r.asOf).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+        </tr>`;});
+      h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table></div>`;
+      h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click a row to see that account\'s full ledger (Debit/Kredit/Saldo).</p>`;
     }
-    showModal('Cash Position — by Entity',h);
+    showModal('Cash Position — by Bank Account',h,true);
   }
   else if(kind==='finin'){
     let h=finTableHtml('finIn');
@@ -4668,6 +4678,17 @@ function toggleOpeRowMenu(id,btnEl){
     menu.style.display='block';
   }
 }
+function toggleBankRowMenu(id,btnEl){
+  const menu=document.getElementById('bank-menu-'+id);
+  const willOpen=menu.style.display!=='block';
+  document.querySelectorAll('.bank-row-menu').forEach(m=>m.style.display='none');
+  if(willOpen){
+    const r=btnEl.getBoundingClientRect();
+    menu.style.top=(r.bottom+4)+'px';
+    menu.style.left=Math.max(8,Math.min(r.right-170,window.innerWidth-180))+'px';
+    menu.style.display='block';
+  }
+}
 document.addEventListener('click',e=>{
   if(!e.target.closest('.ope-filter-pop')&&!e.target.closest('[id^="opef-btn-"]')){
     document.querySelectorAll('.ope-filter-pop').forEach(p=>p.style.display='none');
@@ -4680,6 +4701,9 @@ document.addEventListener('click',e=>{
   }
   if(!e.target.closest('.fc-row-menu')&&!e.target.closest('[onclick^="toggleFcRowMenu"]')){
     document.querySelectorAll('.fc-row-menu').forEach(m=>m.style.display='none');
+  }
+  if(!e.target.closest('.bank-row-menu')&&!e.target.closest('[onclick^="toggleBankRowMenu"]')){
+    document.querySelectorAll('.bank-row-menu').forEach(m=>m.style.display='none');
   }
 });
 function clearOpeFilterGroup(key){
@@ -6683,6 +6707,123 @@ function mkIcTx(r){
     desc:r.description||'',amt:+r.amount_idr,source:r.source_label,
     createdBy:r.created_by,createdAt:r.created_at};
 }
+let BANK_ACCOUNTS=[];
+let BANK_LEDGER=[];
+function mkBankAccount(r){
+  return {id:r.id,entity:r.entity_code,bank:r.bank_name,acctNo:r.account_no||'',
+    label:r.account_label||'',usage:r.usage_type,opening:+r.opening_balance,
+    openingDate:r.opening_date,active:r.is_active!==false};
+}
+function mkBankLedger(r){
+  return {id:r.id,acctId:r.bank_account_id,entity:r.entity_code,date:r.tx_date,code:r.code,
+    debit:+r.debit,kredit:+r.kredit,desc:r.description||'',category:r.category||'',
+    vendor:r.vendor||'',cp:r.counterparty_label||'',source:r.source_label,createdAt:r.created_at};
+}
+function bankAccountLabel(a){
+  return a.entity+' — '+a.bank+(a.label?' ('+a.label+')':'');
+}
+function bankAccountBalance(a){
+  const rows=BANK_LEDGER.filter(r=>r.acctId===a.id);
+  const net=rows.reduce((s,r)=>s+r.kredit-r.debit,0);
+  const latest=rows.reduce((m,r)=>(!m||(r.date||'')>m)?r.date:m,null);
+  return {balance:a.opening+net,asOf:latest||a.openingDate,n:rows.length};
+}
+const USAGE_LBL={REK_IN:'Rek In',REK_OUT:'Rek Out',MIX:'Mix'};
+function renderBankAccList(){
+  const el=document.getElementById('bankacc-list'); if(!el) return;
+  const eName=id=>(ENT[id]?ENT[id].name:id);
+  if(!BANK_ACCOUNTS.length){ el.innerHTML='<p style="color:var(--muted);font-size:12.5px">No bank accounts yet — add one below.</p>'; return; }
+  const canEdit=IS_ADMIN||MY_ROLE==='editor';
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Entity</th><th>Bank</th><th>No. Rekening</th><th>Label</th><th>Penggunaan</th><th class="num">Saldo Awal</th><th></th></tr></thead><tbody>';
+  BANK_ACCOUNTS.slice().sort((a,b)=>(a.entity+a.bank)<(b.entity+b.bank)?-1:1).forEach(a=>{
+    let editCell='';
+    if(canEdit){
+      const items=[
+        menuItem(ICON.edit()+' Edit',`openBankAccEdit(${a.id})`),
+        menuItem(ICON.trash()+' Delete',`deleteBankAcc(${a.id})`,'var(--red)'),
+      ];
+      editCell=`<td style="white-space:nowrap"><button type="button" onclick="toggleBankRowMenu(${a.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+        +`<div id="bank-menu-${a.id}" class="bank-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
+    } else { editCell='<td></td>'; }
+    h+=`<tr><td style="font-size:12.5px">${escH(eName(a.entity))}</td><td style="font-size:12.5px">${escH(a.bank)}</td>`
+      +`<td style="font-size:12px;color:var(--muted)">${escH(a.acctNo||'—')}</td><td style="font-size:12px;color:var(--muted)">${escH(a.label||'—')}</td>`
+      +`<td style="font-size:11px">${USAGE_LBL[a.usage]||a.usage}</td><td class="num">${fmt(a.opening)}</td>${editCell}</tr>`;
+  });
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
+}
+function openBankAccEdit(id){
+  const a=BANK_ACCOUNTS.find(x=>x.id===id); if(!a) return;
+  const eName=eid=>(ENT[eid]?ENT[eid].name:eid);
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  let h=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Entity: <b style="color:var(--ink)">${escH(eName(a.entity))}</b></div>`
+    +opeField('Bank name',`<input id="bae-bank" value="${escH(a.bank)}" style="${inp}">`)
+    +opeField('No. Rekening',`<input id="bae-no" value="${escH(a.acctNo||'')}" style="${inp}">`)
+    +opeField('Label',`<input id="bae-label" value="${escH(a.label||'')}" style="${inp}">`)
+    +opeField('Penggunaan',`<select id="bae-usage" style="${inp}"><option value="MIX"${a.usage==='MIX'?' selected':''}>Mix</option><option value="REK_IN"${a.usage==='REK_IN'?' selected':''}>Rek In</option><option value="REK_OUT"${a.usage==='REK_OUT'?' selected':''}>Rek Out</option></select>`)
+    +opeField('Saldo Awal (IDR)',`<input id="bae-opening" type="number" min="0" step="1" value="${a.opening}" style="${inp}">`)
+    +opeField('Tanggal Saldo Awal',`<input id="bae-opendate" type="date" value="${a.openingDate||''}" style="${inp}">`)
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveBankAccEdit(${id})">Save changes</button>`
+    +`<span id="bae-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Bank Account',h);
+}
+async function saveBankAccEdit(id){
+  const err=document.getElementById('bae-err'); err.textContent='';
+  const bank=document.getElementById('bae-bank').value.trim();
+  const acctNo=document.getElementById('bae-no').value.trim();
+  const label=document.getElementById('bae-label').value.trim();
+  const usage=document.getElementById('bae-usage').value;
+  const opening=Number(document.getElementById('bae-opening').value);
+  const openingDate=document.getElementById('bae-opendate').value||null;
+  if(!bank) return void(err.textContent='Bank name is required.');
+  if(!isFinite(opening)) return void(err.textContent='Saldo awal must be a number.');
+  try{
+    await adminUpdateOne('bank_accounts',id,{bank_name:bank,account_no:acctNo||null,account_label:label||null,usage_type:usage,opening_balance:opening,opening_date:openingDate});
+    const a=BANK_ACCOUNTS.find(x=>x.id===id);
+    if(a){ a.bank=bank;a.acctNo=acctNo;a.label=label;a.usage=usage;a.opening=opening;a.openingDate=openingDate; }
+    closeModal(); renderBankAccList(); renderKpiCash(agg());
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function deleteBankAcc(id){
+  if(!confirm('Delete this bank account? This also removes its ledger history. This cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/bank_accounts?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const idx=BANK_ACCOUNTS.findIndex(a=>a.id===id);
+    if(idx>=0) BANK_ACCOUNTS.splice(idx,1);
+    BANK_LEDGER=BANK_LEDGER.filter(r=>r.acctId!==id);
+    renderBankAccList(); renderKpiCash(agg());
+  }catch(e){ alert('Failed to delete: '+e.message); }
+}
+function openBankAccountLedger(id){
+  const a=BANK_ACCOUNTS.find(x=>x.id===id); if(!a) return;
+  const eName=eid=>(ENT[eid]?ENT[eid].name:eid);
+  const rows=BANK_LEDGER.filter(r=>r.acctId===id).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openDetail('cashpos')">‹ Back to all accounts</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 4px">${escH(eName(a.entity))} — ${escH(a.bank)}${a.label?' ('+escH(a.label)+')':''}</h4>`;
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">No. Rekening: ${escH(a.acctNo||'—')} · Penggunaan: ${USAGE_LBL[a.usage]||a.usage} · Saldo Awal ${fmt(a.opening)} per ${a.openingDate||'—'}</div>`;
+  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Date</th><th>Kode</th><th>Description</th><th class="num">Debit</th><th class="num">Kredit</th><th class="num">Saldo</th></tr></thead><tbody>`;
+  let saldo=a.opening;
+  h+=`<tr style="background:#f7f8fb"><td colspan="5" style="font-size:12px;color:var(--muted)">Saldo Awal (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td></tr>`;
+  if(!rows.length){
+    h+=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No ledger entries yet for this account — import via <b>Update Data → Import Bank Ledger</b>.</td></tr>`;
+  } else {
+    rows.forEach(r=>{
+      saldo+=r.kredit-r.debit;
+      const saldoPos=saldo>=0;
+      h+=`<tr>
+        <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
+        <td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;background:#eef2f7;color:#3a4254;text-transform:capitalize">${escH(r.code)}</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}</td>
+        <td class="num neg">${r.debit?fmt(r.debit):''}</td>
+        <td class="num pos">${r.kredit?fmt(r.kredit):''}</td>
+        <td class="num" style="font-weight:800;color:${saldoPos?'#2b7a4b':'#b3261e'}">${fmt(saldo)}</td>
+      </tr>`;
+    });
+  }
+  h+=`</tbody></table></div>`;
+  showModal(eName(a.entity)+' — '+a.bank,h,true);
+}
 async function runDashboard(){
   const D=await loadFromSupabase();
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
@@ -6737,6 +6878,15 @@ async function runDashboard(){
     IC_TX=(await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date'))
       .map(mkIcTx);
   }catch(e){ IC_TX=[]; }
+  // Bank accounts (master list) and their ledger entries (the unified Debit/Kredit recap that
+  // routes into Revenue/Expenses/Loan Affiliate and also drives the per-account running balance
+  // shown on Cash Position) — kept as two separate fetches since the ledger can grow large.
+  try{
+    BANK_ACCOUNTS=(await sbFetch('bank_accounts?select=*&order=entity_code,bank_name')).map(mkBankAccount);
+  }catch(e){ BANK_ACCOUNTS=[]; }
+  try{
+    BANK_LEDGER=(await sbFetchAll('bank_ledger_entries?select=*&order=bank_account_id,tx_date')).map(mkBankLedger);
+  }catch(e){ BANK_LEDGER=[]; }
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
@@ -7811,6 +7961,49 @@ async function renderEntryBody(){
       +'<div id="ictx-preview" style="margin-top:12px"></div>'
       +'</div></details>';
   }
+  // ── Manage Bank Accounts — master list of real bank accounts per PT (bank, account no, label,
+  // usage REK IN/REK OUT/MIX, opening balance/date). Must exist before "Import Bank Ledger" below
+  // can resolve a row's account, since the ledger references bank_account_id, not a free-text bank
+  // name. Cash Position's per-account balance is opening_balance + this account's ledger entries. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Manage Bank Accounts</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">The list of real bank accounts per PT — set up each account once with its opening balance, then use "Import Bank Ledger" below to log ongoing Debit/Kredit activity. Cash Position is computed automatically from these two.</div>'
+      +'<div id="bankacc-list" style="margin-bottom:14px"></div>'
+      +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px">Add a bank account</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
+      +'<select id="bankacc-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<input id="bankacc-bank" placeholder="Bank name (e.g. Mandiri)" style="'+inp+'">'
+      +'<input id="bankacc-no" placeholder="No. Rekening" style="'+inp+'">'
+      +'<input id="bankacc-label" placeholder="Label (optional, e.g. Rek Out)" style="'+inp+'">'
+      +'<select id="bankacc-usage" style="'+inp+'"><option value="MIX">Mix (in &amp; out)</option><option value="REK_IN">Rek In (masuk saja)</option><option value="REK_OUT">Rek Out (keluar saja)</option></select>'
+      +'<input id="bankacc-opening" inputmode="numeric" placeholder="Saldo awal (IDR)" style="'+inp+'">'
+      +'<input id="bankacc-opendate" type="date" style="'+inp+'">'
+      +'</div>'
+      +'<button id="bankacc-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Add account</button>'
+      +'<div id="bankacc-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div></details>';
+  }
+  // ── Import Bank Ledger — the unified Debit/Kredit recap per bank account. Each row is tagged
+  // with a Kode (Revenue/Opex/AR/AP/Pinbuk) that routes it into the right existing box — Revenue/
+  // Opex rows also land in `transactions` exactly like the Import Transactions box above, AR/AP rows
+  // land in `intercompany_transactions` exactly like Import Loan Affiliate Transactions above — while
+  // every row (including Pinbuk, which routes nowhere else) is recorded in bank_ledger_entries so the
+  // account's running balance always reflects 100% of real cash movement. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per bank mutation (Tanggal, Rekening Bank, Kode, Keterangan, Debit or Kredit, plus Kategori/Vendor for Revenue/Opex or Counterparty for AR/AP), then upload. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate; <b>Pinbuk</b> (internal transfer between the group\'s own accounts) only affects this account\'s balance and appears nowhere else.</div>'
+      +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first — the template needs a bank account to attach each row to.</div>')
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="bl-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px"'+(BANK_ACCOUNTS.length?'':' disabled')+'>'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<label for="bl-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+      +'<input id="bl-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'</div>'
+      +'<span id="bl-filename" style="font-size:12px;color:#3a4254"></span>'
+      +'<div id="bl-preview" style="margin-top:12px"></div>'
+      +'</div></details>';
+  }
   // ── Update Entity Balance — a dedicated box for logging opening/closing bank balance per PT
   // per period, decoupled from the file-upload flow above (previously this was only reachable by
   // expanding "Advanced" inside the main entry form). Feeds the Balance Reconciliation section. ──
@@ -8138,6 +8331,39 @@ async function renderEntryBody(){
       return row;
     });
     renderIcTxPreview();
+  };
+  // ── Manage Bank Accounts wiring ──
+  renderBankAccList();
+  const bankaccBtn=document.getElementById('bankacc-send');
+  if(bankaccBtn) bankaccBtn.onclick=async()=>{
+    const msg=document.getElementById('bankacc-msg'); setMsg('bankacc-msg','');
+    const entity=document.getElementById('bankacc-ent').value;
+    const bank=document.getElementById('bankacc-bank').value.trim();
+    const acctNo=document.getElementById('bankacc-no').value.trim();
+    const label=document.getElementById('bankacc-label').value.trim();
+    const usage=document.getElementById('bankacc-usage').value;
+    const openingRaw=(document.getElementById('bankacc-opening').value||'').replace(/[^0-9-]/g,'');
+    const opening=openingRaw===''?0:Number(openingRaw);
+    const openingDate=document.getElementById('bankacc-opendate').value||null;
+    if(!bank) return void(msg.textContent='Bank name is required.');
+    if(!isFinite(opening)) return void(msg.textContent='Saldo awal must be a number.');
+    bankaccBtn.disabled=true; bankaccBtn.textContent='Saving…';
+    try{
+      const row={entity_code:entity,bank_name:bank,account_no:acctNo||null,account_label:label||null,
+        usage_type:usage,opening_balance:opening,opening_date:openingDate,created_by:MY_EMAIL};
+      const r=await authedFetch(SB_URL+'/rest/v1/bank_accounts',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(row)});
+      if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+      const [saved]=await r.json();
+      BANK_ACCOUNTS.push(mkBankAccount(saved));
+      renderBankAccList(); renderKpiCash(agg());
+      document.getElementById('bankacc-bank').value='';
+      document.getElementById('bankacc-no').value='';
+      document.getElementById('bankacc-label').value='';
+      document.getElementById('bankacc-opening').value='';
+      document.getElementById('bankacc-opendate').value='';
+      msg.style.color='#2b7a4b'; msg.textContent='Account added.';
+    }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
+    bankaccBtn.disabled=false; bankaccBtn.textContent='Add account';
   };
   const opdSend=document.getElementById('opd-send');
   if(opdSend) opdSend.onclick=async()=>{
