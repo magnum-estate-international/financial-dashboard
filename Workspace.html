@@ -5335,28 +5335,31 @@ function computeCposRow(r){
   if(!r.acctMatch) error='No. Rekening not recognized — add the account under Manage Bank Accounts first';
   else if(!r.amt||r.amt<0||isNaN(r.amt)) error='Invalid amount';
   r.error=error;
+  r.current=r.acctMatch?bankAccountBalance(r.acctMatch).balance:null;
+  r.delta=(r.acctMatch&&!isNaN(r.amt))?r.amt-r.current:null;
 }
 function renderCposPreview(){
   const el=document.getElementById('cpos-preview'); if(!el) return;
   if(!CPOS_ROWS.length){ el.innerHTML=''; return; }
-  const valid=CPOS_ROWS.filter(r=>!r.error);
+  const valid=CPOS_ROWS.filter(r=>!r.error&&Math.abs(r.delta)>=1);
   const eName=id=>(ENT[id]?ENT[id].name:id);
-  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>No. Rekening</th><th>PT / Bank</th><th class="num" style="text-align:right">New Saldo</th><th>As of Date</th><th>Status</th></tr></thead><tbody>';
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>No. Rekening</th><th>PT / Bank</th><th class="num" style="text-align:right">Current</th><th class="num" style="text-align:right">New Saldo</th><th class="num" style="text-align:right">Adjustment</th><th>Status</th></tr></thead><tbody>';
   CPOS_ROWS.forEach((r,i)=>{
-    const rowBg=r.error?'#fbe9e7':'';
-    const status=r.error?escH(r.error):'OK';
+    const rowBg=r.error?'#fbe9e7':(Math.abs(r.delta||0)<1?'#f7f8fb':'');
+    const status=r.error?escH(r.error):(Math.abs(r.delta)<1?'No change':'OK');
     const acct=r.acctMatch;
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:12px">'+escH(r.acctNo||'—')+'</td>'
       +'<td style="font-size:12px">'+(acct?escH(eName(acct.entity)+' — '+acct.bank):'—')+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px">'+(r.current!=null?fmtIDR(r.current):'—')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
-      +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'today')+'</td>'
+      +'<td class="num" style="text-align:right;font-size:12px;font-weight:700">'+(r.delta!=null?(r.delta>=0?'+':'')+fmtIDR(r.delta):'—')+'</td>'
       +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+status+'</td></tr>';
   });
   h+='</tbody></table></div>';
-  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will correct '+valid.length+' account'+(valid.length===1?'':'s')+"' saldo</b> — "+valid.length+' of '+CPOS_ROWS.length+' row(s) ready'
-    +(CPOS_ROWS.length>valid.length?'. Fix the flagged rows in the file and re-upload':'')+'.</div>';
-  h+='<button id="cpos-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Update '+valid.length+' account'+(valid.length===1?'':'s')+'</button>';
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' adjustment entr'+(valid.length===1?'y':'ies')+'</b> — '+valid.length+' of '+CPOS_ROWS.length+' row(s) actually differ from the current computed saldo'
+    +(CPOS_ROWS.length>valid.length?'. Rows with no error and zero difference are skipped':'')+'.</div>';
+  h+='<button id="cpos-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Log '+valid.length+' adjustment'+(valid.length===1?'':'s')+'</button>';
   h+='<div id="cpos-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
   const impBtn=document.getElementById('cpos-import');
@@ -5365,18 +5368,24 @@ function renderCposPreview(){
     try{
       for(const r of valid){
         const dateStr=r.date||new Date().toISOString().slice(0,10);
-        await adminUpdateOne('bank_accounts',r.acctMatch.id,{opening_balance:r.amt,opening_date:dateStr});
-        r.acctMatch.opening=r.amt; r.acctMatch.openingDate=dateStr;
+        const row={bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:dateStr,code:'adjustment',
+          debit:r.delta<0?Math.abs(r.delta):0,kredit:r.delta>0?r.delta:0,
+          description:'Koreksi saldo manual (dari '+fmt(r.current)+' ke '+fmt(r.amt)+')',
+          source_label:'Excel import (koreksi saldo)',created_by:MY_EMAIL};
+        const resp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(row)});
+        if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
+        const [saved]=await resp.json();
+        BANK_LEDGER.push(mkBankLedger(saved));
       }
       CPOS_ROWS=[];
       document.getElementById('cpos-import-msg').style.color='#2b7a4b';
-      document.getElementById('cpos-import-msg').textContent='✓ Updated '+valid.length+' account'+(valid.length===1?'':'s')+'.';
+      document.getElementById('cpos-import-msg').textContent='✓ Logged '+valid.length+' adjustment'+(valid.length===1?'':'s')+'.';
       impBtn.textContent='Saved ✓';
       renderKpiCash(agg());
     }catch(e){
       document.getElementById('cpos-import-msg').style.color='#b3261e';
       document.getElementById('cpos-import-msg').textContent='Import failed: '+e.message;
-      impBtn.disabled=false; impBtn.textContent='Update '+valid.length+' account'+(valid.length===1?'':'s');
+      impBtn.disabled=false; impBtn.textContent='Log '+valid.length+' adjustment'+(valid.length===1?'':'s');
     }
   };
 }
@@ -8053,13 +8062,14 @@ async function renderEntryBody(){
   }
   // ── Update Cash Position — now a per-bank-account correction, not a per-entity snapshot: Cash
   // Position is computed live from bank_accounts.opening_balance + bank_ledger_entries, so "setting"
-  // it for a PT no longer means anything without picking which specific account. Saving here PATCHes
-  // that account's opening_balance and resets opening_date to the date typed (today by default) —
-  // the same effect as editing it in "Manage Bank Accounts" above, just a faster one-field shortcut. ──
+  // it for a PT no longer means anything without picking which specific account. Saving here does
+  // NOT overwrite opening_balance (that would silently hide whatever transaction is actually
+  // missing) — instead it logs the gap as a "Koreksi/Adjustment" bank_ledger_entries row, so the
+  // account's history keeps a visible trail of every manual correction. ──
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Update Cash Position</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Correct a specific bank account\'s current balance — pick the PT, then the exact rekening, then the real balance as of a date. This resets that account\'s Saldo Awal to the value/date you enter (same effect as editing it in "Manage Bank Accounts" above).</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Correct a specific bank account\'s current balance when it doesn\'t match the real bank statement — pick the PT, the rekening, and the real balance as of a date. The difference is logged as a visible "Adjustment" entry in that account\'s ledger, not hidden by overwriting Saldo Awal — use this only for occasional reconciliation, not as the normal way to record activity (that\'s <b>Import Bank Ledger</b> below).</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="cpos-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
       +'<button id="cpos-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
@@ -8695,12 +8705,22 @@ async function renderEntryBody(){
       const amt=Number(raw);
       if(!isFinite(amt)||amt<0) return void(cposMsg.textContent='Invalid amount.');
       const dateStr=cposDate.value||new Date().toISOString().slice(0,10);
+      const current=bankAccountBalance(acct).balance;
+      const delta=amt-current;
+      if(Math.abs(delta)<1){ cposMsg.style.color='#2b7a4b'; cposMsg.textContent='Saldo already matches — no correction needed.'; return; }
       cposBtn.disabled=true; cposBtn.textContent='Saving…';
       try{
-        await adminUpdateOne('bank_accounts',acctId,{opening_balance:amt,opening_date:dateStr});
-        acct.opening=amt; acct.openingDate=dateStr;
-        renderKpiCash(agg()); renderBankAccList();
-        cposMsg.style.color='#2b7a4b'; cposMsg.textContent='Saved.';
+        const row={bank_account_id:acctId,entity_code:acct.entity,tx_date:dateStr,code:'adjustment',
+          debit:delta<0?Math.abs(delta):0,kredit:delta>0?delta:0,
+          description:'Koreksi saldo manual (dari '+fmt(current)+' ke '+fmt(amt)+')',
+          source_label:'Manual correction',created_by:MY_EMAIL};
+        const r=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(row)});
+        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+        const [saved]=await r.json();
+        BANK_LEDGER.push(mkBankLedger(saved));
+        renderKpiCash(agg());
+        cposMsg.style.color='#2b7a4b'; cposMsg.textContent='Saved — logged as a '+(delta>0?'+':'')+fmt(delta)+' adjustment entry.';
+        prefillCashPos();
       }catch(e){ cposMsg.textContent='Failed to save: '+e.message; }
       cposBtn.disabled=false; cposBtn.textContent='Save cash position';
     };
