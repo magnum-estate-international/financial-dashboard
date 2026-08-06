@@ -3200,9 +3200,9 @@ function openIntercompanyOwner(encOwner){
     const finalPos=finalNet>=0;
     h+=`<div style="margin:18px 0 8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div style="font-size:13px;font-weight:800;color:var(--blue-900)">${escH(cp)}</div>
-        <div style="font-size:12.5px;font-weight:800;color:${finalPos?'#2b7a4b':'#b3261e'}">Saldo akhir: ${finalPos?'+':'− '}${fmt(Math.abs(finalNet))}</div>
+        <div style="font-size:12.5px;font-weight:800;color:${finalPos?'#2b7a4b':'#b3261e'}">Final balance: ${finalPos?'+':'− '}${fmt(Math.abs(finalNet))}</div>
       </div>`;
-    h+=`<div class="table-scroll" style="max-height:320px;margin-bottom:6px"><table><thead><tr><th>Date</th><th>Description</th><th class="num">Debit (AP)</th><th class="num">Kredit (AR)</th><th class="num">Saldo</th><th></th></tr></thead><tbody>`;
+    h+=`<div class="table-scroll" style="max-height:320px;margin-bottom:6px"><table><thead><tr><th>Date</th><th>Description</th><th class="num">Debit (AP)</th><th class="num">Credit (AR)</th><th class="num">Balance</th><th></th></tr></thead><tbody>`;
     let saldo=0;
     list.forEach(r=>{
       saldo+=(r.type==='AR'?r.amt:-r.amt);
@@ -4026,7 +4026,7 @@ function openDetail(kind){
       h=`<p style="color:var(--muted);font-size:12.5px">No bank accounts logged yet for this scope — add them via <b>Update Data → Manage Bank Accounts</b>.</p>`;
     } else {
       let tot=0;
-      h=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>Entity</th><th class="num">Accounts</th><th class="num">${sortHeader('cashpos','Saldo (IDR)','tot')}</th><th>As of</th></tr></thead><tbody>`;
+      h=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>Entity</th><th class="num">Accounts</th><th class="num">${sortHeader('cashpos','Balance (IDR)','tot')}</th><th>As of</th></tr></thead><tbody>`;
       rows.forEach(r=>{ tot+=r.tot;
         h+=`<tr class="clickable" style="cursor:pointer" onclick="openCashPosEntity('${r.entity}')">
           <td style="font-size:12.5px">${escH(eName(r.entity))} <span style="color:var(--blue-300);font-weight:700">›</span></td>
@@ -5336,11 +5336,11 @@ function renderIcTxPreview(){
     }
   };
 }
-// ── Bank Ledger import preview — the unified Debit/Kredit recap. Kode routes each row: Revenue/
+// ── Bank Ledger import preview — the unified Debit/Credit recap. Code routes each row: Revenue/
 // Opex also insert into `transactions` (and patch entity_period_totals) exactly like Import
 // Transactions above; AR/AP also insert into `intercompany_transactions` exactly like Import Loan
 // Affiliate Transactions above; Pinbuk only ever touches bank_ledger_entries. Every row, regardless
-// of Kode, gets its own bank_ledger_entries row so the account's running balance stays complete. ──
+// of Code, gets its own bank_ledger_entries row so the account's running balance stays complete. ──
 let BL_ROWS=[];
 const BL_CODES=['revenue','opex','ar','ap','pinbuk'];
 const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk'};
@@ -5348,26 +5348,26 @@ function computeBlRow(r){
   let error=null;
   const debit=Number(r.debitRaw)||0, kredit=Number(r.kreditRaw)||0;
   r.debit=debit; r.kredit=kredit;
-  if(!r.acctMatch) error='Rekening Bank not recognized';
+  if(!r.acctMatch) error='Bank Account not recognized';
   else if(!r.date) error='Invalid date';
-  else if(!r.code) error='Kode must be Revenue, Opex, AR, AP or Pinbuk';
-  else if((debit>0)===(kredit>0)) error='Exactly one of Debit or Kredit must be filled';
-  else if(r.code==='revenue'&&debit>0) error='Revenue must be entered as Kredit, not Debit';
-  else if(r.code==='opex'&&kredit>0) error='Opex must be entered as Debit, not Kredit';
-  else if(r.code==='ar'&&kredit>0) error='AR must be entered as Debit (uang keluar), not Kredit';
-  else if(r.code==='ap'&&debit>0) error='AP must be entered as Kredit (uang masuk), not Debit';
-  else if((r.code==='revenue'||r.code==='opex')&&!r.catMatch) error='Kategori is required for Revenue/Opex';
+  else if(!r.code) error='Code must be Revenue, Opex, AR, AP or Pinbuk';
+  else if((debit>0)===(kredit>0)) error='Exactly one of Debit or Credit must be filled';
+  else if(r.code==='revenue'&&kredit>0) error='Revenue must be entered as Debit (cash in), not Credit';
+  else if(r.code==='opex'&&debit>0) error='Opex must be entered as Credit (cash out), not Debit';
+  else if(r.code==='ar'&&debit>0) error='AR must be entered as Credit (cash out), not Debit';
+  else if(r.code==='ap'&&kredit>0) error='AP must be entered as Debit (cash in), not Credit';
+  else if((r.code==='revenue'||r.code==='opex')&&!r.catMatch) error='Category is required for Revenue/Opex';
   else if((r.code==='ar'||r.code==='ap')&&!r.cp) error='Counterparty is required for AR/AP';
   r.error=error;
   r.amt=debit>0?debit:kredit;
   r.category=r.catMatch||r.catRaw||'';
   r.vendor=r.vendorMatch||r.vendorRaw||'';
 }
-// Cross-checks the optional Saldo column against a running balance computed per account (starting
-// from that account's current live balance, then accumulating each row's Debit/Kredit in date
+// Cross-checks the optional Balance column against a running balance computed per account (starting
+// from that account's current live balance, then accumulating each row's Debit/Credit in date
 // order) — the same trick that caught real typos in the ICG recap earlier this session. A row with
-// no error but a Saldo that doesn't match its own bank-statement arithmetic is a strong signal the
-// Debit/Kredit amount itself was mistyped, so it's flagged rather than silently imported. ──
+// no error but a Balance that doesn't match its own bank-statement arithmetic is a strong signal the
+// Debit/Credit amount itself was mistyped, so it's flagged rather than silently imported. ──
 function recomputeBlSaldos(){
   const byAcct={};
   BL_ROWS.forEach((r,i)=>{ if(r.acctMatch) (byAcct[r.acctMatch.id]=byAcct[r.acctMatch.id]||[]).push({r,i}); });
@@ -5376,11 +5376,11 @@ function recomputeBlSaldos(){
     let running=bankAccountBalance(list[0].r.acctMatch).balance;
     list.forEach(({r})=>{
       if(r.error){ r.expectedSaldo=null; return; }
-      running+=(r.kredit||0)-(r.debit||0);
+      running+=(r.debit||0)-(r.kredit||0);
       r.expectedSaldo=running;
       if(r.saldoRaw!=null&&r.saldoRaw!==''&&!isNaN(Number(r.saldoRaw))){
         const given=Number(r.saldoRaw);
-        if(Math.abs(given-running)>=1) r.error='Saldo tidak sesuai — seharusnya '+fmt(running)+', tertulis '+fmt(given);
+        if(Math.abs(given-running)>=1) r.error='Balance mismatch — should be '+fmt(running)+', entered as '+fmt(given);
       }
     });
   });
@@ -5412,7 +5412,7 @@ function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
   if(!BL_ROWS.length){ el.innerHTML=''; return; }
   const valid=BL_ROWS.filter(r=>!r.error);
-  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Kode</th><th>Kategori</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Kredit</th><th class="num" style="text-align:right">Saldo</th><th>Dok?</th><th>Status</th></tr></thead><tbody>';
+  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Code</th><th>Category</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Credit</th><th class="num" style="text-align:right">Balance</th><th>Doc?</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':'';
     const status=r.error?escH(r.error):'OK';
@@ -5438,7 +5438,7 @@ function renderBlPreview(){
   if(impBtn) impBtn.onclick=async()=>{
     impBtn.disabled=true; impBtn.textContent='Importing…';
     try{
-      // 1) Every row becomes its own bank_ledger_entries row, regardless of Kode.
+      // 1) Every row becomes its own bank_ledger_entries row, regardless of Code.
       const ledgerRows=valid.map(r=>({
         bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:r.date,code:r.code,
         debit:r.debit,kredit:r.kredit,description:r.desc||null,
@@ -5453,7 +5453,7 @@ function renderBlPreview(){
       savedLedgerRows.forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
       // 1b) Rows with a document link get that link pulled into secure storage and attached —
       // relies on the insert response preserving submission order (true for a plain PostgREST
-      // bulk insert) to match each saved row back to its source row's Link Dokumen.
+      // bulk insert) to match each saved row back to its source row's Document Link.
       let docOk=0,docFail=0;
       for(let i=0;i<valid.length;i++){
         const link=(valid[i].docLink||'').trim(); if(!link) continue;
@@ -5519,12 +5519,12 @@ function renderBlPreview(){
     }
   };
 }
-// ── Cash Position import preview — one row per bank account, matched by No. Rekening (already
+// ── Cash Position import preview — one row per bank account, matched by Account No. (already
 // set up under Manage Bank Accounts) rather than by entity, since balance now lives per account. ──
 let CPOS_ROWS=[];
 function computeCposRow(r){
   let error=null;
-  if(!r.acctMatch) error='No. Rekening not recognized — add the account under Manage Bank Accounts first';
+  if(!r.acctMatch) error='Account No. not recognized — add the account under Manage Bank Accounts first';
   else if(!r.amt||r.amt<0||isNaN(r.amt)) error='Invalid amount';
   r.error=error;
   r.current=r.acctMatch?bankAccountBalance(r.acctMatch).balance:null;
@@ -5535,7 +5535,7 @@ function renderCposPreview(){
   if(!CPOS_ROWS.length){ el.innerHTML=''; return; }
   const valid=CPOS_ROWS.filter(r=>!r.error&&Math.abs(r.delta)>=1);
   const eName=id=>(ENT[id]?ENT[id].name:id);
-  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>No. Rekening</th><th>PT / Bank</th><th class="num" style="text-align:right">Current</th><th class="num" style="text-align:right">New Saldo</th><th class="num" style="text-align:right">Adjustment</th><th>Status</th></tr></thead><tbody>';
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Account No.</th><th>PT / Bank</th><th class="num" style="text-align:right">Current</th><th class="num" style="text-align:right">New Balance</th><th class="num" style="text-align:right">Adjustment</th><th>Status</th></tr></thead><tbody>';
   CPOS_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':(Math.abs(r.delta||0)<1?'#f7f8fb':'');
     const status=r.error?escH(r.error):(Math.abs(r.delta)<1?'No change':'OK');
@@ -5549,7 +5549,7 @@ function renderCposPreview(){
       +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+status+'</td></tr>';
   });
   h+='</tbody></table></div>';
-  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' adjustment entr'+(valid.length===1?'y':'ies')+'</b> — '+valid.length+' of '+CPOS_ROWS.length+' row(s) actually differ from the current computed saldo'
+  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' adjustment entr'+(valid.length===1?'y':'ies')+'</b> — '+valid.length+' of '+CPOS_ROWS.length+' row(s) actually differ from the current computed balance'
     +(CPOS_ROWS.length>valid.length?'. Rows with no error and zero difference are skipped':'')+'.</div>';
   h+='<button id="cpos-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Log '+valid.length+' adjustment'+(valid.length===1?'':'s')+'</button>';
   h+='<div id="cpos-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
@@ -5561,9 +5561,9 @@ function renderCposPreview(){
       for(const r of valid){
         const dateStr=r.date||new Date().toISOString().slice(0,10);
         const row={bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:dateStr,code:'adjustment',
-          debit:r.delta<0?Math.abs(r.delta):0,kredit:r.delta>0?r.delta:0,
-          description:'Koreksi saldo manual (dari '+fmt(r.current)+' ke '+fmt(r.amt)+')',
-          source_label:'Excel import (koreksi saldo)',created_by:MY_EMAIL};
+          debit:r.delta>0?r.delta:0,kredit:r.delta<0?Math.abs(r.delta):0,
+          description:'Manual balance correction (from '+fmt(r.current)+' to '+fmt(r.amt)+')',
+          source_label:'Excel import (balance correction)',created_by:MY_EMAIL};
         const resp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(row)});
         if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
         const [saved]=await resp.json();
@@ -6933,17 +6933,17 @@ function bankAccountLabel(a){
 }
 function bankAccountBalance(a){
   const rows=BANK_LEDGER.filter(r=>r.acctId===a.id);
-  const net=rows.reduce((s,r)=>s+r.kredit-r.debit,0);
+  const net=rows.reduce((s,r)=>s+r.debit-r.kredit,0);
   const latest=rows.reduce((m,r)=>(!m||(r.date||'')>m)?r.date:m,null);
   return {balance:a.opening+net,asOf:latest||a.openingDate,n:rows.length};
 }
-const USAGE_LBL={REK_IN:'Rek In',REK_OUT:'Rek Out',MIX:'Mix'};
+const USAGE_LBL={REK_IN:'Cash In',REK_OUT:'Cash Out',MIX:'Mix'};
 function renderBankAccList(){
   const el=document.getElementById('bankacc-list'); if(!el) return;
   const eName=id=>(ENT[id]?ENT[id].name:id);
   if(!BANK_ACCOUNTS.length){ el.innerHTML='<p style="color:var(--muted);font-size:12.5px">No bank accounts yet — add one below.</p>'; return; }
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
-  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Entity</th><th>Bank</th><th>No. Rekening</th><th>Label</th><th>Penggunaan</th><th class="num">Saldo Awal</th><th></th></tr></thead><tbody>';
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Entity</th><th>Bank</th><th>Account No.</th><th>Label</th><th>Usage</th><th class="num">Opening Balance</th><th></th></tr></thead><tbody>';
   BANK_ACCOUNTS.slice().sort((a,b)=>(a.entity+a.bank)<(b.entity+b.bank)?-1:1).forEach(a=>{
     let editCell='';
     if(canEdit){
@@ -6967,11 +6967,11 @@ function openBankAccEdit(id){
   const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
   let h=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Entity: <b style="color:var(--ink)">${escH(eName(a.entity))}</b></div>`
     +opeField('Bank name',`<input id="bae-bank" value="${escH(a.bank)}" style="${inp}">`)
-    +opeField('No. Rekening',`<input id="bae-no" value="${escH(a.acctNo||'')}" style="${inp}">`)
+    +opeField('Account No.',`<input id="bae-no" value="${escH(a.acctNo||'')}" style="${inp}">`)
     +opeField('Label',`<input id="bae-label" value="${escH(a.label||'')}" style="${inp}">`)
-    +opeField('Penggunaan',`<select id="bae-usage" style="${inp}"><option value="MIX"${a.usage==='MIX'?' selected':''}>Mix</option><option value="REK_IN"${a.usage==='REK_IN'?' selected':''}>Rek In</option><option value="REK_OUT"${a.usage==='REK_OUT'?' selected':''}>Rek Out</option></select>`)
-    +opeField('Saldo Awal (IDR)',`<input id="bae-opening" type="number" min="0" step="1" value="${a.opening}" style="${inp}">`)
-    +opeField('Tanggal Saldo Awal',`<input id="bae-opendate" type="date" value="${a.openingDate||''}" style="${inp}">`)
+    +opeField('Usage',`<select id="bae-usage" style="${inp}"><option value="MIX"${a.usage==='MIX'?' selected':''}>Mix</option><option value="REK_IN"${a.usage==='REK_IN'?' selected':''}>Cash In</option><option value="REK_OUT"${a.usage==='REK_OUT'?' selected':''}>Cash Out</option></select>`)
+    +opeField('Opening Balance (IDR)',`<input id="bae-opening" type="number" min="0" step="1" value="${a.opening}" style="${inp}">`)
+    +opeField('Opening Balance Date',`<input id="bae-opendate" type="date" value="${a.openingDate||''}" style="${inp}">`)
     +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveBankAccEdit(${id})">Save changes</button>`
     +`<span id="bae-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal('Edit Bank Account',h);
@@ -6985,7 +6985,7 @@ async function saveBankAccEdit(id){
   const opening=Number(document.getElementById('bae-opening').value);
   const openingDate=document.getElementById('bae-opendate').value||null;
   if(!bank) return void(err.textContent='Bank name is required.');
-  if(!isFinite(opening)) return void(err.textContent='Saldo awal must be a number.');
+  if(!isFinite(opening)) return void(err.textContent='Opening balance must be a number.');
   try{
     await adminUpdateOne('bank_accounts',id,{bank_name:bank,account_no:acctNo||null,account_label:label||null,usage_type:usage,opening_balance:opening,opening_date:openingDate});
     const a=BANK_ACCOUNTS.find(x=>x.id===id);
@@ -7014,7 +7014,7 @@ function openCashPosEntity(entity){
     h+=`<p style="color:var(--muted);font-size:12.5px">No bank accounts logged for this PT.</p>`;
   } else {
     let tot=0;
-    h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Bank</th><th>No. Rekening</th><th>Label</th><th class="num">Saldo (IDR)</th><th>As of</th></tr></thead><tbody>`;
+    h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Bank</th><th>Account No.</th><th>Label</th><th class="num">Balance (IDR)</th><th>As of</th></tr></thead><tbody>`;
     rows.forEach(r=>{ tot+=r.balance;
       h+=`<tr class="clickable" style="cursor:pointer" onclick="openBankAccountLedger(${r.acc.id})">
         <td style="font-size:12.5px">${escH(r.acc.bank)}</td>
@@ -7024,7 +7024,7 @@ function openCashPosEntity(entity){
         <td style="font-size:12px;color:var(--muted)">${r.asOf?new Date(r.asOf).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
       </tr>`;});
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table></div>`;
-    h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click an account to see its full ledger (Debit/Kredit/Saldo).</p>`;
+    h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click an account to see its full ledger (Debit/Credit/Balance).</p>`;
   }
   showModal(eName(entity),h,true);
 }
@@ -7034,17 +7034,17 @@ function openBankAccountLedger(id){
   const rows=BANK_LEDGER.filter(r=>r.acctId===id).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openCashPosEntity('${a.entity}')">‹ Back to ${escH(eName(a.entity))}</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 4px">${escH(eName(a.entity))} — ${escH(a.bank)}${a.label?' ('+escH(a.label)+')':''}</h4>`;
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">No. Rekening: ${escH(a.acctNo||'—')} · Penggunaan: ${USAGE_LBL[a.usage]||a.usage} · Saldo Awal ${fmt(a.opening)} per ${a.openingDate||'—'}</div>`;
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Account No.: ${escH(a.acctNo||'—')} · Usage: ${USAGE_LBL[a.usage]||a.usage} · Opening Balance ${fmt(a.opening)} as of ${a.openingDate||'—'}</div>`;
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const backCall=encodeURIComponent(`openBankAccountLedger(${id})`);
-  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Date</th><th>Kode</th><th>Description</th><th class="num">Debit</th><th class="num">Kredit</th><th class="num">Saldo</th><th></th></tr></thead><tbody>`;
+  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Date</th><th>Code</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th></tr></thead><tbody>`;
   let saldo=a.opening;
-  h+=`<tr style="background:#f7f8fb"><td colspan="5" style="font-size:12px;color:var(--muted)">Saldo Awal (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td></tr>`;
+  h+=`<tr style="background:#f7f8fb"><td colspan="5" style="font-size:12px;color:var(--muted)">Opening Balance (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td></tr>`;
   if(!rows.length){
     h+=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No ledger entries yet for this account — import via <b>Update Data → Import Bank Ledger</b>.</td></tr>`;
   } else {
     rows.forEach(r=>{
-      saldo+=r.kredit-r.debit;
+      saldo+=r.debit-r.kredit;
       const saldoPos=saldo>=0;
       const hasDoc=Array.isArray(r.attachments)&&r.attachments.length>0;
       let docCell='<td></td>';
@@ -7054,8 +7054,8 @@ function openBankAccountLedger(id){
         <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
         <td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;background:#eef2f7;color:#3a4254;text-transform:capitalize">${escH(r.code)}</span></td>
         <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}</td>
-        <td class="num neg">${r.debit?fmt(r.debit):''}</td>
-        <td class="num pos">${r.kredit?fmt(r.kredit):''}</td>
+        <td class="num pos">${r.debit?fmt(r.debit):''}</td>
+        <td class="num neg">${r.kredit?fmt(r.kredit):''}</td>
         <td class="num" style="font-weight:800;color:${saldoPos?'#2b7a4b':'#b3261e'}">${fmt(saldo)}</td>
         ${docCell}
       </tr>`;
@@ -8233,10 +8233,10 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatnya seperti buku bank/mutasi rekening: satu baris per transaksi dengan Debit, Kredit dan Saldo, ditambah <b>Kode</b> untuk menentukan tujuannya. Import selalu untuk <b>satu rekening spesifik</b> — pilih dulu rekeningnya di bawah, karena Debit/Kredit/Saldo harus balance secara berurutan dalam satu rekening, tidak bisa dicampur beberapa rekening dalam satu file. <b>Revenue</b>/<b>Opex</b> juga masuk ke box Revenue/Expenses; <b>AR</b>/<b>AP</b> juga masuk ke Loan Affiliate; <b>Pinbuk</b> (transfer antar rekening sendiri) hanya memengaruhi saldo rekening ini, tidak muncul di box lain. Isi kolom <b>Link Dokumen</b> (link Google Drive, dishare "Anyone with the link") untuk melampirkan bukti transaksi — sistem otomatis menariknya ke penyimpanan aman, jadi saat viewer melihat detail biaya/opex di dashboard, dokumen pendukungnya langsung bisa dibuka di sana. Kosongkan kalau belum ada dokumennya, bisa dilampirkan menyusul lewat ikon 📎 di tampilan ledger.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate; <b>Pinbuk</b> (transfer between the group\'s own accounts) only affects this account\'s balance and appears nowhere else. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
       +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first.</div>')
       +'<div style="margin-bottom:12px">'
-      +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pilih rekening —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabel(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
+      +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pick an account —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabel(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
       +'</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="bl-template" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
@@ -8273,7 +8273,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Update Cash Position</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Correct a specific bank account\'s current balance when it doesn\'t match the real bank statement — pick the PT, the rekening, and the real balance as of a date. The difference is logged as a visible "Adjustment" entry in that account\'s ledger, not hidden by overwriting Saldo Awal — use this only for occasional reconciliation, not as the normal way to record activity (that\'s <b>Import Bank Ledger</b> below).</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Correct a specific bank account\'s current balance when it doesn\'t match the real bank statement — pick the PT, the account, and the real balance as of a date. The difference is logged as a visible "Adjustment" entry in that account\'s ledger, not hidden by overwriting the Opening Balance — use this only for occasional reconciliation, not as the normal way to record activity (that\'s <b>Import Bank Ledger</b> below).</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="cpos-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
       +'<button id="cpos-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
@@ -8635,8 +8635,8 @@ async function renderEntryBody(){
         const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
         const cpSuggestions=[...new Set([...EIDS.map(id=>ENT[id].name),...IC_TX.map(t=>t.cp)])].filter(Boolean).sort();
         await downloadValidatedTemplate('bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'.xlsx','Bank Ledger',
-          ['Date','Kode','Keterangan','Debit','Kredit','Saldo','Kategori','Vendor','Counterparty (PT)','Link Dokumen'],
-          ['2026-07-01',BL_CODE_LBL.opex,'Sample transaction',1000000,'',9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
+          ['Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty (PT)','Document Link'],
+          ['2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
           [{col:'B',values:Object.values(BL_CODE_LBL)},{col:'G',values:opexCatsTpl.concat(revCatsTpl)},
            {col:'H',values:VENDORS_G||[]},{col:'I',values:cpSuggestions}]);
       } finally { blTplBtn.disabled=false; }
@@ -8947,7 +8947,7 @@ async function renderEntryBody(){
     };
   }
   // ── Wire the "Update Cash Position" box — Entity select filters which accounts show up in the
-  // Account select, so the two stay in sync as the user picks a PT then a specific rekening. ──
+  // Account select, so the two stay in sync as the user picks a PT then a specific account. ──
   {
     const cposEnt=document.getElementById('cpos-ent'), cposAcct=document.getElementById('cpos-acct'),
       cposAmt=document.getElementById('cpos-amt'), cposDate=document.getElementById('cpos-date'),
@@ -8985,8 +8985,8 @@ async function renderEntryBody(){
       cposBtn.disabled=true; cposBtn.textContent='Saving…';
       try{
         const row={bank_account_id:acctId,entity_code:acct.entity,tx_date:dateStr,code:'adjustment',
-          debit:delta<0?Math.abs(delta):0,kredit:delta>0?delta:0,
-          description:'Koreksi saldo manual (dari '+fmt(current)+' ke '+fmt(amt)+')',
+          debit:delta>0?delta:0,kredit:delta<0?Math.abs(delta):0,
+          description:'Manual balance correction (from '+fmt(current)+' to '+fmt(amt)+')',
           source_label:'Manual correction',created_by:MY_EMAIL};
         const r=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(row)});
         if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
