@@ -3369,7 +3369,7 @@ function renderLiabTopVendor(){
 }
 function vendorRowHtml(vendor,v,grand,i){
   const p=grand>0?(v.tot/grand*100):0;
-  return `<div class="bd-row" style="cursor:pointer" onclick="openOutstandingVendor('${encodeURIComponent(vendor)}')"><span class="bl">${escH(vendor)} <span style="color:var(--blue-300);font-weight:700">›</span> <span style="color:var(--muted);font-weight:400">(${v.n})</span></span>
+  return `<div class="bd-row" style="cursor:pointer" onclick="openOutstandingVendor('${encodeURIComponent(vendor).replace(/'/g,'%27')}')"><span class="bl">${escH(vendor)} <span style="color:var(--blue-300);font-weight:700">›</span> <span style="color:var(--muted);font-weight:400">(${v.n})</span></span>
     <span class="bv neg">${fmt(v.tot)}<span class="bp">${p.toFixed(1)}%</span></span>
     <div class="bd-bar"><span style="width:${Math.max(p,1.5)}%;background:${CATCOLORS[i%CATCOLORS.length]}"></span></div></div>`;
 }
