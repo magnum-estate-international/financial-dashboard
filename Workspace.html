@@ -7889,9 +7889,18 @@ function dayLbl(iso){ return iso.slice(8,10)+' '+MON3[parseInt(iso.slice(5,7),10
 // veryHidden sheets and their cross-sheet dataValidation references are dropped or ignored by
 // some non-Excel-Desktop readers (e.g. importing into Google Sheets), which would silently break
 // the dropdown for anyone not opening the file in Excel itself.
-async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,colValidations){
+async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,colValidations,infoLine){
   const wb=new ExcelJS.Workbook();
   const ws=wb.addWorksheet(sheetName);
+  // Optional identifying line (e.g. "Bank Account: Permata · 04205703883") shown above the header
+  // row, purely for humans skimming the file — shifts header to row 2 / sample to row 3 so callers
+  // that don't pass this keep the exact original row1=header/row2=sample layout unchanged.
+  const headerRow=infoLine?2:1;
+  if(infoLine){
+    const infoRow=ws.addRow([infoLine]);
+    infoRow.font={bold:true};
+    ws.mergeCells(1,1,1,headers.length);
+  }
   ws.addRow(headers);
   ws.addRow(sampleRow);
   const maxRow=500;
@@ -7901,7 +7910,7 @@ async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,co
       const listCol=String.fromCharCode(65+i);
       cv.values.forEach((v,ri)=>{ listsWs.getCell(listCol+(ri+1)).value=v; });
       const ref=`Lists!$${listCol}$1:$${listCol}$${cv.values.length}`;
-      for(let r=2;r<=maxRow;r++){
+      for(let r=headerRow+1;r<=maxRow;r++){
         ws.getCell(cv.col+r).dataValidation={type:'list',allowBlank:true,formulae:[ref]};
       }
     });
@@ -8638,7 +8647,8 @@ async function renderEntryBody(){
           ['Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty (PT)','Document Link'],
           ['2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
           [{col:'B',values:Object.values(BL_CODE_LBL)},{col:'G',values:opexCatsTpl.concat(revCatsTpl)},
-           {col:'H',values:VENDORS_G||[]},{col:'I',values:cpSuggestions}]);
+           {col:'H',values:VENDORS_G||[]},{col:'I',values:cpSuggestions}],
+          'Bank Account: '+bankAccountLabel(acct));
       } finally { blTplBtn.disabled=false; }
     };
     if(blFileInp) blFileInp.onchange=async()=>{
@@ -8650,7 +8660,17 @@ async function renderEntryBody(){
         document.getElementById('bl-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
       }
       const sheet=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+      // The downloaded template puts an optional "Bank Account: ..." info line above the header row
+      // (see downloadValidatedTemplate's infoLine param) — detect it here by scanning for the row
+      // that actually contains 'Date' as a header, so an info line above doesn't get mistaken for
+      // the header row itself (which would make every column lookup below silently fail).
+      const aoa=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
+      let headerRowIdx=aoa.findIndex(r=>r.some(c=>String(c).trim().toLowerCase()==='date'));
+      if(headerRowIdx<0) headerRowIdx=0;
+      const headerArr=aoa[headerRowIdx];
+      const rows=aoa.slice(headerRowIdx+1)
+        .filter(r=>r.some(c=>String(c).trim()!==''))
+        .map(r=>{ const o={}; headerArr.forEach((h,i)=>{ if(h!=='') o[h]=r[i]!=null?r[i]:''; }); return o; });
       if(!rows.length){ BL_ROWS=[]; renderBlPreview(); return; }
       const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
       const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
