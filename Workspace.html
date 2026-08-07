@@ -8657,7 +8657,7 @@ async function renderEntryBody(){
           [acctLbl,'2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
           [{col:'C',values:Object.values(BL_CODE_LBL)},{col:'H',values:opexCatsTpl.concat(revCatsTpl)},
            {col:'I',values:VENDORS_G||[]},{col:'J',values:cpSuggestions}],
-          'Bank Account: '+acctLbl,
+          null,
           [{col:'A',value:acctLbl}]);
       } finally { blTplBtn.disabled=false; }
     };
