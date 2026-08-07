@@ -6928,8 +6928,7 @@ function mkBankLedger(r){
     attachments:Array.isArray(r.attachments)?r.attachments:[]};
 }
 function bankAccountLabel(a){
-  const eNm=ENT[a.entity]?ENT[a.entity].name:a.entity;
-  return eNm+' — '+a.bank+(a.label?' ('+a.label+')':'')+' · '+(a.acctNo||'');
+  return a.bank+(a.label?' ('+a.label+')':'')+' · '+(a.acctNo||'');
 }
 function bankAccountBalance(a){
   const rows=BANK_LEDGER.filter(r=>r.acctId===a.id);
