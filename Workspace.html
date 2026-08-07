@@ -6950,8 +6950,17 @@ function mkBankLedger(r){
     vendor:r.vendor||'',cp:r.counterparty_label||'',source:r.source_label,createdAt:r.created_at,
     attachments:Array.isArray(r.attachments)?r.attachments:[]};
 }
+// Bank-only label (no entity) — used for anything that ends up IN an Excel file (template column,
+// filename), since a file is already scoped to one account and the sheet stays uncluttered.
 function bankAccountLabel(a){
   return a.bank+(a.label?' ('+a.label+')':'')+' · '+(a.acctNo||'');
+}
+// Entity-prefixed label — used for on-dashboard pickers/lists that aren't otherwise scoped to one
+// PT (e.g. the Import Bank Ledger account dropdown, which lists every account across all entities),
+// so an account is identifiable without needing to already know which PT owns it.
+function bankAccountLabelFull(a){
+  const eNm=ENT[a.entity]?ENT[a.entity].name:a.entity;
+  return eNm+' — '+bankAccountLabel(a);
 }
 function bankAccountBalance(a){
   const rows=BANK_LEDGER.filter(r=>r.acctId===a.id);
@@ -7059,7 +7068,7 @@ function openBankAccountLedger(id){
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Account No.: ${escH(a.acctNo||'—')} · Usage: ${USAGE_LBL[a.usage]||a.usage} · Opening Balance ${fmt(a.opening)} as of ${a.openingDate||'—'}</div>`;
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const backCall=encodeURIComponent(`openBankAccountLedger(${id})`);
-  const acctLbl=bankAccountLabel(a);
+  const acctLbl=bankAccountLabelFull(a);
   h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Bank Account</th><th>Date</th><th>Code</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th></tr></thead><tbody>`;
   let saldo=a.opening;
   h+=`<tr style="background:#f7f8fb"><td style="font-size:12px;color:var(--muted)">${escH(acctLbl)}</td><td colspan="5" style="font-size:12px;color:var(--muted)">Opening Balance (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td></tr>`;
@@ -8276,7 +8285,7 @@ async function renderEntryBody(){
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate; <b>Pinbuk</b> (transfer between the group\'s own accounts) only affects this account\'s balance and appears nowhere else. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
       +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first.</div>')
       +'<div style="margin-bottom:12px">'
-      +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pick an account —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabel(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
+      +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pick an account —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabelFull(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
       +'</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="bl-template" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
