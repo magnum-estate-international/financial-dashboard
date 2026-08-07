@@ -7037,11 +7037,12 @@ function openBankAccountLedger(id){
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Account No.: ${escH(a.acctNo||'—')} · Usage: ${USAGE_LBL[a.usage]||a.usage} · Opening Balance ${fmt(a.opening)} as of ${a.openingDate||'—'}</div>`;
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const backCall=encodeURIComponent(`openBankAccountLedger(${id})`);
-  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Date</th><th>Code</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th></tr></thead><tbody>`;
+  const acctLbl=bankAccountLabel(a);
+  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Bank Account</th><th>Date</th><th>Code</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th></tr></thead><tbody>`;
   let saldo=a.opening;
-  h+=`<tr style="background:#f7f8fb"><td colspan="5" style="font-size:12px;color:var(--muted)">Opening Balance (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td></tr>`;
+  h+=`<tr style="background:#f7f8fb"><td style="font-size:12px;color:var(--muted)">${escH(acctLbl)}</td><td colspan="5" style="font-size:12px;color:var(--muted)">Opening Balance (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td></tr>`;
   if(!rows.length){
-    h+=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No ledger entries yet for this account — import via <b>Update Data → Import Bank Ledger</b>.</td></tr>`;
+    h+=`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">No ledger entries yet for this account — import via <b>Update Data → Import Bank Ledger</b>.</td></tr>`;
   } else {
     rows.forEach(r=>{
       saldo+=r.debit-r.kredit;
@@ -7051,6 +7052,7 @@ function openBankAccountLedger(id){
       if(hasDoc) docCell=`<td style="white-space:nowrap">${docViewChip('bank-ledger-docs',r.attachments)}</td>`;
       else if(canEdit) docCell=`<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerDocUpload('bank_ledger_entries',${r.id},'${backCall}')" title="Upload supporting document">${ICON.file(13)}</button></td>`;
       h+=`<tr>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escH(acctLbl)}</td>
         <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
         <td><span style="display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;background:#eef2f7;color:#3a4254;text-transform:capitalize">${escH(r.code)}</span></td>
         <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}</td>
@@ -7889,7 +7891,7 @@ function dayLbl(iso){ return iso.slice(8,10)+' '+MON3[parseInt(iso.slice(5,7),10
 // veryHidden sheets and their cross-sheet dataValidation references are dropped or ignored by
 // some non-Excel-Desktop readers (e.g. importing into Google Sheets), which would silently break
 // the dropdown for anyone not opening the file in Excel itself.
-async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,colValidations,infoLine){
+async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,colValidations,infoLine,fillColumns){
   const wb=new ExcelJS.Workbook();
   const ws=wb.addWorksheet(sheetName);
   // Optional identifying line (e.g. "Bank Account: Permata · 04205703883") shown above the header
@@ -7913,6 +7915,13 @@ async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,co
       for(let r=headerRow+1;r<=maxRow;r++){
         ws.getCell(cv.col+r).dataValidation={type:'list',allowBlank:true,formulae:[ref]};
       }
+    });
+  }
+  // Optional columns pre-filled with a constant value down every row (e.g. the bank account label
+  // repeated per transaction) so it's visible per-row, not just once at the top of the file.
+  if(fillColumns && fillColumns.length){
+    fillColumns.forEach(fc=>{
+      for(let r=headerRow+1;r<=maxRow;r++){ ws.getCell(fc.col+r).value=fc.value; }
     });
   }
   const buf=await wb.xlsx.writeBuffer();
@@ -8643,12 +8652,14 @@ async function renderEntryBody(){
         await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
         const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
         const cpSuggestions=[...new Set([...EIDS.map(id=>ENT[id].name),...IC_TX.map(t=>t.cp)])].filter(Boolean).sort();
+        const acctLbl=bankAccountLabel(acct);
         await downloadValidatedTemplate('bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'.xlsx','Bank Ledger',
-          ['Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty (PT)','Document Link'],
-          ['2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
-          [{col:'B',values:Object.values(BL_CODE_LBL)},{col:'G',values:opexCatsTpl.concat(revCatsTpl)},
-           {col:'H',values:VENDORS_G||[]},{col:'I',values:cpSuggestions}],
-          'Bank Account: '+bankAccountLabel(acct));
+          ['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty (PT)','Document Link'],
+          [acctLbl,'2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
+          [{col:'C',values:Object.values(BL_CODE_LBL)},{col:'H',values:opexCatsTpl.concat(revCatsTpl)},
+           {col:'I',values:VENDORS_G||[]},{col:'J',values:cpSuggestions}],
+          'Bank Account: '+acctLbl,
+          [{col:'A',value:acctLbl}]);
       } finally { blTplBtn.disabled=false; }
     };
     if(blFileInp) blFileInp.onchange=async()=>{
