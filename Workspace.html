@@ -5344,6 +5344,15 @@ function renderIcTxPreview(){
 let BL_ROWS=[];
 const BL_CODES=['revenue','opex','ar','ap','pinbuk'];
 const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk'};
+// Same tuple-matching convention as findDuplicateTx/findDuplicateIcTx — flags (doesn't block) a row
+// that looks identical to one already saved for this account, so re-uploading the same file (or an
+// overlapping date range) twice doesn't silently double every balance.
+function findDuplicateBl(list,r){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return list.find(o=>o.acctId===(r.acctMatch&&r.acctMatch.id) && (o.date||'')===(r.date||'') && o.code===r.code
+    && Math.round(o.debit||0)===Math.round(r.debit||0) && Math.round(o.kredit||0)===Math.round(r.kredit||0)
+    && norm(o.desc)===norm(r.desc));
+}
 function computeBlRow(r){
   let error=null;
   const debit=Number(r.debitRaw)||0, kredit=Number(r.kreditRaw)||0;
@@ -5362,6 +5371,7 @@ function computeBlRow(r){
   r.amt=debit>0?debit:kredit;
   r.category=r.catMatch||r.catRaw||'';
   r.vendor=r.vendorMatch||r.vendorRaw||'';
+  r.dup=error?null:findDuplicateBl(BANK_LEDGER,r);
 }
 // Cross-checks the optional Balance column against a running balance computed per account (starting
 // from that account's current live balance, then accumulating each row's Debit/Credit in date
@@ -5425,8 +5435,8 @@ function renderBlPreview(){
   const valid=BL_ROWS.filter(r=>!r.error);
   let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Code</th><th>Category</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Credit</th><th class="num" style="text-align:right">Balance</th><th>Doc?</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
-    const rowBg=r.error?'#fbe9e7':'';
-    const status=r.error?escH(r.error):'OK';
+    const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
+    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':'OK');
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
       +'<td style="font-size:12px">'+blCodeCell(r,i)+'</td>'
@@ -5437,10 +5447,12 @@ function renderBlPreview(){
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.kredit?fmtIDR(r.kredit):'')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px;font-weight:700">'+(r.expectedSaldo!=null?fmtIDR(r.expectedSaldo):'—')+'</td>'
       +'<td style="font-size:12px;text-align:center">'+(r.docLink?'📎':'—')+'</td>'
-      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':'#2b7a4b')+'">'+status+'</td></tr>';
+      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
   });
   h+='</tbody></table></div>';
+  const dupN=valid.filter(r=>r.dup).length;
   h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> ledger entr'+(valid.length===1?'y':'ies')+' — '+valid.length+' of '+BL_ROWS.length+' row(s) ready'
+    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved entry (same account, date, code, amount &amp; description) — review before importing':'')
     +(BL_ROWS.length>valid.length?'. Fix the flagged rows above and they\'ll be included automatically':'')+'.</div>';
   h+='<button id="bl-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' entr'+(valid.length===1?'y':'ies')+'</button>';
   h+='<div id="bl-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
