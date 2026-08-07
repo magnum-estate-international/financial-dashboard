@@ -3079,14 +3079,17 @@ function intercompanyCard(){
 // snapshot as the source of truth here, per direction, since that snapshot had no per-transaction
 // detail to drill into. Summary-first view (one row per owner PT, like Outstanding Liability's "By
 // Entity" breakdown) instead of dumping every raw row in one flat table.
-function icOwnerSummary(){
-  const byOwner={};
+// One row per (owner, counterparty) pair rather than aggregating every counterparty a PT deals
+// with into a single line — so it's clear at a glance who owes whom, not just a PT's overall net.
+function icOwnerCounterpartySummary(){
+  const byPair={};
   IC_TX.forEach(r=>{
-    const g=byOwner[r.owner]=byOwner[r.owner]||{ap:0,ar:0,n:0};
+    const key=r.owner+'␟'+r.cp;
+    const g=byPair[key]=byPair[key]||{owner:r.owner,cp:r.cp,ap:0,ar:0,n:0};
     if(r.type==='AP') g.ap+=r.amt; else g.ar+=r.amt;
     g.n++;
   });
-  return Object.entries(byOwner).map(([owner,g])=>({owner,ap:g.ap,ar:g.ar,net:g.ar-g.ap,n:g.n}));
+  return Object.values(byPair).map(g=>({...g,net:g.ar-g.ap}));
 }
 function icStatCards(totAP,totAR){
   const net=totAR-totAP, netPos=net>=0;
@@ -3117,7 +3120,7 @@ function openIntercompany(){
   // seen in imported files are holding/investment PTs never onboarded here, which would otherwise
   // clutter this list with PTs nobody using this dashboard can drill into elsewhere. Totals below
   // are recomputed from this filtered set too, so the stat cards stay consistent with the table.
-  let rows=icOwnerSummary().filter(g=>findEntityByNameG(g.owner));
+  let rows=icOwnerCounterpartySummary().filter(g=>findEntityByNameG(g.owner));
   const totAP=rows.reduce((s,g)=>s+g.ap,0);
   const totAR=rows.reduce((s,g)=>s+g.ar,0);
   let h=`<div class="pn-sub" style="margin-bottom:8px">Itemized inter-company receivables (AR) and payables (AP) between PTs in the wider group — built up via Excel import (Update Data). Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT. Only PTs tracked in this dashboard are shown.</div>`;
@@ -3128,17 +3131,18 @@ function openIntercompany(){
     return;
   }
   h+=`<div style="display:flex;align-items:center;margin-bottom:10px;gap:10px">
-      <div style="font-size:12.5px;color:var(--muted)">By PT (owner) — click a row for full counterparty detail</div>
+      <div style="font-size:12.5px;color:var(--muted)">By PT (owner) and counterparty — click a row for full transaction detail</div>
       ${icSearchInput()}
     </div>`;
-  rows=rows.filter(g=>!q||g.owner.toLowerCase().includes(q));
-  rows.sort((a,b)=>b.net-a.net);
-  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>PT (Owner)</th><th class="num">Transactions</th><th class="num">Payable (AP)</th><th class="num">Receivable (AR)</th><th class="num">Net Balance</th></tr></thead><tbody>`;
+  rows=rows.filter(g=>!q||g.owner.toLowerCase().includes(q)||(g.cp||'').toLowerCase().includes(q));
+  rows.sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>PT (Owner)</th><th>Counterparty</th><th class="num">Transactions</th><th class="num">Payable (AP)</th><th class="num">Receivable (AR)</th><th class="num">Net Balance</th></tr></thead><tbody>`;
   if(rows.length){
     rows.forEach(g=>{
       const netPos=g.net>=0;
       h+=`<tr class="clickable" style="cursor:pointer" onclick="openIntercompanyOwner('${encodeURIComponent(g.owner)}')">
         <td style="font-size:12.5px">${escH(g.owner)} <span style="color:var(--blue-300);font-weight:700">›</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">${escH(g.cp||'—')}</td>
         <td class="num" style="color:var(--muted)">${g.n}</td>
         <td class="num" style="color:#b3261e">${g.ap?fmt(g.ap):'—'}</td>
         <td class="num" style="color:#2b7a4b">${g.ar?fmt(g.ar):'—'}</td>
@@ -3146,7 +3150,7 @@ function openIntercompany(){
       </tr>`;
     });
   } else {
-    h+=`<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':''} PT found.</td></tr>`;
+    h+=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No ${q?'matching':''} PT found.</td></tr>`;
   }
   h+=`</tbody></table></div>`;
   showModal('Loan Affiliate',h,true);
