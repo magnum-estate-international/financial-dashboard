@@ -5356,7 +5356,7 @@ function computeBlRow(r){
   else if(r.code==='opex'&&debit>0) error='Opex must be entered as Credit (cash out), not Debit';
   else if(r.code==='ar'&&debit>0) error='AR must be entered as Credit (cash out), not Debit';
   else if(r.code==='ap'&&kredit>0) error='AP must be entered as Debit (cash in), not Credit';
-  else if((r.code==='revenue'||r.code==='opex')&&!r.catMatch) error='Category is required for Revenue/Opex';
+  else if(r.code&&!r.catMatch) error='Category is required';
   else if((r.code==='ar'||r.code==='ap')&&!r.cp) error='Counterparty is required for AR/AP';
   r.error=error;
   r.amt=debit>0?debit:kredit;
@@ -5398,11 +5398,22 @@ function blCodeCell(r,i){
   if(r.code) return BL_CODE_LBL[r.code];
   return `<select id="bl-fix-code-${i}" style="font-size:11px;padding:3px 4px" onchange="fixBlField(${i},'code',this.value)"><option value="">— pick —</option>${BL_CODES.map(c=>`<option value="${c}">${BL_CODE_LBL[c]}</option>`).join('')}</select>`;
 }
+function findBlCategory(name,code){
+  if(!name) return null;
+  const n=String(name).trim().toLowerCase();
+  const hit=blCatOpts(code).find(c=>c.toLowerCase()===n);
+  return hit||null;
+}
+function blCatOpts(code){
+  if(code==='revenue') return CATS_BY_KIND_G.revenue||[];
+  if(code==='opex') return OPEX_CATS_G||[];
+  if(code==='ar'||code==='ap'||code==='pinbuk') return CATS_BY_KIND_G.financing||[];
+  return [];
+}
 function blCatCell(r,i){
-  if(r.code!=='revenue'&&r.code!=='opex') return '—';
+  if(!r.code) return '—';
   if(r.catMatch) return escH(r.catMatch);
-  const opts=r.code==='revenue'?(CATS_BY_KIND_G.revenue||[]):(OPEX_CATS_G||[]);
-  return fixPickCellHtml('bl-fix-cat-'+i,`fixBlField(${i},'cat',this.value)`,opts,'— pick category —','category');
+  return fixPickCellHtml('bl-fix-cat-'+i,`fixBlField(${i},'cat',this.value)`,blCatOpts(r.code),'— pick category —','category');
 }
 function blVendorCell(r,i){
   if(r.code!=='opex') return '—';
@@ -5442,7 +5453,7 @@ function renderBlPreview(){
       const ledgerRows=valid.map(r=>({
         bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:r.date,code:r.code,
         debit:r.debit,kredit:r.kredit,description:r.desc||null,
-        category:(r.code==='revenue'||r.code==='opex')?r.category:null,
+        category:r.category||null,
         vendor:r.code==='opex'?r.vendor:null,
         counterparty_label:(r.code==='ar'||r.code==='ap')?r.cp:null,
         source_label:'Excel import',created_by:MY_EMAIL}));
@@ -8648,14 +8659,14 @@ async function renderEntryBody(){
       const acct=BANK_ACCOUNTS.find(a=>String(a.id)===blAcctSel.value); if(!acct) return;
       blTplBtn.disabled=true;
       try{
-        await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
-        const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
+        await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue'),ensureCatsByKind('financing')]);
+        const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[], finCatsTpl=CATS_BY_KIND_G.financing||[];
         const cpSuggestions=[...new Set([...EIDS.map(id=>ENT[id].name),...IC_TX.map(t=>t.cp)])].filter(Boolean).sort();
         const acctLbl=bankAccountLabel(acct);
         await downloadValidatedTemplate('bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'.xlsx','Bank Ledger',
           ['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty (PT)','Document Link'],
           [acctLbl,'2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
-          [{col:'C',values:Object.values(BL_CODE_LBL)},{col:'H',values:opexCatsTpl.concat(revCatsTpl)},
+          [{col:'C',values:Object.values(BL_CODE_LBL)},{col:'H',values:opexCatsTpl.concat(revCatsTpl).concat(finCatsTpl)},
            {col:'I',values:VENDORS_G||[]},{col:'J',values:cpSuggestions}],
           null,
           [{col:'A',value:acctLbl}]);
@@ -8665,7 +8676,7 @@ async function renderEntryBody(){
       const acct=BANK_ACCOUNTS.find(a=>String(a.id)===blAcctSel.value); if(!acct) return;
       const f=blFileInp.files[0]; if(!f) return;
       document.getElementById('bl-filename').textContent=f.name;
-      await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
+      await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue'),ensureCatsByKind('financing')]);
       let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
         document.getElementById('bl-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
       }
@@ -8697,7 +8708,7 @@ async function renderEntryBody(){
         const debitRaw=kDebit!=null?r[kDebit]:'', kreditRaw=kKredit!=null?r[kKredit]:'';
         const saldoRaw=kSaldo!=null?r[kSaldo]:'';
         const catRaw=kCat!=null?String(r[kCat]||'').trim():'';
-        const catMatch=findCategoryByFlow(catRaw,code==='revenue'?'rev':'opex');
+        const catMatch=findBlCategory(catRaw,code);
         const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
         const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
         const cp=kCp!=null?String(r[kCp]||'').trim():'';
