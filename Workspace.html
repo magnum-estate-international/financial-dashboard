@@ -354,18 +354,18 @@ a{color:#9a6f0a}
 
 <div class="divlabel" id="secOverviewLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Dashboard Overview</div>
 <div class="grid cols-3" style="margin-bottom:16px">
-  <div class="panel">
-    <h2>Financial Health</h2>
+  <div class="panel clickable" style="cursor:pointer" onclick="openDetail('finhealth')">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Financial Health</h2><a href="#" onclick="event.preventDefault();event.stopPropagation();openDetail('finhealth')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
     <div class="pn-sub" style="font-size:11.5px;color:var(--muted);margin-top:2px">Computed from figures already on this dashboard</div>
     <div id="finHealth" style="margin-top:16px"></div>
   </div>
-  <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Cash In vs Cash Out</h2></div>
+  <div class="panel clickable" style="cursor:pointer" onclick="openDetail('cashinout')">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Cash In vs Cash Out</h2><a href="#" onclick="event.preventDefault();event.stopPropagation();openDetail('cashinout')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
     <div class="pn-sub" style="font-size:11.5px;color:var(--muted);margin-top:2px">Revenue+financing in vs Expenses+financing out, by month</div>
     <div class="chart-box" style="height:230px;margin-top:10px"><canvas id="cashInOutChart"></canvas></div>
   </div>
-  <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Revenue by Entity</h2><a href="#" onclick="event.preventDefault();openDetail('rev')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
+  <div class="panel clickable" style="cursor:pointer" onclick="openDetail('rev')">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Revenue by Entity</h2><a href="#" onclick="event.preventDefault();event.stopPropagation();openDetail('rev')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
     <div class="chart-box" style="height:170px;margin-top:10px"><canvas id="revByEntChart"></canvas></div>
     <div id="revByEntLegend" style="margin-top:10px"></div>
   </div>
@@ -4026,6 +4026,43 @@ function openDetail(kind){
   const a=agg();
   if(kind==='rev') showModal('Operating Revenue — Breakdown',bdTableHtml(a.revBD,a.rev,'pos'));
   else if(kind==='opex') openOpexBreakdown(OPEX_BD_VIEW);
+  else if(kind==='finhealth'){
+    const revCov=a.opex>0?(a.rev/a.opex*100):null;
+    const fcBase=fixCostInScope().reduce((s,f)=>s+f.amt,0);
+    const fcAdh=(a.opex>0&&fcBase>0)?(fcBase/a.opex*100):null;
+    const open=outstandingOpen();
+    const openTot=open.reduce((s,o)=>s+o.remaining,0);
+    const overdue=open.filter(o=>daysOverdue(o.due)>0);
+    const overdueTot=overdue.reduce((s,o)=>s+o.remaining,0);
+    const overdueRate=openTot>0?(overdueTot/openTot*100):null;
+    const paid=outstandingPaid();
+    const onTimeN=paid.filter(o=>o.paidDate&&o.due&&o.paidDate<=o.due).length;
+    const onTimeRate=paid.length>0?(onTimeN/paid.length*100):null;
+    const row=(lab,pct,detail,fld)=>`<tr class="clickable" style="cursor:pointer" onclick="${fld?`openDetail('${fld}')`:'closeModal()'}"><td style="font-size:12.5px">${lab}</td><td class="num">${pct==null?'—':pct.toFixed(1)+'%'}</td><td style="font-size:12.5px;color:var(--muted)">${detail}</td></tr>`;
+    let h=`<table><thead><tr><th>Metric</th><th class="num">Value</th><th>Underlying figures</th></tr></thead><tbody>`
+      +row('Revenue Coverage',revCov,`Revenue ${fmt(a.rev)} ÷ OpEx ${fmt(a.opex)}`,'opnet')
+      +row('Fixed Cost Adherence',fcAdh,`Fixed-cost baseline ${fmt(fcBase)} ÷ actual OpEx ${fmt(a.opex)}`)
+      +row('Overdue Rate',overdueRate,`Overdue ${fmt(overdueTot)} (${overdue.length} invoice${overdue.length===1?'':'s'}) ÷ open payables ${fmt(openTot)} (${open.length})`)
+      +row('On-time Payment',onTimeRate,`${onTimeN} of ${paid.length} paid invoices settled by their due date`)
+      +`</tbody></table><p style="color:var(--muted);font-size:11.5px;margin-top:10px;line-height:1.6">Click a row with a link icon to drill into that figure. Overdue Rate and On-time Payment are computed from Outstanding Liabilities — open <b>Outstanding Liability Aging</b> for the full invoice list.</p>`;
+    showModal('Financial Health — Breakdown',h);
+  }
+  else if(kind==='cashinout'){
+    const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
+    let h=`<table><thead><tr><th>Month</th><th class="num">Cash In</th><th class="num">Cash Out</th><th class="num">Net</th></tr></thead><tbody>`;
+    let tIn=0,tOut=0;
+    Q2_MONTHS.forEach(mo=>{
+      let ci=0,co=0;
+      ids.forEach(id=>{ const m=effMonth(id,mo); if(m){ ci+=m.rev+m.finIn; co+=m.opex+m.finOut; } });
+      tIn+=ci; tOut+=co;
+      const net=ci-co;
+      h+=`<tr><td style="font-size:12.5px">${MONTHS[mo]||mo}</td><td class="num pos">+ ${fmt(ci)}</td><td class="num neg">– ${fmt(co)}</td><td class="num ${net>=0?'pos':'neg'}">${net>=0?'+':'–'} ${fmt(Math.abs(net))}</td></tr>`;
+    });
+    const tNet=tIn-tOut;
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num pos"><strong>+ ${fmt(tIn)}</strong></td><td class="num neg"><strong>– ${fmt(tOut)}</strong></td><td class="num ${tNet>=0?'pos':'neg'}"><strong>${tNet>=0?'+':'–'} ${fmt(Math.abs(tNet))}</strong></td></tr></tbody></table>`
+      +`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Cash In = Revenue + Financing Inflows · Cash Out = Expenses + Financing Outflows, per month for the current entity/group scope.</p>`;
+    showModal('Cash In vs Cash Out — by Month',h);
+  }
   else if(kind==='cashpos'){
     SORT_RERENDER['cashpos']=()=>openDetail('cashpos');
     const eName=id=>(ENT[id]?ENT[id].name:id);
