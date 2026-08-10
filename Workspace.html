@@ -3196,7 +3196,7 @@ function icTxLedgerRowHtml(r,saldo,encOwner){
   const saldoPos=saldo>=0;
   return `<tr>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
-    <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}</td>
+    <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}${sourceTagHtml(r.source)}</td>
     <td class="num neg">${r.type==='AP'?'− '+fmt(r.amt):''}</td>
     <td class="num pos">${r.type==='AR'?'+ '+fmt(r.amt):''}</td>
     <td class="num" style="font-weight:800;color:${saldoPos?'#2b7a4b':'#b3261e'}">${saldoPos?'+':'− '}${fmt(Math.abs(saldo))}</td>
@@ -4236,11 +4236,22 @@ function vendorFromDesc(desc){
 function displayVendor(x){
   return (x.vendor!=null && x.vendor!=='') ? x.vendor : vendorFromDesc(x.desc);
 }
+// Every transaction lands here via one of two paths: the per-category import/entry flow (Import
+// Transactions, manual add/edit, balance corrections — recorded under various source_label values)
+// or the unified Bank Ledger import, which also routes revenue/opex rows in here so they show up
+// in these same boxes. Tag each row so it's visible which path it came from.
+function sourceTagHtml(srcLabel){
+  const isLedger = srcLabel === 'Bank Ledger import';
+  const bg = isLedger ? '#e6f6ee' : '#eef0f4';
+  const fg = isLedger ? '#1f8a56' : 'var(--muted)';
+  const title = isLedger ? 'Imported via the unified Bank Ledger' : 'Entered via the per-category import/entry flow';
+  return ` <span class="tag" style="background:${bg};color:${fg};font-size:9px;padding:2px 6px" title="${title}">${isLedger?'Ledger':'Manual'}</span>`;
+}
 function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const canEdit=MY_ROLE==='editor';
   const sign = x.contra ? '–' : (isRev?'+':'–');
   const amtCls = x.contra ? 'amb' : cls;
-  const tagHtml = x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '';
+  const tagHtml = (x.contra ? ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);font-size:9px;padding:2px 6px">contra · refund</span>` : '') + sourceTagHtml(x.srcLabel);
   const entCell = showEntity ? `<td>${pill(x.e)}</td>` : '';
   const hasDoc=Array.isArray(x.attachments)&&x.attachments.length>0;
   const bc=(x.id!=null)?encodeURIComponent(backCall).replace(/'/g,'%27'):null;
@@ -6916,7 +6927,7 @@ async function loadFromSupabase(){
   tots.forEach(t=>{(M[t.entity_code]=M[t.entity_code]||{})[t.period_code]={rev:+t.revenue,opex:+t.opex,finIn:+t.financing_in,finOut:+t.financing_out};});
   Object.keys(M).forEach(id=>{const ks=Object.keys(M[id]); if(ks.length===1&&ks[0]==='MAY') delete M[id];});
   const mkLoan=r=>({f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr});
-  const mkTx=r=>{const o={id:r.id,mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,vendor:r.vendor||null,k:r.raw_label,amt:+r.amount_idr,attachments:Array.isArray(r.attachments)?r.attachments:[]}; if(r.contra)o.contra=1; return o;};
+  const mkTx=r=>{const o={id:r.id,mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,vendor:r.vendor||null,k:r.raw_label,amt:+r.amount_idr,attachments:Array.isArray(r.attachments)?r.attachments:[],srcLabel:r.source_label||null}; if(r.contra)o.contra=1; return o;};
   const bs={TX:[],TX_MULTI:[],TX_MS:[],TX_ICG_OPEX:[]};
   txAll.forEach(r=>{(bs[r.source]=bs[r.source]||[]).push(mkTx(r));});
   // TX must include every source bucket (not just the four original ones) — a fixed allow-list here
