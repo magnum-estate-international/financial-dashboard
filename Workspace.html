@@ -3651,6 +3651,10 @@ function renderOpexChart(a){
 // Two scroll positions are tracked per title: the outer modal box, and each inner .table-scroll
 // div (long tables scroll independently of the modal itself) by document order.
 let MODAL_SCROLL_BY_TITLE={}, MODAL_CUR_TITLE=null;
+// Set whenever a modal temporarily overrides the global MONTH filter to drill into one specific
+// month from a multi-month view (e.g. Cash In vs Cash Out) — closeModal() restores it so the
+// dashboard behind the modal never ends up silently stuck on a different period.
+let MONTH_DRILL_RESTORE=null;
 function showModal(title,html,wide){
   const box=document.getElementById('modalBox');
   if(MODAL_CUR_TITLE!=null && box){
@@ -3679,6 +3683,7 @@ function showModal(title,html,wide){
 function closeModal(){
   document.getElementById('overlay').classList.remove('show');
   MODAL_SCROLL_BY_TITLE={}; MODAL_CUR_TITLE=null;
+  if(MONTH_DRILL_RESTORE!=null){ MONTH=MONTH_DRILL_RESTORE; MONTH_DRILL_RESTORE=null; }
 }
 // Opex categories rolled up into a handful of parent cost groups for the breakdown modal —
 // purely a display grouping (openBDItem drill-down still keys off the individual category name).
@@ -4056,12 +4061,15 @@ function openDetail(kind){
       ids.forEach(id=>{ const m=effMonth(id,mo); if(m){ ci+=m.rev+m.finIn; co+=m.opex+m.finOut; } });
       tIn+=ci; tOut+=co;
       const net=ci-co;
-      h+=`<tr><td style="font-size:12.5px">${MONTHS[mo]||mo}</td><td class="num pos">+ ${fmt(ci)}</td><td class="num neg">– ${fmt(co)}</td><td class="num ${net>=0?'pos':'neg'}">${net>=0?'+':'–'} ${fmt(Math.abs(net))}</td></tr>`;
+      h+=`<tr><td style="font-size:12.5px">${MONTHS[mo]||mo}</td>`
+        +`<td class="num pos" style="cursor:pointer" onclick="openCashFlowMonth('${mo}','in')">+ ${fmt(ci)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
+        +`<td class="num neg" style="cursor:pointer" onclick="openCashFlowMonth('${mo}','out')">– ${fmt(co)} <span style="color:var(--blue-300);font-weight:700">›</span></td>`
+        +`<td class="num ${net>=0?'pos':'neg'}">${net>=0?'+':'–'} ${fmt(Math.abs(net))}</td></tr>`;
     });
     const tNet=tIn-tOut;
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num pos"><strong>+ ${fmt(tIn)}</strong></td><td class="num neg"><strong>– ${fmt(tOut)}</strong></td><td class="num ${tNet>=0?'pos':'neg'}"><strong>${tNet>=0?'+':'–'} ${fmt(Math.abs(tNet))}</strong></td></tr></tbody></table>`
-      +`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Cash In = Revenue + Financing Inflows · Cash Out = Expenses + Financing Outflows, per month for the current entity/group scope.</p>`;
-    showModal('Cash In vs Cash Out — by Month',h);
+      +`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Cash In = Revenue + Financing Inflows · Cash Out = Expenses + Financing Outflows, per month for the current entity/group scope. Click a Cash In or Cash Out amount to see its breakdown.</p>`;
+    showModal('Cash In vs Cash Out — by Month',h,true);
   }
   else if(kind==='cashpos'){
     SORT_RERENDER['cashpos']=()=>openDetail('cashpos');
@@ -4145,6 +4153,28 @@ function openDetail(kind){
     </tbody></table>`;
     showModal(kind==='netfin'?'Net Financing — Summary':'Net Cash Movement — Summary',h);
   }
+}
+// Drill into one specific month from the Cash In vs Cash Out table (which always shows all Q2
+// months regardless of the dashboard's own Period filter) — temporarily points the global MONTH
+// at that month and reuses the exact same Revenue/Expenses breakdown views used everywhere else
+// on the dashboard (bdTableHtml → openBDItem's By Entity + Transaction Detail tables), so drilling
+// in from here looks identical to drilling into Income/Opex from anywhere else. MONTH is restored
+// the moment the modal is closed (see MONTH_DRILL_RESTORE in closeModal()), however many levels deep
+// the user has drilled, so the dashboard behind the modal never ends up stuck on the wrong period.
+function openCashFlowMonth(mo,dir){
+  if(MONTH_DRILL_RESTORE==null) MONTH_DRILL_RESTORE=MONTH;
+  MONTH=mo;
+  const a=agg();
+  const isIn=dir==='in';
+  let h=`<button class="btn btn-ghost" style="margin-bottom:14px" onclick="openDetail('cashinout')">‹ Back to Cash In vs Cash Out</button>`;
+  if(isIn){
+    h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Revenue</h4>`+bdTableHtml(a.revBD,a.rev,'pos');
+    h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:20px 0 8px">Financing Inflows</h4>`+finTableHtml('finIn');
+  } else {
+    h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Expenses</h4>`+bdTableHtml(a.opexBD,a.opex,'neg');
+    h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:20px 0 8px">Financing &amp; Non-Op Outflows</h4>`+finTableHtml('finOut');
+  }
+  showModal((isIn?'Cash In — ':'Cash Out — ')+(MONTHS[mo]||mo),h,true);
 }
 function openBDItem(type,encKey){
   const key=decodeURIComponent(encKey);
