@@ -115,6 +115,20 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
   .exec-eq-op{align-self:center}
   .exec-eq-lab2,.exec-eq-val2,.exec-net-val{white-space:normal}
 }
+/* #hero-right holds the date/scope text plus the JS-injected #mag-userbar (Update data/History/
+   profile). Both wrap by default now, but on real phones (~375-430px) even one row of #mag-userbar's
+   buttons is close to the full viewport width, so give it its own breakpoint to stack top-to-bottom
+   and drop the (redundant, already-visible-on-page) hero scope line to save vertical space. */
+@media(max-width:640px){
+  header .wrap{padding:0 16px;gap:10px}
+  #hero-right{width:100%;justify-content:flex-start!important}
+  .hero-meta{text-align:left;width:100%}
+  #heroScope{display:none}
+  #mag-userbar{width:100%;justify-content:flex-start!important}
+}
+@media(max-width:380px){
+  #mag-userbar button span,#mag-userbar >button{font-size:11.5px!important;padding:6px 10px!important}
+}
 .divlabel{font-size:11px;font-weight:800;color:var(--blue-900);text-transform:uppercase;letter-spacing:1.4px;margin:32px 0 14px;
   display:flex;align-items:center;gap:10px}
 .divlabel svg.svgic{width:26px;height:26px;padding:6px;box-sizing:border-box;border-radius:9px;
@@ -268,7 +282,7 @@ a{color:#9a6f0a}
         <div class="sub">ICG · MEI · BBU · Sky Stars · KSO TUS · PT SUP · Umalas Lounge</div>
       </div>
     </div>
-    <div id="hero-right" style="display:flex;align-items:center;gap:16px">
+    <div id="hero-right" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end;max-width:100%">
       <div class="hero-meta">
         <div class="period" id="heroToday">Thursday, 16 July 2026</div>
         <div id="heroScope">Consolidated · 17 Entities · 4 Groups + 3 Standalone</div>
@@ -7265,7 +7279,7 @@ function showUserBar(){
   const roleLabel=IS_ADMIN?'Organisation Admin':(MY_ROLE==='editor'?'Editor':'Viewer');
   const icChevron='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none;opacity:.7"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>';
   const menuItem='width:100%;border:0;background:none;text-align:left;color:#3a2f1a;font-size:12.5px;font-weight:600;padding:9px 10px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:9px';
-  b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
+  b.style.cssText='position:relative;z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:100%;font-family:Plus Jakarta Sans,system-ui,sans-serif;font-size:12.5px;color:#c7cddd';
   b.innerHTML=(MY_ROLE==='editor'?'<button id="mag-entry-open" style="'+pill+'">'+icUpload+' Update data</button>':'')
     +'<button id="mag-history-open" style="'+pill+'">'+icClock+' History</button>'
     +'<div style="position:relative;margin-left:2px">'
