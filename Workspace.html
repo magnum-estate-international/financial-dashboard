@@ -723,8 +723,12 @@ function activeMonths(){ return MONTH==='Q2'?Q2_MONTHS:(MONTH==='CUSTOM'?CUSTOM_
 // instead of a hardcoded date — so it stays correct as new months (Jul, Aug, ... Dec) are approved.
 function updateYtdLabel(){
   if(!Q2_MONTHS.length) return;
+  // Period labels can carry a parenthetical note (coverage caveats, partial-data warnings, etc.) —
+  // strip that back down to just "Month YYYY" here so a longer note on any one month never leaks
+  // into this combined range label.
+  const monthYear=lbl=>{ const m=(lbl||'').match(/^(\S+)\s+(\d{4})/); return m?m[1]+' '+m[2]:(lbl||''); };
   const startMo=(MONTHS[Q2_MONTHS[0]]||'').split(' ')[0];
-  const endLbl=MONTHS[Q2_MONTHS[Q2_MONTHS.length-1]]||'';
+  const endLbl=monthYear(MONTHS[Q2_MONTHS[Q2_MONTHS.length-1]]);
   MONTHS.Q2=`${startMo} – ${endLbl} (YTD)`;
   const opt=document.querySelector('#monthSel option[value="Q2"]');
   if(opt) opt.textContent=MONTHS.Q2;
@@ -5361,11 +5365,15 @@ function renderTxPreview(){
           added.forEach(r=>{ inc[r.flowKey==='rev'?'revenue':'opex']+=r.amt; });
           const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
           const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
-          await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+          const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
             headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
             body:JSON.stringify({entity_code:ent,period_code:per,
               revenue:Number(c.revenue||0)+inc.revenue, opex:Number(c.opex||0)+inc.opex,
               financing_in:Number(c.financing_in||0), financing_out:Number(c.financing_out||0)})});
+          // Silent failure here (RLS reject, network error) previously left the itemized transaction
+          // rows saved but the headline KPI total stale/under-counted with no indication anything
+          // was wrong — surface it instead so a failed import batch is visibly incomplete.
+          if(!ptr.ok) throw new Error('Saved the transactions, but failed to update '+ent+' '+per+"'s headline total: "+((await ptr.text())||('HTTP '+ptr.status)));
         }
       }
       TX_ROWS=[];
@@ -5616,11 +5624,15 @@ function renderBlPreview(){
             added.forEach(r=>{ inc[r.code==='revenue'?'revenue':'opex']+=r.amt; });
             const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
             const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
-            await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+            const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
               headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
               body:JSON.stringify({entity_code:ent,period_code:per,
                 revenue:Number(c.revenue||0)+inc.revenue, opex:Number(c.opex||0)+inc.opex,
                 financing_in:Number(c.financing_in||0), financing_out:Number(c.financing_out||0)})});
+            // Silent failure here (RLS reject, network error) previously left the itemized transaction
+            // rows saved but the headline KPI total stale/under-counted with no indication anything
+            // was wrong — surface it instead so a failed import batch is visibly incomplete.
+            if(!ptr.ok) throw new Error('Saved the transactions, but failed to update '+ent+' '+per+"'s headline total: "+((await ptr.text())||('HTTP '+ptr.status)));
           }
         }
       }
