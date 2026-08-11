@@ -5961,10 +5961,19 @@ function eName(id){ return ENT[id]?ENT[id].name:id; }
 // vendor or category field (Transactions, Outstanding Liability, Fixed Cost, Bank Ledger) and
 // aggregates real usage per entity, e.g. "which vendors has PT Magnum Estate International paid".
 function usageRows(kind){
-  const nameOf=t=>kind==='vendor'?(t.vendor||displayVendor(t)):t.k;
+  // Vendor is an opex-side concept (who was paid) — Revenue/Financing transaction rows have no
+  // real vendor, and displayVendor()'s description-guess falls back to the literal placeholder
+  // "—" for them, which would otherwise pollute the vendor sheet with one big fake "vendor" bucket
+  // per entity. Category applies to both Revenue and Opex, so it isn't restricted the same way.
+  const nameOf=t=>{
+    if(kind!=='vendor') return t.k;
+    if(t.type!=='opex') return null;
+    const v=displayVendor(t);
+    return v==='—'?null:v;
+  };
   const rows={};
   const add=(name,ent,amt,dateStr,source)=>{
-    name=(name||'').trim(); if(!name||!ent) return;
+    name=(name||'').trim(); if(!name||!ent||name==='—') return;
     const key=name+'␟'+ent;
     const r=rows[key]=rows[key]||{name,entity:ent,count:0,total:0,first:null,last:null,sources:new Set()};
     r.count++; r.total+=amt||0; r.sources.add(source);
