@@ -5955,12 +5955,59 @@ async function addVendor(name){
   if(!r.ok){ const t=await r.text(); throw new Error(/duplicate key|already exists/i.test(t)?'A vendor named "'+name+'" already exists.':(t||('HTTP '+r.status))); }
   invalidateVendorCache();
 }
+function eName(id){ return ENT[id]?ENT[id].name:id; }
+// Cross-references who/what an entity has actually transacted with — unlike the flat vendors/
+// categories master lists below (just names, no usage), this scans every table that carries a
+// vendor or category field (Transactions, Outstanding Liability, Fixed Cost, Bank Ledger) and
+// aggregates real usage per entity, e.g. "which vendors has PT Magnum Estate International paid".
+function usageRows(kind){
+  const nameOf=t=>kind==='vendor'?(t.vendor||displayVendor(t)):t.k;
+  const rows={};
+  const add=(name,ent,amt,dateStr,source)=>{
+    name=(name||'').trim(); if(!name||!ent) return;
+    const key=name+'␟'+ent;
+    const r=rows[key]=rows[key]||{name,entity:ent,count:0,total:0,first:null,last:null,sources:new Set()};
+    r.count++; r.total+=amt||0; r.sources.add(source);
+    if(dateStr){ if(!r.first||dateStr<r.first) r.first=dateStr; if(!r.last||dateStr>r.last) r.last=dateStr; }
+  };
+  TX.forEach(t=>add(nameOf(t),t.e,t.amt,isoFromDayLabel(t.d),'Transactions'));
+  OUTSTANDING.forEach(o=>add(kind==='vendor'?o.vendor:o.cat,o.e,o.amt,o.inv,'Outstanding Liability'));
+  FIXCOST.forEach(f=>add(kind==='vendor'?f.vendor:f.cat,f.e,f.amt,(f.at||'').slice(0,10),'Fixed Cost'));
+  BANK_LEDGER.forEach(r=>add(kind==='vendor'?r.vendor:r.category,r.entity,(r.debit||0)+(r.kredit||0),r.date,'Bank Ledger'));
+  return Object.values(rows).map(r=>({...r,sources:[...r.sources].join(', ')}));
+}
+function usageExportHtml(kind,selId,btnId){
+  return '<div style="border:1px solid #e4e7ef;border-radius:12px;padding:12px;margin-bottom:14px;background:#fbfcfe">'
+    +'<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:12.5px;color:#141b2d;margin-bottom:6px">Export '+(kind==='vendor'?'vendor':'category')+' usage</div>'
+    +'<div style="font-size:12px;color:#3a4254;margin-bottom:8px">Every '+(kind==='vendor'?'vendor':'category')+' that has actually appeared in an entity\'s data (Transactions, Outstanding Liability, Fixed Cost, Bank Ledger) — not just the master list below. Pick an entity to see, e.g., every vendor that has transacted with one specific PT.</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    +'<select id="'+selId+'" style="flex:1 1 200px;padding:9px 11px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+    +'<button id="'+btnId+'" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:10px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export (.xlsx)</button>'
+    +'</div></div>';
+}
+function wireUsageExport(kind,selId,btnId){
+  const btn=document.getElementById(btnId); if(!btn) return;
+  btn.onclick=()=>{
+    const entSel=document.getElementById(selId).value;
+    let rows=usageRows(kind).filter(r=>entSel==='all'||r.entity===entSel);
+    rows.sort((a,b)=>a.entity!==b.entity?(eName(a.entity)<eName(b.entity)?-1:1):b.total-a.total);
+    const header=[kind==='vendor'?'Vendor':'Category','Entity','Source(s)','Transactions','Total (IDR)','First Date','Last Date'];
+    const data=[header,...rows.map(r=>[r.name,eName(r.entity),r.sources,r.count,r.total,r.first||'',r.last||''])];
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(data);
+    ws['!cols']=[{wch:28},{wch:30},{wch:26},{wch:12},{wch:16},{wch:12},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,ws,kind==='vendor'?'Vendors':'Categories');
+    const suffix=entSel==='all'?'all_entities':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
+    XLSX.writeFile(wb,kind+'_usage_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  };
+}
 async function renderVendorsBody(){
   const body=document.getElementById('vendors-body'); if(!body) return;
   let vendorsList=[];
   try{ vendorsList=await sbFetch('vendors?select=name&order=name'); }
   catch(err){ body.innerHTML='<div style="color:#b3261e;font-size:13px">Could not load: '+err.message+'</div>'; return; }
   let h='';
+  h+=usageExportHtml('vendor','vendor-usage-ent','vendor-usage-export');
   h+='<div style="border:1px solid #e4e7ef;border-radius:12px;padding:12px;margin-bottom:14px">'
     +'<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:12.5px;color:#141b2d;margin-bottom:8px">Add a vendor</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
@@ -5980,6 +6027,7 @@ async function renderVendorsBody(){
   });
   h+='</div>';
   body.innerHTML=h;
+  wireUsageExport('vendor','vendor-usage-ent','vendor-usage-export');
   document.getElementById('vv-add').onclick=async()=>{
     const nameEl=document.getElementById('vv-name'), msg=document.getElementById('vv-msg');
     const btn=document.getElementById('vv-add');
@@ -7638,6 +7686,7 @@ async function renderCategoriesBody(){
   const allGroups=Array.from(new Set(cats.map(c=>c.parent_group).filter(Boolean).concat(groupsTbl.map(g=>g.name)))).sort();
   const groupDatalist='<datalist id="cc-groups-dl">'+allGroups.map(g=>'<option value="'+escH(g)+'">').join('')+'</datalist>';
   let h='';
+  h+=usageExportHtml('category','category-usage-ent','category-usage-export');
   h+='<div style="border:1px solid #e4e7ef;border-radius:12px;padding:12px;margin-bottom:14px">'
     +'<div style="font-family:Plus Jakarta Sans,sans-serif;font-weight:700;font-size:12.5px;color:#141b2d;margin-bottom:8px">Add a main category (group)</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
@@ -7694,6 +7743,7 @@ async function renderCategoriesBody(){
     h+='</div>';
   });
   body.innerHTML=h;
+  wireUsageExport('category','category-usage-ent','category-usage-export');
   document.getElementById('cg-add').onclick=async()=>{
     const nameEl=document.getElementById('cg-name'), kindEl=document.getElementById('cg-kind'), msg=document.getElementById('cg-msg');
     const btn=document.getElementById('cg-add');
