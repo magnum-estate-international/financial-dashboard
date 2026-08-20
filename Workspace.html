@@ -709,6 +709,19 @@ const CANON={
   'Guest Compensation':'Other Operating Expense','Bill Payments (Utilities/Tax)':'Other Operating Expense',
 };
 const canon = k => CANON[k] || k;
+// May's per-category "official" totals have always come only from the ENT[id].rev/opex baseline —
+// a one-time snapshot recorded before most entities had real per-transaction detail. An entity that
+// later gets a full itemized Bank Ledger import for May has an empty baseline for that category, so
+// without this fallback the category breakdown silently shows 0 for a month that actually has full
+// detail (and a matching phantom "not yet itemized" residual, since the Transaction Detail table
+// below always includes real May rows regardless of this baseline).
+function mayCatTotal(id,type,key){
+  const fld=type==='rev'?'rev':'opex';
+  const ents=Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key);
+  if(ents.length) return {val:ents.reduce((s,e2)=>s+e2[1],0), lbl:ents.map(e2=>e2[0]).join(' · ')};
+  const txMay=TX.filter(x=>(x.mo||'MAY')==='MAY'&&x.type===type&&canon(x.k)===key&&x.e===id);
+  return {val:txMay.reduce((s,x)=>s+x.amt,0), lbl:''};
+}
 
 // ─── MULTI-MONTH SUPPORT ─────────────────────────────────────────────────────
 // May = full 17-entity consolidation. April & June = ICG 6 entities + PT BBU.
@@ -4187,8 +4200,8 @@ function openBDItem(type,encKey){
   const byEnt={}, byEntLbl={};
   if(MONTH==='MAY'){
     ids.forEach(id=>{
-      const ents=Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key);
-      if(ents.length){const v=ents.reduce((s,e2)=>s+e2[1],0);byEnt[id]=v;byEntLbl[id]=ents.map(e2=>e2[0]).join(' · ');}});
+      const r=mayCatTotal(id,type,key);
+      if(r.val){byEnt[id]=r.val;byEntLbl[id]=r.lbl;}});
   } else if(MONTH==='Q2'||MONTH==='CUSTOM'){
     // Multi-month — mirror the breakdown aggregation exactly:
     //   May portion = raw ENT category labels for every in-scope entity that has May data
@@ -4196,7 +4209,7 @@ function openBDItem(type,encKey){
     const span=activeMonths();
     if(span.includes('MAY')) ids.forEach(id=>{
       if(effMonth(id,'MAY')===null) return; // entity has no May data
-      Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key).forEach(([k0,v])=>{byEnt[id]=(byEnt[id]||0)+v;});
+      byEnt[id]=(byEnt[id]||0)+mayCatTotal(id,type,key).val;
     });
     TX.filter(x=>{const mo=x.mo||'MAY';return mo!=='MAY'&&span.includes(mo)&&x.type===type&&canon(x.k)===key&&ids.includes(x.e);}).forEach(x=>{byEnt[x.e]=(byEnt[x.e]||0)+x.amt;});
   } else {
@@ -4246,12 +4259,12 @@ function openCatEntity(type,encKey,id,fromEntity){
   const key=decodeURIComponent(encKey), isRev=type==='rev', fld=isRev?'rev':'opex', cls=isRev?'pos':'neg';
   let val=0, lbl='';
   if(MONTH==='MAY'){
-    const ents=Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key);
-    val=ents.reduce((s,e2)=>s+e2[1],0); lbl=ents.map(e2=>e2[0]).join(' · ');
+    const r=mayCatTotal(id,type,key);
+    val=r.val; lbl=r.lbl;
   } else if(MONTH==='Q2'||MONTH==='CUSTOM'){
     const span=activeMonths();
     if(span.includes('MAY')&&effMonth(id,'MAY')!==null){
-      Object.entries(ENT[id][fld]).filter(([k0])=>canon(k0)===key).forEach(([k0,v])=>{val+=v;});
+      val+=mayCatTotal(id,type,key).val;
     }
     TX.filter(x=>{const mo=x.mo||'MAY';return mo!=='MAY'&&span.includes(mo)&&x.type===type&&canon(x.k)===key&&x.e===id;}).forEach(x=>{val+=x.amt;});
   } else {
