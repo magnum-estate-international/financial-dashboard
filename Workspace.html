@@ -5477,6 +5477,11 @@ const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk'
 // Opex detail views, while netting OFF the Opex total (and the transactions-table sum everything
 // else reads) via a negative signed amount + contra flag, instead of inflating Revenue.
 const OPEX_REFUND_CATEGORY='Refund / Reimbursement Received';
+// Mirror image on the Revenue side: a deposit/payment received as real Revenue that later gets
+// paid back out (a guest deposit refunded, a cancelled booking) isn't a new Opex cost — it's a
+// reversal of Revenue that was never really earned. Entered as Credit (cash out) instead of
+// Revenue's normal Debit, netted off Revenue via the same negative-amount + contra convention.
+const REV_REFUND_CATEGORY='Deposit Refund Paid';
 // Same tuple-matching convention as findDuplicateTx/findDuplicateIcTx — flags (doesn't block) a row
 // that looks identical to one already saved for this account, so re-uploading the same file (or an
 // overlapping date range) twice doesn't silently double every balance.
@@ -5491,11 +5496,13 @@ function computeBlRow(r){
   const debit=Number(r.debitRaw)||0, kredit=Number(r.kreditRaw)||0;
   r.debit=debit; r.kredit=kredit;
   const isRefund=r.code==='opex'&&r.catMatch===OPEX_REFUND_CATEGORY;
+  const isRevRefund=r.code==='revenue'&&r.catMatch===REV_REFUND_CATEGORY;
   if(!r.acctMatch) error='Bank Account not recognized';
   else if(!r.date) error='Invalid date';
   else if(!r.code) error='Code must be Revenue, Opex, AR, AP, Pinbuk or Capital';
   else if((debit>0)===(kredit>0)) error='Exactly one of Debit or Credit must be filled';
-  else if(r.code==='revenue'&&kredit>0) error='Revenue must be entered as Debit (cash in), not Credit';
+  else if(isRevRefund&&debit>0) error='"'+REV_REFUND_CATEGORY+'" must be entered as Credit (cash out), not Debit';
+  else if(r.code==='revenue'&&kredit>0&&!isRevRefund) error='Revenue must be entered as Debit (cash in), not Credit — unless Category is "'+REV_REFUND_CATEGORY+'"';
   else if(isRefund&&kredit>0) error='"'+OPEX_REFUND_CATEGORY+'" must be entered as Debit (cash in), not Credit';
   else if(r.code==='opex'&&debit>0&&!isRefund) error='Opex must be entered as Credit (cash out), not Debit — unless Category is "'+OPEX_REFUND_CATEGORY+'"';
   else if(r.code==='ar'&&debit>0) error='AR must be entered as Credit (cash out), not Debit';
@@ -5504,8 +5511,8 @@ function computeBlRow(r){
   else if((r.code==='ar'||r.code==='ap')&&!r.cp) error='Counterparty is required for AR/AP';
   r.error=error;
   r.amt=debit>0?debit:kredit;
-  r.contra=isRefund;
-  r.signedAmt=isRefund?-r.amt:r.amt;
+  r.contra=isRefund||isRevRefund;
+  r.signedAmt=r.contra?-r.amt:r.amt;
   r.category=r.catMatch||r.catRaw||'';
   r.vendor=r.vendorMatch||r.vendorRaw||'';
   r.dup=error?null:findDuplicateBl(BANK_LEDGER,r);
