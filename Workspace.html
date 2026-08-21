@@ -353,6 +353,7 @@ a{color:#9a6f0a}
 <div class="kpi2" id="kpiCash"></div>
 
 <div class="divlabel" id="secOverviewLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Dashboard Overview</div>
+<div class="kpi1" id="kpiFin"></div>
 <div class="grid cols-3" style="margin-bottom:16px">
   <div class="panel clickable" style="cursor:pointer" onclick="openDetail('finhealth')">
     <div style="display:flex;align-items:center;justify-content:space-between"><h2>Financial Health</h2><a href="#" onclick="event.preventDefault();event.stopPropagation();openDetail('finhealth')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
@@ -409,9 +410,6 @@ a{color:#9a6f0a}
 
 <div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Loan Affiliate</div>
 <div class="kpi1" id="kpiIntercompany"></div>
-
-<div class="divlabel" id="secFinLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Financing Activity — May 2026</div>
-<div class="kpi4" id="kpiFin"></div>
 
 <div class="grid cols-eq" style="margin-bottom:16px">
   <div class="panel" id="secLiabTopLabel">
@@ -2938,8 +2936,6 @@ function renderBanner(){
     todayEl.textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
     todayEl.dataset.set='1';
   }
-  const moLbl=MONTHS[MONTH];
-  const fnL=document.getElementById('secFinLabel'); if(fnL) fnL.innerHTML=`${ICON.refresh()} Financing Activity — ${moLbl}`;
   const n=scopeIds().length;
   document.getElementById('heroScope').textContent = EF!=='all' ? ENT[EF].name : (GF==='all'?`Consolidated · ${n} Entities`:GRPNAME[GF]);
 }
