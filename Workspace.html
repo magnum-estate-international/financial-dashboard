@@ -353,7 +353,6 @@ a{color:#9a6f0a}
 <div class="kpi2" id="kpiCash"></div>
 
 <div class="divlabel" id="secOverviewLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Dashboard Overview</div>
-<div class="kpi1" id="kpiFin"></div>
 <div class="grid cols-3" style="margin-bottom:16px">
   <div class="panel clickable" style="cursor:pointer" onclick="openDetail('finhealth')">
     <div style="display:flex;align-items:center;justify-content:space-between"><h2>Financial Health</h2><a href="#" onclick="event.preventDefault();event.stopPropagation();openDetail('finhealth')" style="font-size:12.5px;font-weight:700;color:#9a6f0a;text-decoration:none">Details ›</a></div>
@@ -408,8 +407,11 @@ a{color:#9a6f0a}
   </div>
 </div>
 
-<div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Loan Affiliate</div>
-<div class="kpi1" id="kpiIntercompany"></div>
+<div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Financing Activity</div>
+<div class="kpi1" id="kpiFinRow">
+  <div id="kpiIntercompany"></div>
+  <div id="kpiFin"></div>
+</div>
 
 <div class="grid cols-eq" style="margin-bottom:16px">
   <div class="panel" id="secLiabTopLabel">
@@ -3099,7 +3101,7 @@ function renderKpiCash(a){
     kc.className='';
     kc.innerHTML=`<div class="kpi5">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}${outstandingCard()}${fixCostCard()}</div>`;
   }
-  const ki=document.getElementById('kpiIntercompany'); if(ki){ ki.className='kpi1'; ki.innerHTML=intercompanyCard(); }
+  const ki=document.getElementById('kpiIntercompany'); if(ki) ki.innerHTML=intercompanyCard();
 }
 // ─── INTER-COMPANY AR/AP — a group-level recap of who owes whom across the wider PT group (many
 // counterparties here are holding/investment PTs that aren't operating entities in this dashboard,
@@ -3307,13 +3309,13 @@ async function saveIcTxEdit(id,encOwner){
 function renderKpiFin(a){
   const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
   const kf=document.getElementById('kpiFin');
-  kf.className='kpi1';
   kf.innerHTML=a.capDep>0?`<div class="pcard clickable" onclick="openDetail('capdep')">
       ${hint('var(--sand)')}
       <div class="lab">Shareholder Capital Deposit</div>
       <div class="big" style="color:#8a5a1e">${fmt(a.capDep)}</div>
       <div class="meta">Stanislav Sadovnikov &amp; Igor Maksimov</div>
     </div>`:'';
+  const row=document.getElementById('kpiFinRow'); if(row) row.className=a.capDep>0?'kpi2':'kpi1';
 }
 function mkOutstanding(o){
   const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
