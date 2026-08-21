@@ -400,6 +400,13 @@ a{color:#9a6f0a}
   </div>
 </div>
 
+<div style="margin-bottom:16px">
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Outstanding Liability Over Time</h2><span class="pn-sub" style="margin:0;font-size:11.5px;color:var(--muted)">New invoices vs. paid, and ending balance by month</span></div>
+    <div class="chart-box" style="height:260px;margin-top:10px"><canvas id="outstandingTrendChart"></canvas></div>
+  </div>
+</div>
+
 <div class="divlabel" id="secIntercompanyLabel"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Loan Affiliate</div>
 <div class="kpi1" id="kpiIntercompany"></div>
 
@@ -5238,6 +5245,7 @@ function renderOpdPreview(){
       if(toUpdate.length) await Promise.all(toUpdate.map(r=>adminUpdateOne('outstanding_payables',r.id,fieldsOf(r))));
       const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
       OUTSTANDING=fresh.map(mkOutstanding);
+    sbFetchAll('outstanding_payments?select=*').then(p=>{ OUTSTANDING_PAYMENTS=p; renderOutstandingTrendChart(); }).catch(()=>{});
       renderKpiFin(agg());
       document.getElementById('opd-import-msg').style.color='#2b7a4b';
       document.getElementById('opd-import-msg').textContent='✓ Added '+toInsert.length+' new, updated '+toUpdate.length+' existing.';
@@ -6660,6 +6668,7 @@ async function saveOutstandingEdit(id,entityId,tab){
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
+    sbFetchAll('outstanding_payments?select=*').then(p=>{ OUTSTANDING_PAYMENTS=p; renderOutstandingTrendChart(); }).catch(()=>{});
     renderKpiFin(agg());
     refreshOutstandingRowsInPlace(entity,tab,id);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
@@ -6673,6 +6682,7 @@ async function deleteOutstanding(id,entityId,tab){
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
+    sbFetchAll('outstanding_payments?select=*').then(p=>{ OUTSTANDING_PAYMENTS=p; renderOutstandingTrendChart(); }).catch(()=>{});
     if(OUTSTANDING.some(x=>x.id===id)) throw new Error('Row still exists after delete — you may not have permission to delete this entry (only its original creator or an admin can).');
     renderKpiFin(agg());
     refreshOutstandingRowsInPlace(entityId,tab);
@@ -6710,6 +6720,7 @@ async function doMarkPaidQuick(id,entityId,tab){
     await adminAddBatch('outstanding_payments',[{outstanding_id:id,amount_idr:amt,paid_date:date,note}]);
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
+    sbFetchAll('outstanding_payments?select=*').then(p=>{ OUTSTANDING_PAYMENTS=p; renderOutstandingTrendChart(); }).catch(()=>{});
     renderKpiFin(agg());
     const updated=OUTSTANDING.find(x=>x.id===id);
     refreshOutstandingRowsInPlace(entityId,(updated&&updated.status==='paid')?'paid':tab,id);
@@ -6723,6 +6734,7 @@ async function reopenOutstanding(id,entityId){
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
+    sbFetchAll('outstanding_payments?select=*').then(p=>{ OUTSTANDING_PAYMENTS=p; renderOutstandingTrendChart(); }).catch(()=>{});
     renderKpiFin(agg());
     const o=OUTSTANDING.find(x=>x.id===id);
     refreshOutstandingRowsInPlace(entityId,(o&&o.status==='paid')?'paid':'open',id);
@@ -6785,6 +6797,7 @@ async function doRecordOutstandingPayment(inp){
     await adminAddBatch('outstanding_payments',[{outstanding_id:Number(id),amount_idr:amt,paid_date:date,note:(noteEl.value||'').trim()||null}]);
     const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
     OUTSTANDING=fresh.map(mkOutstanding);
+    sbFetchAll('outstanding_payments?select=*').then(p=>{ OUTSTANDING_PAYMENTS=p; renderOutstandingTrendChart(); }).catch(()=>{});
     renderKpiFin(agg());
     const stillOpen=fresh.filter(o=>o.status==='open');
     const wrap=document.getElementById('opp-wrap');
@@ -6896,6 +6909,55 @@ function agingBuckets(){
   });
   return b;
 }
+const MON_SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// invoice_date/paid_date have no creation-timestamp equivalent, so "balance as of end of month"
+// is reconstructed from invoice_date (when the liability was raised) and outstanding_payments.paid_date
+// (when it was actually settled) — an approximation, not a true historical snapshot.
+function outstandingTrendSeries(){
+  const ids=new Set(scopeIds());
+  const items=OUTSTANDING.filter(o=>ids.has(o.e)&&o.inv);
+  if(!items.length) return {labels:[],added:[],paid:[],balance:[]};
+  const idSet=new Set(items.map(o=>o.id));
+  const pays=OUTSTANDING_PAYMENTS.filter(p=>idSet.has(p.outstanding_id)&&p.paid_date);
+  const toYm=d=>d.slice(0,7);
+  const today=new Date();
+  const curYm=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0');
+  let minYm=items.reduce((m,o)=>{const ym=toYm(o.inv); return (!m||ym<m)?ym:m;},null);
+  if(minYm>curYm) minYm=curYm;
+  const months=[]; let y=+minYm.slice(0,4), m=+minYm.slice(5,7);
+  while(y+'-'+String(m).padStart(2,'0')<=curYm){ months.push(y+'-'+String(m).padStart(2,'0')); m++; if(m>12){m=1;y++;} }
+  const win=months.length>12?months.slice(-12):months;
+  const added=[],paid=[],balance=[];
+  win.forEach(ym=>{
+    const eom=ym+'-31'; // ISO strings sort lexicographically, so this is a safe "on or before end of month" bound
+    added.push(items.filter(o=>toYm(o.inv)===ym).reduce((s,o)=>s+o.amt,0));
+    paid.push(pays.filter(p=>toYm(p.paid_date)===ym).reduce((s,p)=>s+Number(p.amount_idr),0));
+    balance.push(
+      items.filter(o=>o.inv<=eom).reduce((s,o)=>s+o.amt,0) -
+      pays.filter(p=>p.paid_date<=eom).reduce((s,p)=>s+Number(p.amount_idr),0)
+    );
+  });
+  const labels=win.map(ym=>MON_SHORT[+ym.slice(5,7)-1]+" '"+ym.slice(2,4));
+  return {labels,added,paid,balance};
+}
+let outstandingTrendChart=null;
+function renderOutstandingTrendChart(){
+  const canvas=document.getElementById('outstandingTrendChart'); if(!canvas) return;
+  const {labels,added,paid,balance}=outstandingTrendSeries();
+  if(outstandingTrendChart) outstandingTrendChart.destroy();
+  if(!labels.length) return;
+  Chart.defaults.font.family='Plus Jakarta Sans, sans-serif'; Chart.defaults.color='#3a4254';
+  outstandingTrendChart=new Chart(canvas,{
+    data:{labels,datasets:[
+      {type:'bar',label:'New Invoices',data:added,backgroundColor:'#d9a92c99',borderRadius:4,order:2},
+      {type:'bar',label:'Paid',data:paid,backgroundColor:'#34a87c99',borderRadius:4,order:2},
+      {type:'line',label:'Ending Balance',data:balance,borderColor:'#d92d20',backgroundColor:'#d92d2022',fill:false,tension:.35,pointRadius:4,pointBackgroundColor:'#d92d20',pointBorderColor:'#fff',pointBorderWidth:2,borderWidth:3,order:1}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top',align:'start',labels:{boxWidth:9,usePointStyle:true,pointStyle:'circle',padding:16,font:{size:11,weight:'600'}}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>fmtB(v)},grid:{color:'#f0f1f6'}},x:{grid:{display:false}}}}});
+}
 let agingChart=null;
 function renderAgingChart(){
   const canvas=document.getElementById('agingChart'); if(!canvas) return;
@@ -6989,7 +7051,7 @@ function renderAll(){
   renderBanner();renderKpiCash(a);renderAlert(a);renderKpiFin(a);renderLiabTopVendor();renderLiabPriority();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
   renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
-  renderFinancialHealth(a);renderCashInOutChart();renderRevByEntChart();renderTopExpCats(a);renderAgingChart();renderIcSummary();
+  renderFinancialHealth(a);renderCashInOutChart();renderRevByEntChart();renderTopExpCats(a);renderAgingChart();renderOutstandingTrendChart();renderIcSummary();
   renderFixCostTrend();renderOverdueInvoices();
 }
 
@@ -7098,7 +7160,7 @@ async function refreshOpexGroupMap(){
   return OPEX_CAT_TO_GROUP;
 }
 async function loadFromSupabase(){
-  const [ents,li,tots,loans,hls,txAll,outs,fixc]=await Promise.all([
+  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
     sbFetch('line_items?select=*&period_code=eq.MAY&limit=2000'),
     sbFetch('entity_period_totals?select=*&limit=2000'),
@@ -7106,6 +7168,7 @@ async function loadFromSupabase(){
     sbFetch('highlights?select=*&order=id'),
     sbFetchAll('transactions?select=*&order=source,ord'),
     sbFetch('outstanding_payables?select=*&order=due_date').catch(()=>[]),
+    sbFetchAll('outstanding_payments?select=*').catch(()=>[]),
     sbFetch('entity_fixed_costs?select=*&order=id').catch(()=>[]),
     refreshOpexGroupMap()
   ]);
@@ -7128,6 +7191,7 @@ async function loadFromSupabase(){
     LOANS_JUN:loans.filter(l=>l.period_code==='JUN').map(mkLoan),
     HIGHLIGHTS:hls.map(h=>({d:h.day_label,e:h.entity_code,desc:h.description,ty:h.flow_type,amt:+h.amount_idr})),
     OUTSTANDING:(outs||[]).map(mkOutstanding),
+    OUTSTANDING_PAYMENTS:opays||[],
     FIXCOST:(fixc||[]).map(mkFixCost),
     TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
@@ -7159,6 +7223,7 @@ function applyScopeChrome(){
 let BAL={};
 let CASHPOS={};
 let OUTSTANDING=[];
+let OUTSTANDING_PAYMENTS=[];
 let FIXCOST=[];
 let INTERCOMPANY=[];
 let IC_TX=[];
@@ -7332,6 +7397,7 @@ async function runDashboard(){
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
   HIGHLIGHTS=D.HIGHLIGHTS;TX=D.TX;TX_MULTI=D.TX_MULTI;TX_MS=D.TX_MS;TX_ICG_OPEX=D.TX_ICG_OPEX;
   OUTSTANDING=D.OUTSTANDING;
+  OUTSTANDING_PAYMENTS=D.OUTSTANDING_PAYMENTS;
   FIXCOST=D.FIXCOST;
   EIDS=Object.keys(ENT);
   if(!EIDS.length){ showNoAccess(); return; }
@@ -8995,6 +9061,7 @@ async function renderEntryBody(){
       await adminAddBatch('outstanding_payables',[{entity_code:entity,category,frequency,invoice_number:invNo||null,vendor_name:vendor,description:desc,invoice_date:inv,due_date:due,amount_idr:amt,document_url:docUrl||null}]);
       const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
       OUTSTANDING=fresh.map(mkOutstanding);
+    sbFetchAll('outstanding_payments?select=*').then(p=>{ OUTSTANDING_PAYMENTS=p; renderOutstandingTrendChart(); }).catch(()=>{});
       renderKpiFin(agg());
       setMsg('opd-msg','✓ Saved.',true);
       ['opd-invno','opd-desc','opd-amt','opd-docurl'].forEach(id=>{document.getElementById(id).value='';});
