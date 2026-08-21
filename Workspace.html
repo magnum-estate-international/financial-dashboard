@@ -5471,6 +5471,12 @@ function renderIcTxPreview(){
 let BL_ROWS=[];
 const BL_CODES=['revenue','opex','ar','ap','pinbuk','capital'];
 const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk',capital:'Capital'};
+// Opex rows normally must be Credit (cash out). This one category is the exception: money that
+// comes BACK in for a cost already booked (a vendor refund, an overpayment returned) — entered as
+// Debit like a receipt, but still filed under Opex/this category so it shows in the ledger and
+// Opex detail views, while netting OFF the Opex total (and the transactions-table sum everything
+// else reads) via a negative signed amount + contra flag, instead of inflating Revenue.
+const OPEX_REFUND_CATEGORY='Refund / Reimbursement Received';
 // Same tuple-matching convention as findDuplicateTx/findDuplicateIcTx — flags (doesn't block) a row
 // that looks identical to one already saved for this account, so re-uploading the same file (or an
 // overlapping date range) twice doesn't silently double every balance.
@@ -5484,18 +5490,22 @@ function computeBlRow(r){
   let error=null;
   const debit=Number(r.debitRaw)||0, kredit=Number(r.kreditRaw)||0;
   r.debit=debit; r.kredit=kredit;
+  const isRefund=r.code==='opex'&&r.catMatch===OPEX_REFUND_CATEGORY;
   if(!r.acctMatch) error='Bank Account not recognized';
   else if(!r.date) error='Invalid date';
   else if(!r.code) error='Code must be Revenue, Opex, AR, AP, Pinbuk or Capital';
   else if((debit>0)===(kredit>0)) error='Exactly one of Debit or Credit must be filled';
   else if(r.code==='revenue'&&kredit>0) error='Revenue must be entered as Debit (cash in), not Credit';
-  else if(r.code==='opex'&&debit>0) error='Opex must be entered as Credit (cash out), not Debit';
+  else if(isRefund&&kredit>0) error='"'+OPEX_REFUND_CATEGORY+'" must be entered as Debit (cash in), not Credit';
+  else if(r.code==='opex'&&debit>0&&!isRefund) error='Opex must be entered as Credit (cash out), not Debit — unless Category is "'+OPEX_REFUND_CATEGORY+'"';
   else if(r.code==='ar'&&debit>0) error='AR must be entered as Credit (cash out), not Debit';
   else if(r.code==='ap'&&kredit>0) error='AP must be entered as Debit (cash in), not Credit';
   else if(r.code&&!r.catMatch) error='Category is required';
   else if((r.code==='ar'||r.code==='ap')&&!r.cp) error='Counterparty is required for AR/AP';
   r.error=error;
   r.amt=debit>0?debit:kredit;
+  r.contra=isRefund;
+  r.signedAmt=isRefund?-r.amt:r.amt;
   r.category=r.catMatch||r.catRaw||'';
   r.vendor=r.vendorMatch||r.vendorRaw||'';
   r.dup=error?null:findDuplicateBl(BANK_LEDGER,r);
@@ -5625,7 +5635,7 @@ function renderBlPreview(){
           source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDateG(r.date).code,flow:r.code==='revenue'?'rev':'opex',
           entity_code:r.acctMatch.entity,day_label:dayLbl(r.date),
           description:String(r.desc||'').slice(0,200),raw_label:r.category,
-          source_label:'Bank Ledger import',upload_batch:batchId,amount_idr:r.amt,contra:false}));
+          source_label:'Bank Ledger import',upload_batch:batchId,amount_idr:r.signedAmt,contra:r.contra}));
         await adminAddBatch('transactions',txRows);
         const touched={};
         revOpex.forEach(r=>{ const per=periodFromDateG(r.date).code; (touched[r.acctMatch.entity]=touched[r.acctMatch.entity]||new Set()).add(per); });
@@ -5633,7 +5643,9 @@ function renderBlPreview(){
           for(const per of touched[ent]){
             const added=revOpex.filter(r=>r.acctMatch.entity===ent && periodFromDateG(r.date).code===per);
             const inc={revenue:0,opex:0};
-            added.forEach(r=>{ inc[r.code==='revenue'?'revenue':'opex']+=r.amt; });
+            // Refund rows (contra) carry a negative signedAmt, so this naturally nets OFF the Opex
+            // total instead of adding to it — same "additive, never overwrite" patch as every other row.
+            added.forEach(r=>{ inc[r.code==='revenue'?'revenue':'opex']+=r.signedAmt; });
             const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
             const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
             const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
