@@ -3312,7 +3312,7 @@ function renderKpiFin(a){
   const pos=a.fullNet>=0;
   const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
   const kf=document.getElementById('kpiFin');
-  kf.className='kpi4'+(a.capDep>0?' kpi5':'');
+  kf.className=a.capDep>0?'kpi2':'kpi1';
   kf.innerHTML=`
     ${a.capDep>0?`<div class="pcard clickable" onclick="openDetail('capdep')">
       ${hint('var(--sand)')}
@@ -3320,24 +3320,6 @@ function renderKpiFin(a){
       <div class="big" style="color:#8a5a1e">${fmt(a.capDep)}</div>
       <div class="meta">Stanislav Sadovnikov &amp; Igor Maksimov</div>
     </div>`:''}
-    <div class="pcard clickable" onclick="openDetail('finin')">
-      ${hint('var(--blue-300)')}
-      <div class="lab">Financing Inflows</div>
-      <div class="big pos">${fmt(a.finIn)}</div>
-      <div class="meta">Loans received + repayments</div>
-    </div>
-    <div class="pcard clickable" onclick="openDetail('finout')">
-      ${hint('var(--blue-300)')}
-      <div class="lab">Financing &amp; Non-Op Outflows</div>
-      <div class="big neg">${fmt(a.finOut)}</div>
-      <div class="meta">Loans, repayments &amp; shareholder outflows</div>
-    </div>
-    <div class="pcard clickable" onclick="openDetail('netfin')">
-      ${hint('var(--blue-300)')}
-      <div class="lab">Net Financing</div>
-      <div class="big ${a.finIn+a.capDep-a.finOut>=0?'pos':'neg'}">${a.finIn+a.capDep-a.finOut>=0?'+':'–'} ${fmt(Math.abs(a.finIn+a.capDep-a.finOut))}</div>
-      <div class="meta">Financing inflows &amp; outflows, net</div>
-    </div>
     <div class="pcard dark clickable" onclick="openDetail('fullnet')">
       ${hint('rgba(255,255,255,.65)')}
       <div class="lab">Net Cash Movement (All Flows)</div>
