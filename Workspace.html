@@ -5469,8 +5469,8 @@ function renderIcTxPreview(){
 // Affiliate Transactions above; Pinbuk only ever touches bank_ledger_entries. Every row, regardless
 // of Code, gets its own bank_ledger_entries row so the account's running balance stays complete. ──
 let BL_ROWS=[];
-const BL_CODES=['revenue','opex','ar','ap','pinbuk'];
-const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk'};
+const BL_CODES=['revenue','opex','ar','ap','pinbuk','capital'];
+const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk',capital:'Capital'};
 // Same tuple-matching convention as findDuplicateTx/findDuplicateIcTx — flags (doesn't block) a row
 // that looks identical to one already saved for this account, so re-uploading the same file (or an
 // overlapping date range) twice doesn't silently double every balance.
@@ -5486,7 +5486,7 @@ function computeBlRow(r){
   r.debit=debit; r.kredit=kredit;
   if(!r.acctMatch) error='Bank Account not recognized';
   else if(!r.date) error='Invalid date';
-  else if(!r.code) error='Code must be Revenue, Opex, AR, AP or Pinbuk';
+  else if(!r.code) error='Code must be Revenue, Opex, AR, AP, Pinbuk or Capital';
   else if((debit>0)===(kredit>0)) error='Exactly one of Debit or Credit must be filled';
   else if(r.code==='revenue'&&kredit>0) error='Revenue must be entered as Debit (cash in), not Credit';
   else if(r.code==='opex'&&debit>0) error='Opex must be entered as Credit (cash out), not Debit';
@@ -5544,7 +5544,7 @@ function findBlCategory(name,code){
 function blCatOpts(code){
   if(code==='revenue') return CATS_BY_KIND_G.revenue||[];
   if(code==='opex') return OPEX_CATS_G||[];
-  if(code==='ar'||code==='ap'||code==='pinbuk') return CATS_BY_KIND_G.financing||[];
+  if(code==='ar'||code==='ap'||code==='pinbuk'||code==='capital') return CATS_BY_KIND_G.financing||[];
   return [];
 }
 function blCatCell(r,i){
@@ -5553,7 +5553,7 @@ function blCatCell(r,i){
   return fixPickCellHtml('bl-fix-cat-'+i,`fixBlField(${i},'cat',this.value)`,blCatOpts(r.code),'— pick category —','category');
 }
 function blVendorCell(r,i){
-  if(r.code!=='opex') return '—';
+  if(r.code!=='opex'&&r.code!=='capital') return '—';
   return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('bl-fix-vendor-'+i,`fixBlField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
 }
 function renderBlPreview(){
@@ -5593,7 +5593,7 @@ function renderBlPreview(){
         bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:r.date,code:r.code,
         debit:r.debit,kredit:r.kredit,description:r.desc||null,
         category:r.category||null,
-        vendor:r.code==='opex'?r.vendor:null,
+        vendor:(r.code==='opex'||r.code==='capital')?r.vendor:null,
         counterparty_label:(r.code==='ar'||r.code==='ap')?r.cp:null,
         source_label:'Excel import',created_by:MY_EMAIL}));
       const ledgerResp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',
@@ -5657,6 +5657,29 @@ function renderBlPreview(){
         await adminAddBatch('intercompany_transactions',icRows);
         const freshIc=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
         IC_TX=freshIc.map(mkIcTx);
+      }
+      // 4) Capital rows (shareholder deposits/withdrawals) patch entity_period_totals.financing_in/
+      // financing_out additively — same convention as step 2 — so they show up in the Financing
+      // In/Out KPI without needing a counterparty PT the way AR/AP do.
+      const capital=valid.filter(r=>r.code==='capital');
+      if(capital.length){
+        const touchedCap={};
+        capital.forEach(r=>{ const per=periodFromDateG(r.date).code; (touchedCap[r.acctMatch.entity]=touchedCap[r.acctMatch.entity]||new Set()).add(per); });
+        for(const ent of Object.keys(touchedCap)){
+          for(const per of touchedCap[ent]){
+            const added=capital.filter(r=>r.acctMatch.entity===ent && periodFromDateG(r.date).code===per);
+            const inc={financing_in:0,financing_out:0};
+            added.forEach(r=>{ if(r.debit>0) inc.financing_in+=r.debit; else inc.financing_out+=r.kredit; });
+            const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
+            const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
+            const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+              headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+              body:JSON.stringify({entity_code:ent,period_code:per,
+                revenue:Number(c.revenue||0), opex:Number(c.opex||0),
+                financing_in:Number(c.financing_in||0)+inc.financing_in, financing_out:Number(c.financing_out||0)+inc.financing_out})});
+            if(!ptr.ok) throw new Error('Saved the ledger entries, but failed to update '+ent+' '+per+"'s financing total: "+((await ptr.text())||('HTTP '+ptr.status)));
+          }
+        }
       }
       BL_ROWS=[];
       document.getElementById('bl-import-msg').style.color='#2b7a4b';
@@ -8472,7 +8495,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate; <b>Pinbuk</b> (transfer between the group\'s own accounts) only affects this account\'s balance and appears nowhere else. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate; <b>Capital</b> (shareholder deposit/withdrawal) also feeds Financing In/Out; <b>Pinbuk</b> (transfer between the group\'s own accounts) only affects this account\'s balance and appears nowhere else. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
       +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first.</div>')
       +'<div style="margin-bottom:12px">'
       +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pick an account —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabelFull(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
