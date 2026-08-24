@@ -2767,6 +2767,8 @@ function scopeIds(){
 function grpIds(){
   return EIDS.filter(id => inG(id,GF) && hasMonth(id));
 }
+function entHasTX(id,mo){ return TX.some(t=>(t.mo||'MAY')===mo && t.e===id); }
+function txCatsInto(id,mo,opexBD,revBD){ TX.filter(t=>(t.mo||'MAY')===mo && t.e===id).forEach(t=>{const c=canon(t.k); if(t.type==='opex') opexBD[c]=(opexBD[c]||0)+t.amt; else if(t.type==='rev') revBD[c]=(revBD[c]||0)+t.amt;}); }
 function agg(){
   const ids=scopeIds();
   const a={rev:0,opex:0,finIn:0,finOut:0,opexBD:{},revBD:{}};
@@ -2776,7 +2778,9 @@ function agg(){
   });
   // Breakdowns: May draws from raw ENT category labels; Apr/Jun draw from TX detail.
   // Q2 combines both (raw ENT for May + TX rows tagged APR & JUN).
-  const addRaw=id=>{const e=ENT[id];
+  const addRaw=id=>{
+    if(entHasTX(id,'MAY')){ txCatsInto(id,'MAY',a.opexBD,a.revBD); return; }  // prefer per-transaction detail; fall back to snapshot only if none
+    const e=ENT[id];
     Object.entries(e.opex).forEach(([k,v])=>{const c=canon(k);a.opexBD[c]=(a.opexBD[c]||0)+v;});
     Object.entries(e.rev).forEach(([k,v])=>{const c=canon(k);a.revBD[c]=(a.revBD[c]||0)+v;});
   };
@@ -3769,7 +3773,7 @@ function bdTableHtml(obj,total,cls){
 // total always reconciles to its headline opex figure.
 function opexEntityBreakdown(id){
   const catMap={};
-  const addRaw=()=>{ Object.entries(ENT[id].opex).forEach(([k,v])=>{const c=canon(k); catMap[c]=(catMap[c]||0)+v;}); };
+  const addRaw=()=>{ if(entHasTX(id,'MAY')){ TX.filter(t=>(t.mo||'MAY')==='MAY' && t.e===id && t.type==='opex').forEach(t=>{const c=canon(t.k); catMap[c]=(catMap[c]||0)+t.amt;}); return; } Object.entries(ENT[id].opex).forEach(([k,v])=>{const c=canon(k); catMap[c]=(catMap[c]||0)+v;}); };
   const addTX=mo=>{ TX.filter(t=>(t.mo||'MAY')===mo && t.e===id && t.type==='opex').forEach(t=>{const c=canon(t.k); catMap[c]=(catMap[c]||0)+t.amt;}); };
   if(MONTH==='MAY'){
     if(effMonth(id,'MAY')!==null) addRaw();
@@ -3794,7 +3798,8 @@ function opexEntityBreakdown(id){
 function opexEntityBreakdownMay(id){
   const catMap={};
   if(effMonth(id,'MAY')!==null){
-    Object.entries(ENT[id].opex).forEach(([k,v])=>{const c=canon(k); catMap[c]=(catMap[c]||0)+v;});
+    if(entHasTX(id,'MAY')){ TX.filter(t=>(t.mo||'MAY')==='MAY' && t.e===id && t.type==='opex').forEach(t=>{const c=canon(t.k); catMap[c]=(catMap[c]||0)+t.amt;}); }
+    else Object.entries(ENT[id].opex).forEach(([k,v])=>{const c=canon(k); catMap[c]=(catMap[c]||0)+v;});
   }
   const ef=effMonth(id,'MAY');
   if(ef){
