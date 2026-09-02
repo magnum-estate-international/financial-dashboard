@@ -3099,7 +3099,7 @@ function renderKpiCash(a){
   const kc=document.getElementById('kpiCash');
   if(kc){
     kc.className='';
-    kc.innerHTML=`<div class="kpi5">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}${outstandingCard()}${fixCostCard()}</div>`;
+    kc.innerHTML=`<div class="kpi5">${revenueCard(a)}${cashPositionCard()}${expensesCard(a)}${outstandingCard()}${fixCostCard()}${paymentPlanCard()}</div>`;
   }
   const ki=document.getElementById('kpiIntercompany'); if(ki) ki.innerHTML=intercompanyCard();
 }
@@ -3340,6 +3340,125 @@ function outstandingCard(){
       <div class="big ${tot>0?'neg':''}" style="${tot>0?'':'color:var(--muted)'}">${tot>0?fmt(tot):'—'}</div>
       <div class="meta">${open.length?`${open.length} unpaid invoice${open.length>1?'s':''}${overdueN?`, <span style="color:var(--red)">${overdueN} overdue</span>`:''}`:'No outstanding liabilities — click to add one'}</div>
     </div>`;
+}
+const DPP_REQUIRED_APPROVALS=5;
+function paymentPlansInScope(){
+  const ids=new Set(scopeIds());
+  return DPP.filter(p=>ids.has(p.e));
+}
+function paymentPlansPending(){
+  return paymentPlansInScope().filter(p=>p.status==='pending');
+}
+function paymentPlanCard(){
+  const pend=paymentPlansPending();
+  const tot=pend.reduce((s,p)=>s+p.amt,0);
+  return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="kpi-head"><div class="kpi-ic">${ICON.check(17)}</div><div class="lab">Daily Payment Plan</div></div>
+      <div class="big ${pend.length?'':''}" style="${pend.length?'':'color:var(--muted)'}">${pend.length?fmt(tot):'—'}</div>
+      <div class="meta">${pend.length?`${pend.length} pending plan${pend.length>1?'s':''} — awaiting approval`:'No pending payment plans — click to add one'}</div>
+    </div>`;
+}
+function paymentPlanStatusBadge(p){
+  if(p.status==='approved') return `<span style="color:var(--green);font-weight:700">Approved</span>`;
+  if(p.status==='rejected') return `<span style="color:var(--red);font-weight:700">Rejected</span>`;
+  if(p.status==='cancelled') return `<span style="color:var(--muted);font-weight:700">Cancelled</span>`;
+  return `<span style="color:#9a6f0a;font-weight:700">Pending</span>`;
+}
+function isActiveApprover(email){
+  return PAYMENT_APPROVERS.some(a=>a.email===email&&a.active);
+}
+function paymentPlanRowHtml(p){
+  const eNm=ENT[p.e]?ENT[p.e].name:p.e;
+  const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
+  const canEdit=IS_ADMIN||MY_ROLE==='editor';
+  const items=[];
+  if(p.status==='pending'&&isActiveApprover(MY_EMAIL)&&!myDecision){
+    items.push(menuItem('✓ Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
+    items.push(menuItem('✕ Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
+  }
+  items.push(menuItem(ICON.history()+' View approvals',`openPlanApprovals(${p.id})`));
+  if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
+  return `<tr>
+    <td style="font-size:12px;white-space:nowrap">${p.date}</td>
+    <td style="font-size:12.5px">${escH(eNm)}</td>
+    <td style="font-size:12.5px">${escH(p.vendor||'—')}</td>
+    <td style="font-size:12.5px">${escH(p.category||'—')}</td>
+    <td style="font-size:12.5px;color:var(--muted)">${escH(p.desc||'—')}</td>
+    <td class="num">${fmt(p.amt)}</td>
+    <td style="font-size:12px;white-space:nowrap">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${myDecision?` <span style="color:${myDecision.decision==='approved'?'var(--green)':'var(--red)'}">(you: ${myDecision.decision})</span>`:''}</td>
+    <td>${paymentPlanStatusBadge(p)}</td>
+    <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>
+      <div id="plan-menu-${p.id}" class="plan-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>
+    </td>
+  </tr>`;
+}
+function togglePlanRowMenu(id,btnEl){
+  const menu=document.getElementById('plan-menu-'+id);
+  const willOpen=menu.style.display!=='block';
+  document.querySelectorAll('.plan-row-menu').forEach(m=>m.style.display='none');
+  if(willOpen){
+    const r=btnEl.getBoundingClientRect();
+    menu.style.top=(r.bottom+4)+'px';
+    menu.style.left=Math.max(8,Math.min(r.right-170,window.innerWidth-180))+'px';
+    menu.style.display='block';
+  }
+}
+function openPaymentPlans(){
+  const rows=paymentPlansInScope().slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  let h='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Approvals</th><th>Status</th><th></th></tr></thead><tbody>';
+  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
+  h+='</tbody></table></div>';
+  showModal('Daily Payment Plan',h,true);
+}
+function openPlanApprovals(id){
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  const decisions=DPP_APPROVALS.filter(a=>a.planId===id).slice().sort((a,b)=>(b.decidedAt||'').localeCompare(a.decidedAt||''));
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openPaymentPlans()">‹ Back</button>`;
+  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; <b style="color:var(--ink)">${fmt(p.amt)}</b> &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
+  h+='<table><thead><tr><th>Approver</th><th>Decision</th><th>Date</th><th>Note</th></tr></thead><tbody>'
+    +(decisions.length?decisions.map(d=>{
+      const nm=(PAYMENT_APPROVERS.find(a=>a.email===d.email)||{}).name||d.email;
+      return `<tr><td style="font-size:12.5px">${escH(nm)}</td><td style="font-size:12.5px;color:${d.decision==='approved'?'var(--green)':'var(--red)'};font-weight:700">${d.decision}</td><td style="font-size:12px;color:var(--muted);white-space:nowrap">${(d.decidedAt||'').slice(0,10)}</td><td style="font-size:12.5px">${escH(d.note||'—')}</td></tr>`;
+    }).join(''):`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No decisions recorded yet</td></tr>`)
+    +'</tbody></table>';
+  showModal('Payment History',h);
+}
+function openDecidePlan(id,decision){
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  const label=decision==='approved'?'Approve':'Reject';
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; <b style="color:var(--ink)">${fmt(p.amt)}</b></div>`;
+  if(decision==='rejected') h+=`<div style="font-size:12px;background:#fbe9e7;border:1px solid #f6c8d2;color:#b3261e;border-radius:10px;padding:8px 12px;margin-bottom:12px">Rejecting cancels this plan immediately — it can't reach Approved afterwards, even if it already had other approvals.</div>`;
+  h+=opeField('Note (optional)',`<input id="dcp-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button class="btn" style="background:${decision==='approved'?'#2b7a4b':'#b3261e'};color:#fff;border:0" onclick="doDecidePlan(${id},'${decision}')">${label}</button>`
+    +`<span id="dcp-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal(label+' Payment Plan',h,true);
+}
+async function doDecidePlan(id,decision){
+  const err=document.getElementById('dcp-err'); err.textContent='';
+  const note=(document.getElementById('dcp-note').value||'').trim()||null;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_approvals',{method:'POST',
+      headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify([{plan_id:id,approver_email:MY_EMAIL,decision,note}])});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const [freshPlans,freshApprovals]=await Promise.all([
+      sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
+      sbFetchAll('daily_payment_plan_approvals?select=*')
+    ]);
+    DPP=freshPlans.map(mkDpp); DPP_APPROVALS=freshApprovals.map(mkDppApproval);
+    renderKpiCash(agg());
+    openPaymentPlans();
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function cancelPaymentPlan(id){
+  if(!confirm('Cancel this payment plan? This cannot be undone.')) return;
+  try{
+    await adminUpdateOne('daily_payment_plans',id,{status:'cancelled'});
+    const p=DPP.find(x=>x.id===id); if(p) p.status='cancelled';
+    renderKpiCash(agg());
+    openPaymentPlans();
+  }catch(e){ alert('Failed to cancel: '+e.message); }
 }
 // ─── FIXED COST MANAGEMENT (recurring monthly costs — mirrors Outstanding Liability's shape) ───
 function mkFixCost(f){
@@ -4832,6 +4951,12 @@ document.addEventListener('click',e=>{
   }
   if(!e.target.closest('.bank-row-menu')&&!e.target.closest('[onclick^="toggleBankRowMenu"]')){
     document.querySelectorAll('.bank-row-menu').forEach(m=>m.style.display='none');
+  }
+  if(!e.target.closest('.plan-row-menu')&&!e.target.closest('[onclick^="togglePlanRowMenu"]')){
+    document.querySelectorAll('.plan-row-menu').forEach(m=>m.style.display='none');
+  }
+  if(!e.target.closest('.approver-row-menu')&&!e.target.closest('[onclick^="toggleApproverRowMenu"]')){
+    document.querySelectorAll('.approver-row-menu').forEach(m=>m.style.display='none');
   }
 });
 function clearOpeFilterGroup(key){
@@ -7132,7 +7257,7 @@ async function refreshOpexGroupMap(){
   return OPEX_CAT_TO_GROUP;
 }
 async function loadFromSupabase(){
-  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc]=await Promise.all([
+  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,dpp,dppApprovals]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
     sbFetch('line_items?select=*&period_code=eq.MAY&limit=2000'),
     sbFetch('entity_period_totals?select=*&limit=2000'),
@@ -7142,6 +7267,9 @@ async function loadFromSupabase(){
     sbFetch('outstanding_payables?select=*&order=due_date').catch(()=>[]),
     sbFetchAll('outstanding_payments?select=*').catch(()=>[]),
     sbFetch('entity_fixed_costs?select=*&order=id').catch(()=>[]),
+    sbFetch('payment_plan_approvers?select=*').catch(()=>[]),
+    sbFetch('daily_payment_plans?select=*&order=plan_date.desc').catch(()=>[]),
+    sbFetchAll('daily_payment_plan_approvals?select=*').catch(()=>[]),
     refreshOpexGroupMap()
   ]);
   const fk={revenue:'rev',opex:'opex',financing_in:'finIn',financing_out:'finOut'};
@@ -7165,6 +7293,9 @@ async function loadFromSupabase(){
     OUTSTANDING:(outs||[]).map(mkOutstanding),
     OUTSTANDING_PAYMENTS:opays||[],
     FIXCOST:(fixc||[]).map(mkFixCost),
+    PAYMENT_APPROVERS:(approvers||[]).map(mkApprover),
+    DPP:(dpp||[]).map(mkDpp),
+    DPP_APPROVALS:(dppApprovals||[]).map(mkDppApproval),
     TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
@@ -7197,6 +7328,12 @@ let CASHPOS={};
 let OUTSTANDING=[];
 let OUTSTANDING_PAYMENTS=[];
 let FIXCOST=[];
+let PAYMENT_APPROVERS=[];
+let DPP=[];
+let DPP_APPROVALS=[];
+function mkApprover(r){ return {email:r.email,name:r.name||r.email,active:r.is_active!==false}; }
+function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by}; }
+function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at}; }
 let INTERCOMPANY=[];
 let IC_TX=[];
 function mkIcTx(r){
@@ -7302,6 +7439,82 @@ async function deleteBankAcc(id){
     renderBankAccList(); renderKpiCash(agg());
   }catch(e){ alert('Failed to delete: '+e.message); }
 }
+// ─── Manage Approvers — admin-only CRUD for payment_plan_approvers, mirrors Manage Bank
+// Accounts exactly (renderBankAccList/openBankAccEdit/saveBankAccEdit/deleteBankAcc above). ───
+function renderApproverList(){
+  const el=document.getElementById('approver-list'); if(!el) return;
+  if(!PAYMENT_APPROVERS.length){ el.innerHTML='<p style="color:var(--muted);font-size:12.5px">No approvers yet — add one below.</p>'; return; }
+  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Email</th><th>Name</th><th>Active</th><th></th></tr></thead><tbody>';
+  PAYMENT_APPROVERS.slice().sort((a,b)=>a.email<b.email?-1:1).forEach(a=>{
+    const items=[
+      menuItem(ICON.edit()+' Edit',`openApproverEdit('${encodeURIComponent(a.email)}')`),
+      menuItem(a.active?'Deactivate':'Reactivate',`toggleApproverActive('${encodeURIComponent(a.email)}')`),
+      menuItem(ICON.trash()+' Delete',`deleteApprover('${encodeURIComponent(a.email)}')`,'var(--red)'),
+    ];
+    const menuId=a.email.replace(/[^a-zA-Z0-9]/g,'_');
+    h+=`<tr><td style="font-size:12.5px">${escH(a.email)}</td><td style="font-size:12.5px">${escH(a.name)}</td>`
+      +`<td style="font-size:12px;color:${a.active?'var(--green)':'var(--muted)'}">${a.active?'Active':'Inactive'}</td>`
+      +`<td style="white-space:nowrap"><button type="button" onclick="toggleApproverRowMenu('${menuId}',this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+      +`<div id="approver-menu-${menuId}" class="approver-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
+}
+function toggleApproverRowMenu(menuId,btnEl){
+  const menu=document.getElementById('approver-menu-'+menuId);
+  const willOpen=menu.style.display!=='block';
+  document.querySelectorAll('.approver-row-menu').forEach(m=>m.style.display='none');
+  if(willOpen){
+    const r=btnEl.getBoundingClientRect();
+    menu.style.top=(r.bottom+4)+'px';
+    menu.style.left=Math.max(8,Math.min(r.right-150,window.innerWidth-160))+'px';
+    menu.style.display='block';
+  }
+}
+function openApproverEdit(encEmail){
+  const email=decodeURIComponent(encEmail);
+  const a=PAYMENT_APPROVERS.find(x=>x.email===email); if(!a) return;
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  let h=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Email: <b style="color:var(--ink)">${escH(a.email)}</b></div>`
+    +opeField('Name',`<input id="ape-name" value="${escH(a.name)}" style="${inp}">`)
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveApproverEdit('${encodeURIComponent(email)}')">Save changes</button>`
+    +`<span id="ape-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Approver',h);
+}
+async function saveApproverEdit(encEmail){
+  const email=decodeURIComponent(encEmail);
+  const err=document.getElementById('ape-err'); err.textContent='';
+  const name=document.getElementById('ape-name').value.trim();
+  if(!name) return void(err.textContent='Name is required.');
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/payment_plan_approvers?email=eq.'+encodeURIComponent(email),{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({name})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const a=PAYMENT_APPROVERS.find(x=>x.email===email); if(a) a.name=name;
+    closeModal(); renderApproverList();
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function toggleApproverActive(encEmail){
+  const email=decodeURIComponent(encEmail);
+  const a=PAYMENT_APPROVERS.find(x=>x.email===email); if(!a) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/payment_plan_approvers?email=eq.'+encodeURIComponent(email),{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({is_active:!a.active})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    a.active=!a.active; renderApproverList();
+  }catch(e){ alert('Failed to update: '+e.message); }
+}
+async function deleteApprover(encEmail){
+  const email=decodeURIComponent(encEmail);
+  if(!confirm('Remove this approver? This cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/payment_plan_approvers?email=eq.'+encodeURIComponent(email),{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const idx=PAYMENT_APPROVERS.findIndex(a=>a.email===email);
+    if(idx>=0) PAYMENT_APPROVERS.splice(idx,1);
+    renderApproverList();
+  }catch(e){ alert('Failed to delete: '+e.message); }
+}
 function openCashPosEntity(entity){
   const eName=id=>(ENT[id]?ENT[id].name:id);
   let rows=BANK_ACCOUNTS.filter(a=>a.entity===entity).map(a=>({acc:a,...bankAccountBalance(a)}));
@@ -7371,6 +7584,9 @@ async function runDashboard(){
   OUTSTANDING=D.OUTSTANDING;
   OUTSTANDING_PAYMENTS=D.OUTSTANDING_PAYMENTS;
   FIXCOST=D.FIXCOST;
+  PAYMENT_APPROVERS=D.PAYMENT_APPROVERS;
+  DPP=D.DPP;
+  DPP_APPROVALS=D.DPP_APPROVALS;
   EIDS=Object.keys(ENT);
   if(!EIDS.length){ showNoAccess(); return; }
   LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
@@ -8727,6 +8943,27 @@ async function renderEntryBody(){
       +oppPickerHtml(openOP,inp)
       +'</div></details>';
   }
+  // ── Add a Daily Payment Plan — a proposed payment finance wants to make, which only becomes
+  // "Approved" once 5 designated approvers (see Manage Approvers below) sign off from the dashboard.
+  // A single rejection is a hard veto (status flips to Rejected immediately) — see
+  // recompute_payment_plan_status() in the DB. Reaching Approved does NOT create a transaction —
+  // the actual payment is still recorded separately, later, via Import Transactions/Bank Ledger. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.check()+'Add a Daily Payment Plan</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Propose a payment for management to approve from the dashboard — needs 5 approvals to become Approved, and any single rejection cancels it. This only tracks the plan/approval status; the actual payment is still recorded separately once it happens.</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+      +'<select id="dpp-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<input id="dpp-date" type="date" aria-label="Plan date" style="'+inp+'">'
+      +vendorSelectHtml('dpp-vendor','',inp)
+      +categorySelectHtml('dpp-cat',OPEX_CATS_G||[],'',inp)
+      +'<input id="dpp-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
+      +'</div>'
+      +'<input id="dpp-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
+      +'<button id="dpp-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Submit for approval</button>'
+      +'<div id="dpp-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div></details>';
+  }
   // ── Manage Categories (admin) — add/rename/delete rows in `categories`, cascading a rename
   // across transactions/line_items/category_aliases since raw_label has no FK to categories.name.
   if(IS_ADMIN){
@@ -8744,6 +8981,23 @@ async function renderEntryBody(){
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add, rename, or delete the vendors used across transactions, outstanding liabilities, and fixed cost. Renaming updates every existing record — vendor fields elsewhere are locked to this list so a new spelling variant can never sneak in.</div>'
       +'<div id="vendors-body">Loading…</div>'
+      +'</div></details>';
+  }
+  // ── Manage Approvers (admin) — the fixed list of emails allowed to approve/reject a Daily
+  // Payment Plan. Kept in its own table rather than hardcoded so it can be edited without a
+  // redeploy; RLS restricts writes here to is_app_admin() (see the migration). ──
+  if(IS_ADMIN){
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.shield()+'Manage Approvers</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Who can approve/reject a Daily Payment Plan from the dashboard. A plan needs 5 approvals to become Approved.</div>'
+      +'<div id="approver-list" style="margin-bottom:14px"></div>'
+      +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px">Add an approver</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
+      +'<input id="approver-email" placeholder="Email" style="'+inp+'">'
+      +'<input id="approver-name" placeholder="Name" style="'+inp+'">'
+      +'</div>'
+      +'<button id="approver-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Add approver</button>'
+      +'<div id="approver-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
   }
   // ── Submission history ──
@@ -8930,6 +9184,61 @@ async function renderEntryBody(){
     }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
     bankaccBtn.disabled=false; bankaccBtn.textContent='Add account';
   };
+  // ── Add a Daily Payment Plan wiring ──
+  const dppBtn=document.getElementById('dpp-send');
+  if(dppBtn) dppBtn.onclick=async()=>{
+    const msg=document.getElementById('dpp-msg'); setMsg('dpp-msg','');
+    const entity=document.getElementById('dpp-ent').value;
+    const date=document.getElementById('dpp-date').value;
+    const vendor=(document.getElementById('dpp-vendor').value||'').trim();
+    const category=(document.getElementById('dpp-cat').value||'').trim();
+    const amtRaw=(document.getElementById('dpp-amt').value||'').replace(/[^0-9-]/g,'');
+    const amt=amtRaw===''?NaN:Number(amtRaw);
+    const desc=document.getElementById('dpp-desc').value.trim();
+    if(!date) return void(msg.style.color='#b3261e', msg.textContent='Plan date is required.');
+    if(!amt||amt<=0||!isFinite(amt)) return void(msg.style.color='#b3261e', msg.textContent='Amount must be a positive number.');
+    dppBtn.disabled=true; dppBtn.textContent='Submitting…';
+    try{
+      const row={entity_code:entity,plan_date:date,vendor:vendor||null,category:category||null,
+        description:desc||null,amount_idr:amt,requested_by:MY_EMAIL};
+      const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plans',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(row)});
+      if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+      const [saved]=await r.json();
+      DPP.unshift(mkDpp(saved));
+      renderKpiCash(agg());
+      document.getElementById('dpp-vendor').value=''; clearSearchableSelect('dpp-vendor');
+      document.getElementById('dpp-cat').value=''; clearSearchableSelect('dpp-cat');
+      document.getElementById('dpp-amt').value='';
+      document.getElementById('dpp-desc').value='';
+      msg.style.color='#2b7a4b'; msg.textContent='Payment plan submitted for approval.';
+    }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
+    dppBtn.disabled=false; dppBtn.textContent='Submit for approval';
+  };
+  // ── Manage Approvers wiring ──
+  if(IS_ADMIN){
+    renderApproverList();
+    const approverBtn=document.getElementById('approver-send');
+    if(approverBtn) approverBtn.onclick=async()=>{
+      const msg=document.getElementById('approver-msg'); setMsg('approver-msg','');
+      const email=document.getElementById('approver-email').value.trim().toLowerCase();
+      const name=document.getElementById('approver-name').value.trim();
+      if(!email||!/^\S+@\S+\.\S+$/.test(email)) return void(msg.style.color='#b3261e', msg.textContent='Enter a valid email.');
+      if(!name) return void(msg.style.color='#b3261e', msg.textContent='Name is required.');
+      approverBtn.disabled=true; approverBtn.textContent='Saving…';
+      try{
+        const row={email,name,created_by:MY_EMAIL};
+        const r=await authedFetch(SB_URL+'/rest/v1/payment_plan_approvers',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(row)});
+        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+        const [saved]=await r.json();
+        PAYMENT_APPROVERS.push(mkApprover(saved));
+        renderApproverList();
+        document.getElementById('approver-email').value='';
+        document.getElementById('approver-name').value='';
+        msg.style.color='#2b7a4b'; msg.textContent='Approver added.';
+      }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
+      approverBtn.disabled=false; approverBtn.textContent='Add approver';
+    };
+  }
   // ── Import Bank Ledger wiring — scoped to ONE selected bank account at a time, since Debit/
   // Kredit/Saldo only balance sequentially within a single account's own history; picking the
   // account first (rather than a per-row "Rekening Bank" column) removes any account-matching
