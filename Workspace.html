@@ -3494,6 +3494,11 @@ function openPaymentPlans(){
   let h=mine.length?`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button></div>`:'';
   h+='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead><tbody>';
   h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
+  if(rows.length){
+    const totPurpose=rows.reduce((s,p)=>s+p.amt,0);
+    const totApprove=rows.reduce((s,p)=>s+(p.approvedAmt!=null?p.approvedAmt:0),0);
+    h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="6"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(totPurpose)}</strong></td><td class="num"><strong>${fmt(totApprove)}</strong></td><td colspan="5"></td></tr>`;
+  }
   h+='</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
 }
