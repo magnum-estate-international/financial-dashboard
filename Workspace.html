@@ -3389,7 +3389,8 @@ function paymentPlanRowHtml(p){
       items.push(menuItem('✓ Change to Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
     }
   }
-  items.push(menuItem(ICON.history()+' View approvals',`openPlanApprovals(${p.id})`));
+  const activityN=DPP_APPROVALS.filter(a=>a.planId===p.id).length+DPP_COMMENTS.filter(c=>c.planId===p.id).length;
+  items.push(menuItem('💬 Discussion'+(activityN?` (${activityN})`:''),`openPlanThread(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
   const overdue=p.due&&p.status==='pending'&&daysOverdue(p.due)>0;
   const hasDoc=Array.isArray(p.attachments)&&p.attachments.length>0;
@@ -3430,18 +3431,52 @@ function openPaymentPlans(){
   h+='</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
 }
-function openPlanApprovals(id){
+// Merges approve/reject decisions and free-text comments into one shared, chronological
+// timeline — anyone who can view this plan (any role, not just approvers) can read it, and
+// can post a comment, per the "everyone with view access can participate" requirement.
+function openPlanThread(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
-  const decisions=DPP_APPROVALS.filter(a=>a.planId===id).slice().sort((a,b)=>(b.decidedAt||'').localeCompare(a.decidedAt||''));
+  const nameOf=email=>(PAYMENT_APPROVERS.find(a=>a.email===email)||{}).name||email;
+  const fmtTs=ts=>(ts||'').slice(0,16).replace('T',' ');
+  const decisions=DPP_APPROVALS.filter(a=>a.planId===id).map(d=>({ts:d.decidedAt,d}));
+  const comments=DPP_COMMENTS.filter(c=>c.planId===id).map(c=>({ts:c.createdAt,c}));
+  const items=[...decisions,...comments].sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openPaymentPlans()">‹ Back</button>`;
   h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
-  h+='<table><thead><tr><th>Approver</th><th>Decision</th><th>Date</th><th>Note</th></tr></thead><tbody>'
-    +(decisions.length?decisions.map(d=>{
-      const nm=(PAYMENT_APPROVERS.find(a=>a.email===d.email)||{}).name||d.email;
-      return `<tr><td style="font-size:12.5px">${escH(nm)}</td><td style="font-size:12.5px;color:${d.decision==='approved'?'var(--green)':'var(--red)'};font-weight:700">${d.decision}</td><td style="font-size:12px;color:var(--muted);white-space:nowrap">${(d.decidedAt||'').slice(0,10)}</td><td style="font-size:12.5px">${escH(d.note||'—')}</td></tr>`;
-    }).join(''):`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No decisions recorded yet</td></tr>`)
-    +'</tbody></table>';
-  showModal('Payment History',h);
+  h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
+  h+=items.length?items.map(it=>{
+    if(it.d){
+      const d=it.d, col=d.decision==='approved'?'var(--green)':'var(--red)';
+      return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:${col}">${escH(nameOf(d.email))} ${d.decision}</span> this plan${d.note?': “'+escH(d.note)+'”':''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
+    }
+    const c=it.c;
+    return `<div style="margin-bottom:10px;background:#f7f8fd;border-radius:10px;padding:8px 12px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--blue-900)">${escH(nameOf(c.email))}</div>
+      <div style="font-size:12.5px;color:var(--ink);white-space:pre-wrap">${escH(c.body)}</div>
+      <div style="color:var(--muted);font-size:11px;margin-top:2px">${fmtTs(c.createdAt)}</div>
+    </div>`;
+  }).join(''):'<div style="text-align:center;color:var(--muted);padding:20px;font-size:12.5px">No activity yet — be the first to comment.</div>';
+  h+='</div>';
+  h+='<textarea id="cmt-body" placeholder="Write a comment…" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d7dae3;border-radius:8px;font-size:13px;min-height:70px;margin-bottom:8px"></textarea>'
+    +`<button id="cmt-send" class="btn" style="background:#d9a92c;color:#2a1c02;border:0" onclick="postPlanComment(${id})">Post comment</button>`
+    +`<span id="cmt-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Discussion',h,true);
+}
+async function postPlanComment(id){
+  const ta=document.getElementById('cmt-body'), err=document.getElementById('cmt-err'), btn=document.getElementById('cmt-send');
+  err.textContent='';
+  const body=(ta.value||'').trim();
+  if(!body) return void(err.textContent='Write something first.');
+  btn.disabled=true;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_comments',{method:'POST',
+      headers:{'Content-Type':'application/json','Prefer':'return=representation'},
+      body:JSON.stringify([{plan_id:id,author_email:MY_EMAIL,body}])});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const [saved]=await r.json();
+    DPP_COMMENTS.push(mkDppComment(saved));
+    openPlanThread(id);
+  }catch(e){ err.textContent='Failed to post: '+e.message; btn.disabled=false; }
 }
 function openDecidePlan(id,decision){
   const p=DPP.find(x=>x.id===id); if(!p) return;
@@ -7281,7 +7316,7 @@ async function refreshOpexGroupMap(){
   return OPEX_CAT_TO_GROUP;
 }
 async function loadFromSupabase(){
-  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,dpp,dppApprovals]=await Promise.all([
+  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,dpp,dppApprovals,dppComments]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
     sbFetch('line_items?select=*&period_code=eq.MAY&limit=2000'),
     sbFetch('entity_period_totals?select=*&limit=2000'),
@@ -7294,6 +7329,7 @@ async function loadFromSupabase(){
     sbFetch('payment_plan_approvers?select=*').catch(()=>[]),
     sbFetch('daily_payment_plans?select=*&order=plan_date.desc').catch(()=>[]),
     sbFetchAll('daily_payment_plan_approvals?select=*').catch(()=>[]),
+    sbFetchAll('daily_payment_plan_comments?select=*&order=created_at').catch(()=>[]),
     refreshOpexGroupMap()
   ]);
   const fk={revenue:'rev',opex:'opex',financing_in:'finIn',financing_out:'finOut'};
@@ -7320,6 +7356,7 @@ async function loadFromSupabase(){
     PAYMENT_APPROVERS:(approvers||[]).map(mkApprover),
     DPP:(dpp||[]).map(mkDpp),
     DPP_APPROVALS:(dppApprovals||[]).map(mkDppApproval),
+    DPP_COMMENTS:(dppComments||[]).map(mkDppComment),
     TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
@@ -7355,8 +7392,10 @@ let FIXCOST=[];
 let PAYMENT_APPROVERS=[];
 let DPP=[];
 let DPP_APPROVALS=[];
+let DPP_COMMENTS=[];
 function mkApprover(r){ return {email:r.email,name:r.name||r.email,active:r.is_active!==false}; }
 function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[]}; }
+function mkDppComment(r){ return {id:r.id,planId:r.plan_id,email:r.author_email,body:r.body,createdAt:r.created_at}; }
 function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at}; }
 let INTERCOMPANY=[];
 let IC_TX=[];
@@ -7611,6 +7650,7 @@ async function runDashboard(){
   PAYMENT_APPROVERS=D.PAYMENT_APPROVERS;
   DPP=D.DPP;
   DPP_APPROVALS=D.DPP_APPROVALS;
+  DPP_COMMENTS=D.DPP_COMMENTS;
   EIDS=Object.keys(ENT);
   if(!EIDS.length){ showNoAccess(); return; }
   LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
