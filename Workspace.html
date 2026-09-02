@@ -3389,8 +3389,8 @@ function paymentPlanRowHtml(p){
       items.push(menuItem('✓ Change to Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
     }
   }
-  const activityN=DPP_APPROVALS.filter(a=>a.planId===p.id).length+DPP_COMMENTS.filter(c=>c.planId===p.id).length;
-  items.push(menuItem('💬 Discussion'+(activityN?` (${activityN})`:''),`openPlanThread(${p.id})`));
+  const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
+  items.push(menuItem('💬 Discussion',`openPlanThread(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
   const overdue=p.due&&p.status==='pending'&&daysOverdue(p.due)>0;
   const hasDoc=Array.isArray(p.attachments)&&p.attachments.length>0;
@@ -3408,6 +3408,7 @@ function paymentPlanRowHtml(p){
     <td style="font-size:12px;white-space:nowrap">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${myDecision?` <span style="color:${myDecision.decision==='approved'?'var(--green)':'var(--red)'}">(you: ${myDecision.decision})</span>`:(p.status==='pending'&&isActiveApprover(MY_EMAIL)?` <span style="color:var(--muted)">(you: waiting approval)</span>`:'')}</td>
     <td>${paymentPlanStatusBadge(p)}</td>
     ${docCell}
+    <td style="white-space:nowrap"><a href="#" onclick="event.preventDefault();openPlanThread(${p.id})" style="font-size:12px;color:var(--blue-300);text-decoration:none;font-weight:600">${commentN} comment${commentN===1?'':'s'}</a></td>
     <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>
       <div id="plan-menu-${p.id}" class="plan-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>
     </td>
@@ -3426,8 +3427,8 @@ function togglePlanRowMenu(id,btnEl){
 }
 function openPaymentPlans(){
   const rows=paymentPlansInScope().slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  let h='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Approvals</th><th>Status</th><th>Doc</th><th></th></tr></thead><tbody>';
-  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
+  let h='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Approvals</th><th>Status</th><th>Doc</th><th>Comment</th><th></th></tr></thead><tbody>';
+  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
   h+='</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
 }
