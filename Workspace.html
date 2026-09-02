@@ -3483,12 +3483,53 @@ function togglePlanRowMenu(id,btnEl){
     menu.style.display='block';
   }
 }
+// Plans still pending, in this scope, that MY_EMAIL is an approver for and hasn't decided on yet
+// — exactly the set "Approve All" acts on, so the button's own count always matches its effect.
+function pendingForMe(){
+  return paymentPlansInScope().filter(p=>p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL));
+}
 function openPaymentPlans(){
   const rows=paymentPlansInScope().slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  let h='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead><tbody>';
+  const mine=pendingForMe();
+  let h=mine.length?`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button></div>`:'';
+  h+='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead><tbody>';
   h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
   h+='</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
+}
+function openApproveAllModal(){
+  const list=pendingForMe();
+  if(!list.length) return;
+  const tot=list.reduce((s,p)=>s+p.amt,0);
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">This approves <b>${list.length}</b> plan${list.length===1?'':'s'} awaiting your decision, each at its full purposed amount (total <b style="color:var(--ink)">${fmt(tot)}</b>). Plans you've already decided on, or don't have approval rights for, aren't affected.</div>`;
+  h+='<div style="max-height:200px;overflow-y:auto;border:1px solid #eef2f7;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px">'
+    +list.map(p=>`<div style="padding:3px 0;display:flex;justify-content:space-between;gap:10px"><span>${escH(p.vendor||p.desc||'—')}</span><span style="white-space:nowrap">${fmt(p.amt)}</span></div>`).join('')
+    +'</div>';
+  h+=opeField('Note (optional, applied to all)',`<input id="apa-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button id="apa-send" class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="doApproveAll()">Approve All (${list.length})</button>`
+    +`<span id="apa-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Approve All Pending Plans',h,true);
+}
+async function doApproveAll(){
+  const err=document.getElementById('apa-err'), btn=document.getElementById('apa-send');
+  err.textContent='';
+  const note=(document.getElementById('apa-note').value||'').trim()||null;
+  const list=pendingForMe();
+  if(!list.length) return void closeModal();
+  btn.disabled=true; btn.textContent='Approving…';
+  try{
+    const rows=list.map(p=>({plan_id:p.id,approver_email:MY_EMAIL,decision:'approved',note,decided_at:new Date().toISOString()}));
+    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_approvals?on_conflict=plan_id,approver_email',{method:'POST',
+      headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rows)});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const [freshPlans,freshApprovals]=await Promise.all([
+      sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
+      sbFetchAll('daily_payment_plan_approvals?select=*')
+    ]);
+    DPP=freshPlans.map(mkDpp); DPP_APPROVALS=freshApprovals.map(mkDppApproval);
+    renderKpiCash(agg());
+    openPaymentPlans();
+  }catch(e){ err.textContent='Failed to approve all: '+e.message; btn.disabled=false; btn.textContent='Approve All ('+list.length+')'; }
 }
 // Merges approve/reject decisions and free-text comments into one shared, chronological
 // timeline — anyone who can view this plan (any role, not just approvers) can read it, and
