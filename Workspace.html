@@ -9025,6 +9025,9 @@ async function renderEntryBody(){
       +'<input id="dpp-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
       +'</div>'
       +'<input id="dpp-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
+      +'<div style="margin-bottom:10px"><label for="dpp-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Attach document (optional, e.g. invoice)</label>'
+      +'<input id="dpp-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.webp" style="display:none">'
+      +'<span id="dpp-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
       +'<button id="dpp-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Submit for approval</button>'
       +'<div id="dpp-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
@@ -9250,6 +9253,11 @@ async function renderEntryBody(){
     bankaccBtn.disabled=false; bankaccBtn.textContent='Add account';
   };
   // ── Add a Daily Payment Plan wiring ──
+  const dppFileInp=document.getElementById('dpp-file');
+  if(dppFileInp) dppFileInp.onchange=()=>{
+    const f=dppFileInp.files[0];
+    document.getElementById('dpp-filename').textContent=f?f.name:'';
+  };
   const dppBtn=document.getElementById('dpp-send');
   if(dppBtn) dppBtn.onclick=async()=>{
     const msg=document.getElementById('dpp-msg'); setMsg('dpp-msg','');
@@ -9271,12 +9279,15 @@ async function renderEntryBody(){
       if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
       const [saved]=await r.json();
       DPP.unshift(mkDpp(saved));
+      const file=dppFileInp&&dppFileInp.files[0];
+      if(file) await saveDoc('daily_payment_plans',saved.id,file,'0');
       renderKpiCash(agg());
       document.getElementById('dpp-due').value='';
       document.getElementById('dpp-vendor').value=''; clearSearchableSelect('dpp-vendor');
       document.getElementById('dpp-cat').value=''; clearSearchableSelect('dpp-cat');
       document.getElementById('dpp-amt').value='';
       document.getElementById('dpp-desc').value='';
+      if(dppFileInp){ dppFileInp.value=''; document.getElementById('dpp-filename').textContent=''; }
       msg.style.color='#2b7a4b'; msg.textContent='Payment plan submitted for approval.';
     }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
     dppBtn.disabled=false; dppBtn.textContent='Submit for approval';
