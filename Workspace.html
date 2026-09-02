@@ -3377,9 +3377,17 @@ function paymentPlanRowHtml(p){
   const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const items=[];
-  if(p.status==='pending'&&isActiveApprover(MY_EMAIL)&&!myDecision){
-    items.push(menuItem('✓ Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
-    items.push(menuItem('✕ Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
+  if(isActiveApprover(MY_EMAIL)&&p.status!=='cancelled'){
+    if(!myDecision){
+      if(p.status==='pending'){
+        items.push(menuItem('✓ Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
+        items.push(menuItem('✕ Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
+      }
+    } else if(myDecision.decision==='approved'){
+      items.push(menuItem('✕ Change to Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
+    } else {
+      items.push(menuItem('✓ Change to Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
+    }
   }
   items.push(menuItem(ICON.history()+' View approvals',`openPlanApprovals(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
@@ -3437,10 +3445,13 @@ function openPlanApprovals(id){
 }
 function openDecidePlan(id,decision){
   const p=DPP.find(x=>x.id===id); if(!p) return;
-  const label=decision==='approved'?'Approve':'Reject';
+  const myDecision=DPP_APPROVALS.find(a=>a.planId===id&&a.email===MY_EMAIL);
+  const isChange=!!myDecision;
+  const label=(isChange?'Change to ':'')+(decision==='approved'?'Approve':'Reject');
   let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''}</div>`;
-  if(decision==='rejected') h+=`<div style="font-size:12px;background:#fbe9e7;border:1px solid #f6c8d2;color:#b3261e;border-radius:10px;padding:8px 12px;margin-bottom:12px">Rejecting cancels this plan immediately — it can't reach Approved afterwards, even if it already had other approvals.</div>`;
-  h+=opeField('Note (optional)',`<input id="dcp-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+  if(isChange) h+=`<div style="font-size:12px;background:#f7f8fd;border:1px solid #e4e7ef;color:#3a4254;border-radius:10px;padding:8px 12px;margin-bottom:12px">You previously <b>${myDecision.decision}</b> this plan. Saving will replace that decision.</div>`;
+  if(decision==='rejected') h+=`<div style="font-size:12px;background:#fbe9e7;border:1px solid #f6c8d2;color:#b3261e;border-radius:10px;padding:8px 12px;margin-bottom:12px">Rejecting cancels this plan immediately — it can't reach Approved afterwards unless the reject is later changed back.</div>`;
+  h+=opeField('Note (optional)',`<input id="dcp-note" value="${escH((isChange&&myDecision.note)||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +`<button class="btn" style="background:${decision==='approved'?'#2b7a4b':'#b3261e'};color:#fff;border:0" onclick="doDecidePlan(${id},'${decision}')">${label}</button>`
     +`<span id="dcp-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal(label+' Payment Plan',h,true);
@@ -3449,9 +3460,9 @@ async function doDecidePlan(id,decision){
   const err=document.getElementById('dcp-err'); err.textContent='';
   const note=(document.getElementById('dcp-note').value||'').trim()||null;
   try{
-    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_approvals',{method:'POST',
+    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_approvals?on_conflict=plan_id,approver_email',{method:'POST',
       headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-      body:JSON.stringify([{plan_id:id,approver_email:MY_EMAIL,decision,note}])});
+      body:JSON.stringify([{plan_id:id,approver_email:MY_EMAIL,decision,note,decided_at:new Date().toISOString()}])});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const [freshPlans,freshApprovals]=await Promise.all([
       sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
