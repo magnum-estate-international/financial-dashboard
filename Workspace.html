@@ -3391,6 +3391,24 @@ function paymentPlanStatusBadge(p){
 function isActiveApprover(email){
   return PAYMENT_APPROVERS.some(a=>a.email===email&&a.active);
 }
+// Unread = comments from someone else, posted after this browser's own last visit to this
+// plan's Discussion thread. A plan never visited counts every other person's comment as unread.
+function unreadCommentsFor(planId){
+  const myRead=DPP_READS.find(r=>r.planId===planId&&r.email===MY_EMAIL);
+  const since=myRead?myRead.lastReadAt:null;
+  return DPP_COMMENTS.filter(c=>c.planId===planId&&c.email!==MY_EMAIL&&(!since||c.createdAt>since)).length;
+}
+async function markPlanThreadRead(planId){
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_reads?on_conflict=plan_id,email',{method:'POST',
+      headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify([{plan_id:planId,email:MY_EMAIL,last_read_at:new Date().toISOString()}])});
+    if(!r.ok) return;
+    const row=DPP_READS.find(x=>x.planId===planId&&x.email===MY_EMAIL);
+    const ts=new Date().toISOString();
+    if(row) row.lastReadAt=ts; else DPP_READS.push({planId,email:MY_EMAIL,lastReadAt:ts});
+  }catch(e){}
+}
 function paymentPlanRowHtml(p){
   const eNm=ENT[p.e]?ENT[p.e].name:p.e;
   const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
@@ -3409,6 +3427,7 @@ function paymentPlanRowHtml(p){
     }
   }
   const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
+  const unreadN=unreadCommentsFor(p.id);
   items.push(menuItem('💬 Discussion',`openPlanThread(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
   const overdue=p.due&&p.status==='pending'&&daysOverdue(p.due)>0;
@@ -3427,7 +3446,7 @@ function paymentPlanRowHtml(p){
     ${docCell}
     <td style="font-size:12px;white-space:nowrap">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${myDecision?` <span style="color:${myDecision.decision==='approved'?'var(--green)':'var(--red)'}">(you: ${myDecision.decision})</span>`:(p.status==='pending'&&isActiveApprover(MY_EMAIL)?` <span style="color:var(--muted)">(you: waiting approval)</span>`:'')}</td>
     <td>${paymentPlanStatusBadge(p)}</td>
-    <td style="white-space:nowrap"><a href="#" onclick="event.preventDefault();openPlanThread(${p.id})" style="font-size:12px;color:var(--blue-300);text-decoration:none;font-weight:600">${commentN} comment${commentN===1?'':'s'}</a></td>
+    <td style="white-space:nowrap"><a href="#" onclick="event.preventDefault();openPlanThread(${p.id})" style="font-size:12px;color:var(--blue-300);text-decoration:none;font-weight:600">${commentN} comment${commentN===1?'':'s'}</a>${unreadN?` <span style="display:inline-block;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px">${unreadN} new</span>`:''}</td>
     <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>
       <div id="plan-menu-${p.id}" class="plan-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>
     </td>
@@ -3456,6 +3475,7 @@ function openPaymentPlans(){
 // can post a comment, per the "everyone with view access can participate" requirement.
 function openPlanThread(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
+  markPlanThreadRead(id);
   const nameOf=email=>(PAYMENT_APPROVERS.find(a=>a.email===email)||{}).name||email;
   const fmtTs=ts=>(ts||'').slice(0,16).replace('T',' ');
   const decisions=DPP_APPROVALS.filter(a=>a.planId===id).map(d=>({ts:d.decidedAt,d}));
@@ -3496,6 +3516,11 @@ async function postPlanComment(id){
     const [saved]=await r.json();
     DPP_COMMENTS.push(mkDppComment(saved));
     openPlanThread(id);
+    // Fire-and-forget: emails approvers + the requester (minus whoever just commented). Never
+    // blocks the UI or surfaces as a user-facing error — email delivery is a nice-to-have on top
+    // of the in-app Discussion thread, not a requirement for the comment to be considered posted.
+    authedFetch(SB_URL+'/functions/v1/notify-payment-plan-comment',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({plan_id:id,comment_id:saved.id})}).catch(()=>{});
   }catch(e){ err.textContent='Failed to post: '+e.message; btn.disabled=false; }
 }
 function openDecidePlan(id,decision){
@@ -7336,7 +7361,7 @@ async function refreshOpexGroupMap(){
   return OPEX_CAT_TO_GROUP;
 }
 async function loadFromSupabase(){
-  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,dpp,dppApprovals,dppComments]=await Promise.all([
+  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,dpp,dppApprovals,dppComments,dppReads]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
     sbFetch('line_items?select=*&period_code=eq.MAY&limit=2000'),
     sbFetch('entity_period_totals?select=*&limit=2000'),
@@ -7350,6 +7375,7 @@ async function loadFromSupabase(){
     sbFetch('daily_payment_plans?select=*&order=plan_date.desc').catch(()=>[]),
     sbFetchAll('daily_payment_plan_approvals?select=*').catch(()=>[]),
     sbFetchAll('daily_payment_plan_comments?select=*&order=created_at').catch(()=>[]),
+    sbFetchAll('daily_payment_plan_reads?select=*').catch(()=>[]),
     refreshOpexGroupMap()
   ]);
   const fk={revenue:'rev',opex:'opex',financing_in:'finIn',financing_out:'finOut'};
@@ -7377,6 +7403,7 @@ async function loadFromSupabase(){
     DPP:(dpp||[]).map(mkDpp),
     DPP_APPROVALS:(dppApprovals||[]).map(mkDppApproval),
     DPP_COMMENTS:(dppComments||[]).map(mkDppComment),
+    DPP_READS:(dppReads||[]).map(r=>({planId:r.plan_id,email:r.email,lastReadAt:r.last_read_at})),
     TX:Object.values(bs).flat(),
     TX_MULTI:bs.TX_MULTI,TX_MS:bs.TX_MS,TX_ICG_OPEX:bs.TX_ICG_OPEX};
 }
@@ -7413,6 +7440,7 @@ let PAYMENT_APPROVERS=[];
 let DPP=[];
 let DPP_APPROVALS=[];
 let DPP_COMMENTS=[];
+let DPP_READS=[];
 function mkApprover(r){ return {email:r.email,name:r.name||r.email,active:r.is_active!==false}; }
 function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[]}; }
 function mkDppComment(r){ return {id:r.id,planId:r.plan_id,email:r.author_email,body:r.body,createdAt:r.created_at}; }
@@ -7671,6 +7699,7 @@ async function runDashboard(){
   DPP=D.DPP;
   DPP_APPROVALS=D.DPP_APPROVALS;
   DPP_COMMENTS=D.DPP_COMMENTS;
+  DPP_READS=D.DPP_READS;
   EIDS=Object.keys(ENT);
   if(!EIDS.length){ showNoAccess(); return; }
   LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
