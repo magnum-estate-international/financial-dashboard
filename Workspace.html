@@ -3361,7 +3361,7 @@ function paymentPlanCard(){
   const tot=pend.reduce((s,p)=>s+p.amt,0);
   const iAmApprover=isActiveApprover(MY_EMAIL);
   const needsMe=iAmApprover?pend.filter(p=>!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL)).length:null;
-  const stat=(n,label,color)=>`<div style="text-align:center;padding:0 6px"><div style="font-size:19px;font-weight:800;color:${color||'var(--ink)'}">${n}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:2px;white-space:nowrap">${label}</div></div>`;
+  const stat=(n,label,color)=>`<div style="display:flex;align-items:baseline;gap:5px"><span style="font-size:14.5px;font-weight:800;color:${color||'var(--ink)'}">${n}</span><span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">${label}</span></div>`;
   const stats=[
     stat(scoped.length,'Total plans'),
     stat(pend.length,'Pending','#9a6f0a'),
@@ -3369,12 +3369,12 @@ function paymentPlanCard(){
     stat(rejected.length,'Rejected','var(--red)'),
   ];
   if(needsMe!==null) stats.push(stat(needsMe,'Needs your OK','var(--blue-300)'));
-  return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
+  return `<div class="pcard boxed clickable" style="flex:0 1 320px" onclick="openPaymentPlans()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.check(17)}</div><div class="lab">Daily Payment Plan</div></div>
       <div class="big ${pend.length?'':''}" style="${pend.length?'':'color:var(--muted)'}">${pend.length?fmt(tot):'—'}</div>
       <div class="meta">${pend.length?`${pend.length} pending plan${pend.length>1?'s':''} — awaiting approval`:'No pending payment plans — click to add one'}</div>
-      ${scoped.length?`<div style="display:flex;margin-top:14px;border-top:1px solid #eef2f7;padding-top:14px">${stats.map((s,i)=>`<div style="flex:1;${i>0?'border-left:1px solid #eef2f7':''}">${s}</div>`).join('')}</div>`:''}
+      ${scoped.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-top:12px;border-top:1px solid #eef2f7;padding-top:10px">${stats.join('')}</div>`:''}
     </div>`;
 }
 function paymentPlanStatusBadge(p){
