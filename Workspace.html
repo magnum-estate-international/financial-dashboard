@@ -3462,6 +3462,7 @@ function paymentPlanRowHtml(p){
     <td style="font-size:12.5px">${escH(p.category||'—')}</td>
     <td style="font-size:12.5px;color:var(--muted)">${escH(p.desc||'—')}</td>
     <td class="num">${fmt(p.amt)}</td>
+    <td class="num">${p.approvedAmt==null?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
     <td style="font-size:12px;white-space:nowrap">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${myDecision?` <span style="color:${myDecision.decision==='approved'?'var(--green)':'var(--red)'}">(you: ${myDecision.decision})</span>`:(p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)?` <span style="color:var(--muted)">(you: waiting approval)</span>`:'')}</td>
     <td>${paymentPlanStatusBadge(p)}</td>
@@ -3484,8 +3485,8 @@ function togglePlanRowMenu(id,btnEl){
 }
 function openPaymentPlans(){
   const rows=paymentPlansInScope().slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  let h='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead><tbody>';
-  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
+  let h='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead><tbody>';
+  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
   h+='</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
 }
@@ -3501,12 +3502,13 @@ function openPlanThread(id){
   const comments=DPP_COMMENTS.filter(c=>c.planId===id).map(c=>({ts:c.createdAt,c}));
   const items=[...decisions,...comments].sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openPaymentPlans()">‹ Back</button>`;
-  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
+  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.approvedAmt!=null?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
   h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
   h+=items.length?items.map(it=>{
     if(it.d){
       const d=it.d, col=d.decision==='approved'?'var(--green)':'var(--red)';
-      return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:${col}">${escH(nameOf(d.email))} ${d.decision}</span> this plan${d.note?': “'+escH(d.note)+'”':''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
+      const amtNote=(d.decision==='approved'&&d.approvedAmt!=null&&d.approvedAmt<p.amt)?` — approved amount ${fmt(d.approvedAmt)}`:'';
+      return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:${col}">${escH(nameOf(d.email))} ${d.decision}</span> this plan${amtNote}${d.note?': “'+escH(d.note)+'”':''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
     }
     const c=it.c;
     return `<div style="margin-bottom:10px;background:#f7f8fd;border-radius:10px;padding:8px 12px">
@@ -3550,6 +3552,9 @@ function openDecidePlan(id,decision){
   let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''}</div>`;
   if(isChange) h+=`<div style="font-size:12px;background:#f7f8fd;border:1px solid #e4e7ef;color:#3a4254;border-radius:10px;padding:8px 12px;margin-bottom:12px">You previously <b>${myDecision.decision}</b> this plan. Saving will replace that decision.</div>`;
   if(decision==='rejected') h+=`<div style="font-size:12px;background:#fbe9e7;border:1px solid #f6c8d2;color:#b3261e;border-radius:10px;padding:8px 12px;margin-bottom:12px">Rejecting cancels this plan immediately — it can't reach Approved afterwards unless the reject is later changed back.</div>`;
+  if(decision==='approved') h+=opeField('Amount approved (optional — leave blank to approve the full '+fmt(p.amt)+')',
+      `<input id="dcp-amt" inputmode="numeric" placeholder="${fmt(p.amt)}" value="${(isChange&&myDecision.approvedAmt!=null)?myDecision.approvedAmt:''}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<div style="font-size:11.5px;color:var(--muted);margin-top:-6px;margin-bottom:10px">If any approver approves a lower amount, that becomes the plan's final Amount Approve — the lowest amount entered wins.</div>`;
   h+=opeField('Note (optional)',`<input id="dcp-note" value="${escH((isChange&&myDecision.note)||'')}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +`<button class="btn" style="background:${decision==='approved'?'#2b7a4b':'#b3261e'};color:#fff;border:0" onclick="doDecidePlan(${id},'${decision}')">${label}</button>`
     +`<span id="dcp-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
@@ -3558,10 +3563,21 @@ function openDecidePlan(id,decision){
 async function doDecidePlan(id,decision){
   const err=document.getElementById('dcp-err'); err.textContent='';
   const note=(document.getElementById('dcp-note').value||'').trim()||null;
+  const amtEl=document.getElementById('dcp-amt');
+  let approvedAmt=null;
+  if(decision==='approved'&&amtEl){
+    const raw=(amtEl.value||'').replace(/[^0-9]/g,'');
+    if(raw!==''){
+      approvedAmt=Number(raw);
+      const p=DPP.find(x=>x.id===id);
+      if(p&&approvedAmt>p.amt) return void(err.textContent='Approved amount can\'t exceed the purposed amount of '+fmt(p.amt)+'.');
+      if(!approvedAmt||approvedAmt<=0) return void(err.textContent='Enter a valid approved amount, or leave it blank.');
+    }
+  }
   try{
     const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_approvals?on_conflict=plan_id,approver_email',{method:'POST',
       headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-      body:JSON.stringify([{plan_id:id,approver_email:MY_EMAIL,decision,note,decided_at:new Date().toISOString()}])});
+      body:JSON.stringify([{plan_id:id,approver_email:MY_EMAIL,decision,note,approved_amount_idr:approvedAmt,decided_at:new Date().toISOString()}])});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const [freshPlans,freshApprovals]=await Promise.all([
       sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
@@ -7462,9 +7478,9 @@ function mkApprover(r,approverEntities){
   const entities=(approverEntities||[]).filter(e=>e.approver_email===r.email).map(e=>e.entity_code);
   return {email:r.email,name:r.name||r.email,active:r.is_active!==false,entities};
 }
-function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[]}; }
+function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[]}; }
 function mkDppComment(r){ return {id:r.id,planId:r.plan_id,email:r.author_email,body:r.body,createdAt:r.created_at}; }
-function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at}; }
+function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr}; }
 let INTERCOMPANY=[];
 let IC_TX=[];
 function mkIcTx(r){
