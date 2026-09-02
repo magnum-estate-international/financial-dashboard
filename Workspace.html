@@ -3368,10 +3368,10 @@ function paymentPlanCard(){
           const overdue=p.due&&daysOverdue(p.due)>0;
           const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
           const meta=[escH(eShort(p.e)),p.category?escH(p.category):null,p.due?`Due ${overdue?'<span style="color:var(--red);font-weight:700">':''}${escH(p.due)}${overdue?'</span>':''}`:null,`${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved`,`${commentN} comment${commentN===1?'':'s'}`].filter(Boolean).join(' · ');
-          return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid #f5f6fa">
-            <div style="min-width:0">
+          return `<div style="display:flex;align-items:flex-start;gap:16px;padding:7px 0;border-bottom:1px solid #f5f6fa">
+            <div style="max-width:340px;overflow:hidden">
               <div style="font-size:12.5px;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(p.vendor||'—')}${p.desc?' — '+escH(p.desc):''}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:2px">${meta}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${meta}</div>
             </div>
             <div style="font-weight:700;color:var(--blue-900);white-space:nowrap;font-size:12.5px">${fmt(p.amt)}</div>
           </div>`;
