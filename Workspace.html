@@ -3405,7 +3405,7 @@ function paymentPlanRowHtml(p){
     <td style="font-size:12.5px">${escH(p.category||'—')}</td>
     <td style="font-size:12.5px;color:var(--muted)">${escH(p.desc||'—')}</td>
     <td class="num">${fmt(p.amt)}</td>
-    <td style="font-size:12px;white-space:nowrap">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${myDecision?` <span style="color:${myDecision.decision==='approved'?'var(--green)':'var(--red)'}">(you: ${myDecision.decision})</span>`:''}</td>
+    <td style="font-size:12px;white-space:nowrap">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${myDecision?` <span style="color:${myDecision.decision==='approved'?'var(--green)':'var(--red)'}">(you: ${myDecision.decision})</span>`:(p.status==='pending'&&isActiveApprover(MY_EMAIL)?` <span style="color:var(--muted)">(you: waiting approval)</span>`:'')}</td>
     <td>${paymentPlanStatusBadge(p)}</td>
     ${docCell}
     <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>
