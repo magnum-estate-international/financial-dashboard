@@ -3356,11 +3356,21 @@ function paymentPlansPending(){
 function paymentPlanCard(){
   const pend=paymentPlansPending();
   const tot=pend.reduce((s,p)=>s+p.amt,0);
+  const multiEntity=new Set(pend.map(p=>p.e)).size>1;
+  const eShort=e=>{const ent=ENT[e]; if(!ent) return e; return (ent.short&&ent.short[0])||ent.name;};
+  const top5=pend.slice().sort((a,b)=>b.amt-a.amt).slice(0,5);
   return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.check(17)}</div><div class="lab">Daily Payment Plan</div></div>
       <div class="big ${pend.length?'':''}" style="${pend.length?'':'color:var(--muted)'}">${pend.length?fmt(tot):'—'}</div>
       <div class="meta">${pend.length?`${pend.length} pending plan${pend.length>1?'s':''} — awaiting approval`:'No pending payment plans — click to add one'}</div>
+      ${top5.length?`<div style="margin-top:12px;border-top:1px solid #eef2f7;padding-top:10px;display:flex;flex-direction:column;gap:7px">
+        ${top5.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)">${escH(p.vendor||p.desc||'—')}${multiEntity?` <span style="color:var(--muted)">· ${escH(eShort(p.e))}</span>`:''}</span>
+          <span style="font-weight:700;color:var(--blue-900);white-space:nowrap">${fmt(p.amt)}</span>
+        </div>`).join('')}
+        ${pend.length>top5.length?`<div style="font-size:11px;color:var(--muted);margin-top:2px">+${pend.length-top5.length} more — click for full list</div>`:''}
+      </div>`:''}
     </div>`;
 }
 function paymentPlanStatusBadge(p){
