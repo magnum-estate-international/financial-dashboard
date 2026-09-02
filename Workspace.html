@@ -3359,7 +3359,7 @@ function outstandingCard(){
       <div class="meta">${open.length?`${open.length} unpaid invoice${open.length>1?'s':''}${overdueN?`, <span style="color:var(--red)">${overdueN} overdue</span>`:''}`:'No outstanding liabilities — click to add one'}</div>
     </div>`;
 }
-const DPP_REQUIRED_APPROVALS=5;
+const DPP_REQUIRED_APPROVALS=4;
 function paymentPlansInScope(){
   const ids=new Set(scopeIds());
   return DPP.filter(p=>ids.has(p.e));
@@ -9148,7 +9148,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.check()+'Add a Daily Payment Plan</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Propose a payment for management to approve from the dashboard — needs 5 approvals to become Approved, and any single rejection cancels it. This only tracks the plan/approval status; the actual payment is still recorded separately once it happens.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Propose a payment for management to approve from the dashboard — needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved, and any single rejection cancels it. This only tracks the plan/approval status; the actual payment is still recorded separately once it happens.</div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="dpp-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<input id="dpp-date" type="date" aria-label="Plan date" style="'+inp+'">'
@@ -9190,7 +9190,7 @@ async function renderEntryBody(){
   if(IS_ADMIN){
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.shield()+'Manage Approvers</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Who can approve/reject a Daily Payment Plan from the dashboard, scoped to specific PT(s) — an approver only sees Approve/Reject for the PTs they\'re assigned to. A plan needs 5 approvals to become Approved.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Who can approve/reject a Daily Payment Plan from the dashboard, scoped to specific PT(s) — an approver only sees Approve/Reject for the PTs they\'re assigned to. A plan needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved.</div>'
       +'<div id="approver-list" style="margin-bottom:14px"></div>'
       +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px">Add an approver</div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
