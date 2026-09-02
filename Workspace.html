@@ -3045,18 +3045,32 @@ function renderAlert(a){
 // bankAccountBalance()), not a manually-typed snapshot. Deliberately separate from the monthly
 // opening/closing balance used by Balance Reconciliation (that one's a reconciliation benchmark,
 // this is "what's in the bank now", broken down per real bank account on click — see openDetail).
+// A PT's cash position comes from its real bank accounts when any exist; otherwise it falls back
+// to the manually-entered entity_cash_position figure (see "Update Cash Position — Daily" in
+// Update Data). Lets the two mechanisms coexist per-PT during the transition to real bank ledgers.
+function cashPositionFor(entityId){
+  const accts=BANK_ACCOUNTS.filter(a=>a.entity===entityId);
+  if(accts.length){
+    let tot=0,latest=null;
+    accts.forEach(a=>{ const b=bankAccountBalance(a); tot+=b.balance; if(!latest||(b.asOf||'')>latest) latest=b.asOf; });
+    return {balance:tot,asOf:latest,manual:false,n:accts.length};
+  }
+  const c=CASHPOS[entityId];
+  if(c) return {balance:c.cash,asOf:c.at,manual:true,n:0};
+  return null;
+}
 function cashPositionCard(){
   const ids=scopeIds();
-  const accts=BANK_ACCOUNTS.filter(a=>ids.includes(a.entity));
-  let tot=0,latest=null;
-  accts.forEach(a=>{ const b=bankAccountBalance(a); tot+=b.balance; if(!latest||(b.asOf||'')>latest) latest=b.asOf; });
+  const rows=ids.map(id=>({id,v:cashPositionFor(id)})).filter(r=>r.v);
+  const tot=rows.reduce((s,r)=>s+r.v.balance,0);
+  let latest=null; rows.forEach(r=>{ if(r.v.asOf&&(!latest||r.v.asOf>latest)) latest=r.v.asOf; });
   const asOf=latest?new Date(latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):null;
-  const nEnt=new Set(accts.map(a=>a.entity)).size;
+  const nManual=rows.filter(r=>r.v.manual).length;
   return `<div class="pcard boxed gold-hl clickable" onclick="openDetail('cashpos')">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.dollar(17)}</div><div class="lab">Cash Position</div></div>
-      <div class="big">${accts.length?fmt(tot):'—'}</div>
-      <div class="meta">${accts.length?`${accts.length} bank account${accts.length===1?'':'s'} across ${nEnt} entit${nEnt===1?'y':'ies'} · latest as of ${asOf}`:'No bank accounts logged yet — add them via Update Data'}</div>
+      <div class="big">${rows.length?fmt(tot):'—'}</div>
+      <div class="meta">${rows.length?`${rows.length} entit${rows.length===1?'y':'ies'}${nManual?` (${nManual} manual)`:''} · latest as of ${asOf}`:'No cash position logged yet — add one via Update Data'}</div>
     </div>`;
 }
 // Real month-over-month comparison, used only when the active filter is a single month
@@ -4296,13 +4310,10 @@ function openDetail(kind){
   else if(kind==='cashpos'){
     SORT_RERENDER['cashpos']=()=>openDetail('cashpos');
     const eName=id=>(ENT[id]?ENT[id].name:id);
-    const byEnt={};
-    BANK_ACCOUNTS.filter(acc=>scopeIds().includes(acc.entity)).forEach(acc=>{
-      const b=bankAccountBalance(acc);
-      const g=byEnt[acc.entity]=byEnt[acc.entity]||{entity:acc.entity,tot:0,n:0,latest:null};
-      g.tot+=b.balance; g.n++; if(!g.latest||(b.asOf||'')>g.latest) g.latest=b.asOf;
-    });
-    let rows=Object.values(byEnt);
+    let rows=scopeIds().map(id=>{
+      const v=cashPositionFor(id); if(!v) return null;
+      return {entity:id,tot:v.balance,n:v.manual?0:v.n,manual:v.manual,latest:v.asOf};
+    }).filter(Boolean);
     if(sortActiveKey('cashpos')){
       rows.sort((x,y)=>y.tot-x.tot);
       rows=sortApply('cashpos',rows,r=>r.tot);
@@ -4319,19 +4330,19 @@ function openDetail(kind){
     }
     let h;
     if(!rows.length){
-      h=`<p style="color:var(--muted);font-size:12.5px">No bank accounts logged yet for this scope — add them via <b>Update Data → Manage Bank Accounts</b>.</p>`;
+      h=`<p style="color:var(--muted);font-size:12.5px">No cash position logged yet for this scope — add one via <b>Update Data → Update Cash Position — Daily (Manual)</b> or <b>Manage Bank Accounts</b>.</p>`;
     } else {
       let tot=0;
       h=`<div class="table-scroll" style="max-height:440px"><table><thead><tr><th>Entity</th><th class="num">Accounts</th><th class="num">${sortHeader('cashpos','Balance (IDR)','tot')}</th><th>As of</th></tr></thead><tbody>`;
       rows.forEach(r=>{ tot+=r.tot;
         h+=`<tr class="clickable" style="cursor:pointer" onclick="openCashPosEntity('${r.entity}')">
           <td style="font-size:12.5px">${escH(eName(r.entity))} <span style="color:var(--blue-300);font-weight:700">›</span></td>
-          <td class="num" style="color:var(--muted)">${r.n}</td>
+          <td class="num" style="color:var(--muted)">${r.manual?'<span style="color:#9a6f0a">Manual</span>':r.n}</td>
           <td class="num">${fmt(r.tot)}</td>
           <td style="font-size:12px;color:var(--muted)">${r.latest?new Date(r.latest).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
         </tr>`;});
       h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num"></td><td class="num"><strong>${fmt(tot)}</strong></td><td></td></tr></tbody></table></div>`;
-      h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click a PT to see its individual bank accounts.</p>`;
+      h+=`<p style="color:var(--muted);font-size:11.5px;margin-top:10px">Click a PT to see its individual bank accounts (or its manual cash position history).</p>`;
     }
     showModal('Cash Position — by Entity',h,true);
   }
@@ -7664,7 +7675,16 @@ function openCashPosEntity(entity){
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openDetail('cashpos')">‹ Back to all PTs</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(eName(entity))}</h4>`;
   if(!rows.length){
-    h+=`<p style="color:var(--muted);font-size:12.5px">No bank accounts logged for this PT.</p>`;
+    const c=CASHPOS[entity];
+    if(c){
+      h+=`<div class="pcard boxed" style="max-width:340px">
+          <div class="lab">Manual Cash Position</div>
+          <div class="big">${fmt(c.cash)}</div>
+          <div class="meta">As of ${c.at?new Date(c.at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'} · updated via Update Data → Update Cash Position — Daily (Manual)</div>
+        </div>`;
+    } else {
+      h+=`<p style="color:var(--muted);font-size:12.5px">No bank accounts or manual cash position logged for this PT yet.</p>`;
+    }
   } else {
     let tot=0;
     h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Bank</th><th>Account No.</th><th>Label</th><th class="num">Balance (IDR)</th><th>As of</th></tr></thead><tbody>`;
@@ -8943,6 +8963,23 @@ async function renderEntryBody(){
       +'<div id="ebal-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
   }
+  // ── Update Cash Position — Daily (Manual) — a plain per-PT "what's in the bank right now"
+  // number, written straight to entity_cash_position, no bank account setup required. This is
+  // the interim path while Manage Bank Accounts / Import Bank Ledger aren't fully populated yet;
+  // cashPositionCard() prefers a PT's real bank-account balance when accounts exist for it, and
+  // falls back to this manual figure otherwise. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.dollar()+'Update Cash Position — Daily (Manual)</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Type in a PT\'s current cash balance — no bank account setup needed. Update it daily to keep the Cash Position card accurate. This is only used for a PT that has no bank accounts set up under "Manage Bank Accounts" below; once a PT has real accounts, its live balance from those takes over automatically.</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
+      +'<select id="cposd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<input id="cposd-amt" inputmode="numeric" placeholder="Saldo hari ini (IDR)" style="'+inp+'">'
+      +'</div>'
+      +'<button id="cposd-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save cash position</button>'
+      +'<div id="cposd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div></details>';
+  }
   // ── Update Cash Position — now a per-bank-account correction, not a per-entity snapshot: Cash
   // Position is computed live from bank_accounts.opening_balance + bank_ledger_entries, so "setting"
   // it for a PT no longer means anything without picking which specific account. Saving here does
@@ -9753,6 +9790,29 @@ async function renderEntryBody(){
         balMsg.style.color='#2b7a4b'; balMsg.textContent='Saved.';
       }catch(e){ balMsg.textContent='Failed to save: '+e.message; }
       balBtn.disabled=false; balBtn.textContent='Save balance';
+    };
+  }
+  // ── Update Cash Position — Daily (Manual) wiring ──
+  {
+    const cposdBtn=document.getElementById('cposd-send');
+    if(cposdBtn) cposdBtn.onclick=async()=>{
+      const msg=document.getElementById('cposd-msg'); setMsg('cposd-msg','');
+      const entity=document.getElementById('cposd-ent').value;
+      const amtRaw=(document.getElementById('cposd-amt').value||'').replace(/[^0-9-]/g,'');
+      const amt=amtRaw===''?NaN:Number(amtRaw);
+      if(!amt||amt<0||!isFinite(amt)) return void(msg.style.color='#b3261e', msg.textContent='Enter a valid balance.');
+      cposdBtn.disabled=true; cposdBtn.textContent='Saving…';
+      try{
+        const row={entity_code:entity,cash_idr:amt,updated_by:MY_EMAIL,updated_at:new Date().toISOString()};
+        const r=await authedFetch(SB_URL+'/rest/v1/entity_cash_position',{method:'POST',
+          headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(row)});
+        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+        CASHPOS[entity]={cash:amt,at:row.updated_at};
+        renderKpiCash(agg());
+        document.getElementById('cposd-amt').value='';
+        msg.style.color='#2b7a4b'; msg.textContent='Cash position saved.';
+      }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
+      cposdBtn.disabled=false; cposdBtn.textContent='Save cash position';
     };
   }
   // ── Wire the "Update Cash Position" box — Entity select filters which accounts show up in the
