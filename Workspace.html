@@ -3384,6 +3384,10 @@ function paymentPlanRowHtml(p){
   items.push(menuItem(ICON.history()+' View approvals',`openPlanApprovals(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
   const overdue=p.due&&p.status==='pending'&&daysOverdue(p.due)>0;
+  const hasDoc=Array.isArray(p.attachments)&&p.attachments.length>0;
+  let docCell='<td></td>';
+  if(hasDoc) docCell=`<td style="white-space:nowrap">${docViewChip('payment-plan-docs',p.attachments)}</td>`;
+  else if(canEdit) docCell=`<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerDocUpload('daily_payment_plans',${p.id},'openPaymentPlans()')" title="Upload supporting document (invoice, etc.)">${ICON.file(13)}</button></td>`;
   return `<tr>
     <td style="font-size:12px;white-space:nowrap">${p.date}</td>
     <td style="font-size:12px;white-space:nowrap${overdue?';color:var(--red);font-weight:700':''}">${p.due||'—'}</td>
@@ -3394,6 +3398,7 @@ function paymentPlanRowHtml(p){
     <td class="num">${fmt(p.amt)}</td>
     <td style="font-size:12px;white-space:nowrap">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${myDecision?` <span style="color:${myDecision.decision==='approved'?'var(--green)':'var(--red)'}">(you: ${myDecision.decision})</span>`:''}</td>
     <td>${paymentPlanStatusBadge(p)}</td>
+    ${docCell}
     <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>
       <div id="plan-menu-${p.id}" class="plan-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>
     </td>
@@ -3412,8 +3417,8 @@ function togglePlanRowMenu(id,btnEl){
 }
 function openPaymentPlans(){
   const rows=paymentPlansInScope().slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  let h='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Approvals</th><th>Status</th><th></th></tr></thead><tbody>';
-  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
+  let h='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Approvals</th><th>Status</th><th>Doc</th><th></th></tr></thead><tbody>';
+  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
   h+='</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
 }
@@ -4488,6 +4493,7 @@ const DOC_TABLES={
   transactions:{bucket:'transaction-docs',arr:()=>TX},
   outstanding_payables:{bucket:'outstanding-docs',arr:()=>OUTSTANDING},
   bank_ledger_entries:{bucket:'bank-ledger-docs',arr:()=>BANK_LEDGER},
+  daily_payment_plans:{bucket:'payment-plan-docs',arr:()=>DPP},
 };
 // expiresIn defaults to 1hr for the inline "open now" click; the export flow passes a longer
 // expiry since the resulting link sits in a downloaded file, not opened immediately.
@@ -7339,7 +7345,7 @@ let PAYMENT_APPROVERS=[];
 let DPP=[];
 let DPP_APPROVALS=[];
 function mkApprover(r){ return {email:r.email,name:r.name||r.email,active:r.is_active!==false}; }
-function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by}; }
+function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[]}; }
 function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at}; }
 let INTERCOMPANY=[];
 let IC_TX=[];
