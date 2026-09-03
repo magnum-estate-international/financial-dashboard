@@ -3449,6 +3449,7 @@ function paymentPlanRowHtml(p){
   const unreadN=unreadCommentsFor(p.id);
   items.push(menuItem('💬 Discussion',`openPlanThread(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
+  if(canEdit) items.push(menuItem(ICON.trash()+' Delete',`deletePaymentPlan(${p.id})`,'var(--red)'));
   const overdue=p.due&&p.status==='pending'&&daysOverdue(p.due)>0;
   const hasDoc=Array.isArray(p.attachments)&&p.attachments.length>0;
   let docCell='<td></td>';
@@ -3642,6 +3643,22 @@ async function cancelPaymentPlan(id){
     renderKpiCash(agg());
     openPaymentPlans();
   }catch(e){ alert('Failed to cancel: '+e.message); }
+}
+// Permanently removes the plan row — DB cascade (on delete cascade) takes its approvals,
+// comments, and read-state with it, unlike Cancel above which just flips status and keeps history.
+async function deletePaymentPlan(id){
+  const p=DPP.find(x=>x.id===id);
+  if(!confirm('Permanently delete this payment plan'+(p?' ('+(p.vendor||p.desc||'')+')':'')+'? This also deletes its approvals and comments, and cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plans?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const idx=DPP.findIndex(x=>x.id===id); if(idx>=0) DPP.splice(idx,1);
+    DPP_APPROVALS=DPP_APPROVALS.filter(a=>a.planId!==id);
+    DPP_COMMENTS=DPP_COMMENTS.filter(c=>c.planId!==id);
+    DPP_READS=DPP_READS.filter(r=>r.planId!==id);
+    renderKpiCash(agg());
+    openPaymentPlans();
+  }catch(e){ alert('Failed to delete: '+e.message); }
 }
 // ─── FIXED COST MANAGEMENT (recurring monthly costs — mirrors Outstanding Liability's shape) ───
 function mkFixCost(f){
