@@ -8982,13 +8982,169 @@ async function renderEntryBody(){
       h+='</tbody></table></div>';
     }
   }
+  // ── The four sections below (Cash Position ×2, Daily Payment Plan, Outstanding Liability, Fixed
+  // Cost) are pinned to the top of Update Data — they're the day-to-day entries finance uses most,
+  // ahead of the bulk-import/setup sections (Import Transactions, Manage Bank Accounts, etc.) below. ──
+  const inp='padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px;box-sizing:border-box';
+  // ── Update Cash Position — Daily (Manual) — a plain per-PT "what's in the bank right now"
+  // number, written straight to entity_cash_position, no bank account setup required. This is
+  // the interim path while Manage Bank Accounts / Import Bank Ledger aren't fully populated yet;
+  // cashPositionCard() prefers a PT's real bank-account balance when accounts exist for it, and
+  // falls back to this manual figure otherwise. ──
+  h+='<details open style="margin:4px 0 22px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.dollar()+'Update Cash Position — Daily (Manual)</summary>'
+    +'<div style="padding:12px 2px 0">'
+    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Type in a PT\'s current cash balance — no bank account setup needed. Update it daily to keep the Cash Position card accurate. This is only used for a PT that has no bank accounts set up under "Manage Bank Accounts" below; once a PT has real accounts, its live balance from those takes over automatically.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
+    +'<select id="cposd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+    +'<input id="cposd-amt" inputmode="numeric" placeholder="Saldo hari ini (IDR)" style="'+inp+'">'
+    +'</div>'
+    +'<button id="cposd-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save cash position</button>'
+    +'<div id="cposd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+    +'</div></details>';
+  // ── Update Cash Position — now a per-bank-account correction, not a per-entity snapshot: Cash
+  // Position is computed live from bank_accounts.opening_balance + bank_ledger_entries, so "setting"
+  // it for a PT no longer means anything without picking which specific account. Saving here does
+  // NOT overwrite opening_balance (that would silently hide whatever transaction is actually
+  // missing) — instead it logs the gap as a "Koreksi/Adjustment" bank_ledger_entries row, so the
+  // account's history keeps a visible trail of every manual correction. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Update Cash Position</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Correct a specific bank account\'s current balance when it doesn\'t match the real bank statement — pick the PT, the account, and the real balance as of a date. The difference is logged as a visible "Adjustment" entry in that account\'s ledger, not hidden by overwriting the Opening Balance — use this only for occasional reconciliation, not as the normal way to record activity (that\'s <b>Import Bank Ledger</b> below).</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="cpos-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
+      +'<button id="cpos-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
+      +'</div>'
+      +'<div id="cpos-single">'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
+      +'<select id="cpos-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<select id="cpos-acct" style="'+inp+'"></select>'
+      +'<input id="cpos-amt" inputmode="numeric" placeholder="Saldo (IDR)" style="'+inp+'">'
+      +'<input id="cpos-date" type="date" style="'+inp+'">'
+      +'</div>'
+      +'<button id="cpos-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save cash position</button>'
+      +'<div id="cpos-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div>'
+      +'<div id="cpos-bulk" style="display:none">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns: <b>No. Rekening, New Saldo (IDR), As of Date</b> (optional — defaults to today). Matched by No. Rekening, which must already exist under "Manage Bank Accounts" above — this only corrects an existing account\'s balance, it doesn\'t create new accounts.</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="cpos-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<label for="cpos-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+      +'<input id="cpos-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'</div>'
+      +'<span id="cpos-filename" style="font-size:12px;color:#3a4254"></span>'
+      +'<div id="cpos-preview" style="margin-top:12px"></div>'
+      +'</div>'
+      +'</div></details>';
+  }
+  // ── Add a Daily Payment Plan — a proposed payment finance wants to make, which only becomes
+  // "Approved" once designated approvers (see Manage Approvers below) sign off from the dashboard.
+  // A single rejection is a hard veto (status flips to Rejected immediately) — see
+  // recompute_payment_plan_status() in the DB. Reaching Approved does NOT create a transaction —
+  // the actual payment is still recorded separately, later, via Import Transactions/Bank Ledger. ──
+  {
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.check()+'Add a Daily Payment Plan</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Propose a payment for management to approve from the dashboard — needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved, and any single rejection cancels it. This only tracks the plan/approval status; the actual payment is still recorded separately once it happens.</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+      +'<select id="dpp-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<input id="dpp-date" type="date" aria-label="Plan date" style="'+inp+'">'
+      +'<input id="dpp-due" type="date" aria-label="Due date" style="'+inp+'">'
+      +vendorSelectHtml('dpp-vendor','',inp)
+      +categorySelectHtml('dpp-cat',OPEX_CATS_G||[],'',inp)
+      +'<input id="dpp-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
+      +'</div>'
+      +'<input id="dpp-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
+      +'<div style="margin-bottom:10px"><label for="dpp-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Attach document (optional, e.g. invoice)</label>'
+      +'<input id="dpp-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.webp" style="display:none">'
+      +'<span id="dpp-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
+      +'<button id="dpp-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Submit for approval</button>'
+      +'<div id="dpp-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div></details>';
+  }
+  // ── Outstanding payables (unpaid invoices) — separate from the monthly figures above ──
+  {
+    const opexCats=cats.filter(c=>c.kind==='opex');
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Add an Outstanding Liability (unpaid invoice)</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks unpaid invoices per PT — separate from the monthly figures above. Mark it paid once the payment shows up in a bank statement (recorded normally via the file upload above).</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="opd-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
+      +'<button id="opd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
+      +'<select id="opd-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<button id="opd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
+      +'</div>'
+      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:12px"><b>Legacy document links</b> (older rows still using a pasted Google Drive URL instead of a real upload) require the link be shared before a viewer can open it. <button id="opd-migrate" type="button" style="border:0;background:none;color:#9a6f0a;font-weight:700;text-decoration:underline;cursor:pointer;padding:0;font-size:12px">Migrate all Drive links into secure storage</button> pulls every one it can (must be shared "Anyone with the link") into the same private, always-viewable storage the new upload feature uses.<div id="opd-migrate-msg" style="margin-top:6px;min-height:1px"></div></div>'
+      +'<div id="opd-single">'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+      +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +categorySelectHtml('opd-cat',opexCats.map(c=>c.name),'',inp)
+      +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option><option value="PRG">PRG — By Progress</option></select>'
+      +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
+      +vendorSelectHtml('opd-vendor','',inp)
+      +'<input id="opd-inv" type="date" aria-label="Invoice date" style="'+inp+'">'
+      +'<input id="opd-due" type="date" aria-label="Due date" style="'+inp+'">'
+      +'<input id="opd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
+      +'</div>'
+      +'<input id="opd-desc" placeholder="Transaction description" style="'+inp+';width:100%;margin-bottom:8px">'
+      +'<input id="opd-docurl" placeholder="Document link (optional, e.g. Google Drive/Dropbox URL to the invoice)" style="'+inp+';width:100%;margin-bottom:10px">'
+      +'<button id="opd-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save outstanding</button>'
+      +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div>'
+      +'<div id="opd-bulk" style="display:none">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name, Category an existing cost category, and Vendor an existing vendor name (add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment), REC (monthly payment), or PRG (paid by project progress/milestone); defaults to OTP if left blank or unrecognized.</div>'
+      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b> (e.g. correcting Frequency for many rows at once): click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
+      +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<div><label for="opd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+      +'<input id="opd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'<span id="opd-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
+      +'<div id="opd-preview" style="margin-top:12px"></div>'
+      +'</div>'
+      +'</div></details>';
+  }
+  // ── Fixed cost (recurring monthly costs, e.g. payroll/tax/professional fees) — separate from
+  // both the monthly figures above and the unpaid-invoice tracker above ──
+  {
+    const opexCatsFc=cats.filter(c=>c.kind==='opex');
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Add a Fixed Cost (recurring monthly cost)</summary>'
+      +'<div style="padding:12px 2px 0">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks recurring monthly costs per PT (payroll, taxes, professional fees, utilities, insurance, etc.) as a management estimate — separate from itemized transactions and not tied to a specific month.</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<button id="fcd-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
+      +'<button id="fcd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
+      +'<select id="fcd-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +'<button id="fcd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
+      +'</div>'
+      +'<div id="fcd-single">'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+      +'<select id="fcd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+      +categorySelectHtml('fcd-cat',opexCatsFc.map(c=>c.name),'',inp)
+      +vendorSelectHtml('fcd-vendor','',inp)
+      +'<input id="fcd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
+      +'</div>'
+      +'<input id="fcd-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
+      +'<button id="fcd-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save fixed cost</button>'
+      +'<div id="fcd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+      +'</div>'
+      +'<div id="fcd-bulk" style="display:none">'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Category, Vendor, Description, Amount</b>. Entity must match a PT name, Category an existing cost category, and Vendor an existing vendor name (leave blank for no vendor, or add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
+      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b>: click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
+      +'<button id="fcd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<div><label for="fcd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
+      +'<input id="fcd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
+      +'<span id="fcd-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
+      +'<div id="fcd-preview" style="margin-top:12px"></div>'
+      +'</div>'
+      +'</div></details>';
+  }
+  // ── The bulk-import / one-time-setup sections below are used less often than the four above,
+  // so they sit further down the panel. ──
   // ── Import Transactions — Excel-template bulk import/export, replacing the old raw-document
   // attach + auto-parse flow. Each row is a fully itemized transaction (own Date/Entity/Flow), so a
   // single file can cover many entities and months at once. Same convention as Outstanding
   // Liability/Fixed Cost: download template → fill in Excel → upload → preview flags errors/possible
   // duplicates with fixable dropdowns → confirm import. Insert-only (no per-row "ID"/update mode). ──
-  const inp='padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px;box-sizing:border-box';
-  h+='<details open style="margin:4px 0 22px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Transactions</summary>'
+  h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Transactions</summary>'
     +'<div style="padding:12px 2px 0">'
     +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per transaction (Date, Entity, Flow, Category, Vendor, Description, Amount), then upload — new rows are added to the consolidated numbers immediately. Rows that don\'t match an existing entity/category/vendor, or that look like a possible duplicate, are flagged in the preview before anything is saved.</div>'
     +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
@@ -9083,134 +9239,6 @@ async function renderEntryBody(){
       +'<div id="ebal-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
   }
-  // ── Update Cash Position — Daily (Manual) — a plain per-PT "what's in the bank right now"
-  // number, written straight to entity_cash_position, no bank account setup required. This is
-  // the interim path while Manage Bank Accounts / Import Bank Ledger aren't fully populated yet;
-  // cashPositionCard() prefers a PT's real bank-account balance when accounts exist for it, and
-  // falls back to this manual figure otherwise. ──
-  {
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.dollar()+'Update Cash Position — Daily (Manual)</summary>'
-      +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Type in a PT\'s current cash balance — no bank account setup needed. Update it daily to keep the Cash Position card accurate. This is only used for a PT that has no bank accounts set up under "Manage Bank Accounts" below; once a PT has real accounts, its live balance from those takes over automatically.</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
-      +'<select id="cposd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<input id="cposd-amt" inputmode="numeric" placeholder="Saldo hari ini (IDR)" style="'+inp+'">'
-      +'</div>'
-      +'<button id="cposd-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save cash position</button>'
-      +'<div id="cposd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
-      +'</div></details>';
-  }
-  // ── Update Cash Position — now a per-bank-account correction, not a per-entity snapshot: Cash
-  // Position is computed live from bank_accounts.opening_balance + bank_ledger_entries, so "setting"
-  // it for a PT no longer means anything without picking which specific account. Saving here does
-  // NOT overwrite opening_balance (that would silently hide whatever transaction is actually
-  // missing) — instead it logs the gap as a "Koreksi/Adjustment" bank_ledger_entries row, so the
-  // account's history keeps a visible trail of every manual correction. ──
-  {
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Update Cash Position</summary>'
-      +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Correct a specific bank account\'s current balance when it doesn\'t match the real bank statement — pick the PT, the account, and the real balance as of a date. The difference is logged as a visible "Adjustment" entry in that account\'s ledger, not hidden by overwriting the Opening Balance — use this only for occasional reconciliation, not as the normal way to record activity (that\'s <b>Import Bank Ledger</b> below).</div>'
-      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-      +'<button id="cpos-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
-      +'<button id="cpos-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
-      +'</div>'
-      +'<div id="cpos-single">'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
-      +'<select id="cpos-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<select id="cpos-acct" style="'+inp+'"></select>'
-      +'<input id="cpos-amt" inputmode="numeric" placeholder="Saldo (IDR)" style="'+inp+'">'
-      +'<input id="cpos-date" type="date" style="'+inp+'">'
-      +'</div>'
-      +'<button id="cpos-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save cash position</button>'
-      +'<div id="cpos-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
-      +'</div>'
-      +'<div id="cpos-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns: <b>No. Rekening, New Saldo (IDR), As of Date</b> (optional — defaults to today). Matched by No. Rekening, which must already exist under "Manage Bank Accounts" above — this only corrects an existing account\'s balance, it doesn\'t create new accounts.</div>'
-      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-      +'<button id="cpos-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
-      +'<label for="cpos-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
-      +'<input id="cpos-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
-      +'</div>'
-      +'<span id="cpos-filename" style="font-size:12px;color:#3a4254"></span>'
-      +'<div id="cpos-preview" style="margin-top:12px"></div>'
-      +'</div>'
-      +'</div></details>';
-  }
-  // ── Outstanding payables (unpaid invoices) — separate from the monthly figures above ──
-  {
-    const opexCats=cats.filter(c=>c.kind==='opex');
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Add an Outstanding Liability (unpaid invoice)</summary>'
-      +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks unpaid invoices per PT — separate from the monthly figures above. Mark it paid once the payment shows up in a bank statement (recorded normally via the file upload above).</div>'
-      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-      +'<button id="opd-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
-      +'<button id="opd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
-      +'<select id="opd-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<button id="opd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
-      +'</div>'
-      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:12px"><b>Legacy document links</b> (older rows still using a pasted Google Drive URL instead of a real upload) require the link be shared before a viewer can open it. <button id="opd-migrate" type="button" style="border:0;background:none;color:#9a6f0a;font-weight:700;text-decoration:underline;cursor:pointer;padding:0;font-size:12px">Migrate all Drive links into secure storage</button> pulls every one it can (must be shared "Anyone with the link") into the same private, always-viewable storage the new upload feature uses.<div id="opd-migrate-msg" style="margin-top:6px;min-height:1px"></div></div>'
-      +'<div id="opd-single">'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-      +'<select id="opd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +categorySelectHtml('opd-cat',opexCats.map(c=>c.name),'',inp)
-      +'<select id="opd-freq" style="'+inp+'"><option value="OTP">OTP — One Time Payment</option><option value="REC">REC — Monthly Payment</option><option value="PRG">PRG — By Progress</option></select>'
-      +'<input id="opd-invno" placeholder="Invoice number" style="'+inp+'">'
-      +vendorSelectHtml('opd-vendor','',inp)
-      +'<input id="opd-inv" type="date" aria-label="Invoice date" style="'+inp+'">'
-      +'<input id="opd-due" type="date" aria-label="Due date" style="'+inp+'">'
-      +'<input id="opd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
-      +'</div>'
-      +'<input id="opd-desc" placeholder="Transaction description" style="'+inp+';width:100%;margin-bottom:8px">'
-      +'<input id="opd-docurl" placeholder="Document link (optional, e.g. Google Drive/Dropbox URL to the invoice)" style="'+inp+';width:100%;margin-bottom:10px">'
-      +'<button id="opd-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save outstanding</button>'
-      +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
-      +'</div>'
-      +'<div id="opd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name, Category an existing cost category, and Vendor an existing vendor name (add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment), REC (monthly payment), or PRG (paid by project progress/milestone); defaults to OTP if left blank or unrecognized.</div>'
-      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b> (e.g. correcting Frequency for many rows at once): click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
-      +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
-      +'<div><label for="opd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
-      +'<input id="opd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
-      +'<span id="opd-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
-      +'<div id="opd-preview" style="margin-top:12px"></div>'
-      +'</div>'
-      +'</div></details>';
-  }
-  // ── Fixed cost (recurring monthly costs, e.g. payroll/tax/professional fees) — separate from
-  // both the monthly figures above and the unpaid-invoice tracker above ──
-  {
-    const opexCatsFc=cats.filter(c=>c.kind==='opex');
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Add a Fixed Cost (recurring monthly cost)</summary>'
-      +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks recurring monthly costs per PT (payroll, taxes, professional fees, utilities, insurance, etc.) as a management estimate — separate from itemized transactions and not tied to a specific month.</div>'
-      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-      +'<button id="fcd-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
-      +'<button id="fcd-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
-      +'<select id="fcd-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<button id="fcd-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
-      +'</div>'
-      +'<div id="fcd-single">'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-      +'<select id="fcd-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +categorySelectHtml('fcd-cat',opexCatsFc.map(c=>c.name),'',inp)
-      +vendorSelectHtml('fcd-vendor','',inp)
-      +'<input id="fcd-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
-      +'</div>'
-      +'<input id="fcd-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
-      +'<button id="fcd-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save fixed cost</button>'
-      +'<div id="fcd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
-      +'</div>'
-      +'<div id="fcd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Category, Vendor, Description, Amount</b>. Entity must match a PT name, Category an existing cost category, and Vendor an existing vendor name (leave blank for no vendor, or add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
-      +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b>: click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
-      +'<button id="fcd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
-      +'<div><label for="fcd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
-      +'<input id="fcd-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
-      +'<span id="fcd-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
-      +'<div id="fcd-preview" style="margin-top:12px"></div>'
-      +'</div>'
-      +'</div></details>';
-  }
   // ── Replace Period Import (admin) — wholesale replace of a single entity's transactions for a
   // single period, instead of the bank-book flow's "append + heuristic dedup" (which is what let a
   // re-uploaded file insert the same row twice — see the June duplicate-payment incident). Deletes
@@ -9242,31 +9270,6 @@ async function renderEntryBody(){
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer">💵 Record a Payment</summary>'
       +'<div id="opp-wrap" style="padding:12px 2px 0">'
       +oppPickerHtml(openOP,inp)
-      +'</div></details>';
-  }
-  // ── Add a Daily Payment Plan — a proposed payment finance wants to make, which only becomes
-  // "Approved" once 5 designated approvers (see Manage Approvers below) sign off from the dashboard.
-  // A single rejection is a hard veto (status flips to Rejected immediately) — see
-  // recompute_payment_plan_status() in the DB. Reaching Approved does NOT create a transaction —
-  // the actual payment is still recorded separately, later, via Import Transactions/Bank Ledger. ──
-  {
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.check()+'Add a Daily Payment Plan</summary>'
-      +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Propose a payment for management to approve from the dashboard — needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved, and any single rejection cancels it. This only tracks the plan/approval status; the actual payment is still recorded separately once it happens.</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-      +'<select id="dpp-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<input id="dpp-date" type="date" aria-label="Plan date" style="'+inp+'">'
-      +'<input id="dpp-due" type="date" aria-label="Due date" style="'+inp+'">'
-      +vendorSelectHtml('dpp-vendor','',inp)
-      +categorySelectHtml('dpp-cat',OPEX_CATS_G||[],'',inp)
-      +'<input id="dpp-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
-      +'</div>'
-      +'<input id="dpp-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
-      +'<div style="margin-bottom:10px"><label for="dpp-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Attach document (optional, e.g. invoice)</label>'
-      +'<input id="dpp-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.webp" style="display:none">'
-      +'<span id="dpp-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
-      +'<button id="dpp-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Submit for approval</button>'
-      +'<div id="dpp-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
   }
   // ── Manage Categories (admin) — add/rename/delete rows in `categories`, cascading a rename
