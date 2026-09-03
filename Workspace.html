@@ -3407,6 +3407,9 @@ function paymentPlanStatusBadge(p){
 function isActiveApprover(email,entityCode){
   return PAYMENT_APPROVERS.some(a=>a.email===email&&a.active&&(a.entities||[]).includes(entityCode));
 }
+function approversForEntity(entityCode){
+  return PAYMENT_APPROVERS.filter(a=>a.active&&(a.entities||[]).includes(entityCode));
+}
 function isApproverAnywhere(email){
   return PAYMENT_APPROVERS.some(a=>a.email===email&&a.active&&(a.entities||[]).length>0);
 }
@@ -3466,10 +3469,14 @@ function paymentPlanRowHtml(p){
     <td class="num">${fmt(p.amt)}</td>
     <td class="num">${p.approvedAmt==null?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
-    <td style="font-size:12px;white-space:nowrap">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${myDecision?` <span style="color:${myDecision.decision==='approved'?'var(--green)':'var(--red)'}">(you: ${myDecision.decision})</span>`:(p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)?` <span style="color:var(--muted)">(you: waiting approval)</span>`:'')}</td>
+    <td style="font-size:12px">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${(()=>{
+      if(p.status!=='pending') return '';
+      const pendingNames=approversForEntity(p.e).filter(a=>!DPP_APPROVALS.some(d=>d.planId===p.id&&d.email===a.email)).map(a=>a.name);
+      return pendingNames.length?`<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Pending: ${escH(pendingNames.join(', '))}</div>`:'';
+    })()}</td>
     <td>${paymentPlanStatusBadge(p)}</td>
     <td style="white-space:nowrap"><a href="#" onclick="event.preventDefault();openPlanThread(${p.id})" style="font-size:12px;color:var(--blue-300);text-decoration:none;font-weight:600">${commentN} comment${commentN===1?'':'s'}</a>${unreadN?` <span style="display:inline-block;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px">${unreadN} new</span>`:''}</td>
-    <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>
+    <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:1px solid #f0cb87;background:#fff4e0;border-radius:999px;cursor:pointer;padding:4px 10px;font-size:16px;font-weight:800;color:#9a6f0a;line-height:1">⋮</button>
       <div id="plan-menu-${p.id}" class="plan-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>
     </td>
   </tr>`;
@@ -3503,6 +3510,13 @@ function openPaymentPlans(){
   }
   h+='</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
+  // Default the horizontal scroll past the Date column, so Status/Approvals/Comment — what
+  // approvers actually need to act on — are visible without scrolling right first.
+  requestAnimationFrame(()=>{
+    const scrollEl=document.querySelector('#mBody .table-scroll');
+    const dateTh=scrollEl&&scrollEl.querySelector('thead th');
+    if(scrollEl&&dateTh) scrollEl.scrollLeft=dateTh.getBoundingClientRect().width;
+  });
 }
 function openApproveAllModal(){
   const list=pendingForMe();
