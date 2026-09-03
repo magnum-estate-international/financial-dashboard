@@ -4757,7 +4757,11 @@ async function saveDoc(table,id,file,backCall){
   try{
     if(file.size>10*1024*1024) throw new Error('File must be under 10MB');
     const rec=cfg.arr().find(r=>r.id===id); if(!rec) throw new Error('Record not found');
-    const path=`${rec.e||rec.entity}/${id}/${Date.now()}_${file.name}`;
+    // Supabase Storage rejects several characters in the object key itself (%, spaces, etc. —
+    // this is what caused "InvalidKey" errors on real filenames like "... 50% jasa ...pdf").
+    // Sanitize only the storage path; the original filename is kept as-is for display via `name`.
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`${rec.e||rec.entity}/${id}/${Date.now()}_${safeName}`;
     const up=await authedFetch(SB_URL+'/storage/v1/object/'+cfg.bucket+'/'+path.split('/').map(encodeURIComponent).join('/'),
       {method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
     if(!up.ok) throw new Error((await up.text())||('Upload HTTP '+up.status));
