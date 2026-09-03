@@ -3449,6 +3449,7 @@ function paymentPlanRowHtml(p){
   const unreadN=unreadCommentsFor(p.id);
   items.push(menuItem('💬 Discussion',`openPlanThread(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
+  if(canEdit&&p.status!=='approved') items.push(menuItem(ICON.edit()+' Edit',`openEditPlan(${p.id})`));
   if(canEdit) items.push(menuItem(ICON.trash()+' Delete',`deletePaymentPlan(${p.id})`,'var(--red)'));
   const overdue=p.due&&p.status==='pending'&&daysOverdue(p.due)>0;
   const hasDoc=Array.isArray(p.attachments)&&p.attachments.length>0;
@@ -3643,6 +3644,46 @@ async function cancelPaymentPlan(id){
     renderKpiCash(agg());
     openPaymentPlans();
   }catch(e){ alert('Failed to cancel: '+e.message); }
+}
+// Entity is intentionally not editable here — approver scoping is keyed off it, and changing it
+// after the fact would silently invalidate whatever approvals already exist. Everything else about
+// the proposal (dates, vendor, category, amount, description) can be corrected while it's still
+// pending/rejected/cancelled; once Approved, the RLS policy itself blocks any further edit.
+async function openEditPlan(id){
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  await Promise.all([ensureVendorsG(),ensureOpexCatsG()]);
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  let h=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Entity: <b style="color:var(--ink)">${escH(ENT[p.e]?ENT[p.e].name:p.e)}</b> (not editable)</div>`
+    +opeField('Plan date',`<input id="edp-date" type="date" value="${p.date||''}" style="${inp}">`)
+    +opeField('Due date',`<input id="edp-due" type="date" value="${p.due||''}" style="${inp}">`)
+    +opeField('Vendor',vendorSelectHtml('edp-vendor',p.vendor||'',inp))
+    +opeField('Category',categorySelectHtml('edp-cat',OPEX_CATS_G||[],p.category||'',inp))
+    +opeField('Amount Purpose (IDR)',`<input id="edp-amt" inputmode="numeric" value="${p.amt}" style="${inp}">`)
+    +opeField('Description',`<input id="edp-desc" value="${escH(p.desc||'')}" style="${inp}">`)
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveEditPlan(${id})">Save changes</button>`
+    +`<span id="edp-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Payment Plan',h,true);
+}
+async function saveEditPlan(id){
+  const err=document.getElementById('edp-err'); err.textContent='';
+  const date=document.getElementById('edp-date').value;
+  const due=document.getElementById('edp-due').value||null;
+  const vendor=(document.getElementById('edp-vendor').value||'').trim();
+  const category=(document.getElementById('edp-cat').value||'').trim();
+  const amtRaw=(document.getElementById('edp-amt').value||'').replace(/[^0-9]/g,'');
+  const amt=amtRaw===''?NaN:Number(amtRaw);
+  const desc=document.getElementById('edp-desc').value.trim();
+  if(!date) return void(err.textContent='Plan date is required.');
+  if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Amount must be a positive number.');
+  try{
+    const fields={plan_date:date,due_date:due,vendor:vendor||null,category:category||null,amount_idr:amt,description:desc||null};
+    await adminUpdateOne('daily_payment_plans',id,fields);
+    const p=DPP.find(x=>x.id===id);
+    if(p){ p.date=date; p.due=due; p.vendor=vendor||null; p.category=category||null; p.amt=amt; p.desc=desc||null; }
+    closeModal();
+    renderKpiCash(agg());
+    openPaymentPlans();
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
 // Permanently removes the plan row — DB cascade (on delete cascade) takes its approvals,
 // comments, and read-state with it, unlike Cancel above which just flips status and keeps history.
