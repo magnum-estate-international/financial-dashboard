@@ -3449,6 +3449,7 @@ function paymentPlanRowHtml(p){
     }
   }
   if(p.status==='approved'&&!p.paidAt&&canEdit) items.push(menuItem('💰 Mark Paid',`openMarkPlanPaid(${p.id})`,'#2b7a4b'));
+  if(p.paidTxId) items.push(menuItem('🔎 View Opex Transaction',`openTxHistory(${p.paidTxId},'${encodeURIComponent('openPaymentPlans()').replace(/'/g,'%27')}')`));
   const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
   const unreadN=unreadCommentsFor(p.id);
   items.push(menuItem('💬 Discussion',`openPlanThread(${p.id})`));
@@ -3466,7 +3467,10 @@ function paymentPlanRowHtml(p){
     <td style="font-size:12.5px">${escH(eNm)}</td>
     <td style="font-size:12.5px">${escH(p.vendor||'—')}</td>
     <td style="font-size:12.5px">${escH(p.category||'—')}</td>
-    <td style="font-size:12.5px;color:var(--muted)">${escH(p.desc||'—')}${p.sourceOutstandingId?` <span title="Raised from an Outstanding Liability" style="font-size:10px">🔗</span>`:''}</td>
+    <td style="font-size:12.5px;color:var(--muted)">${escH(p.desc||'—')}${p.sourceOutstandingId?(()=>{
+      const so=OUTSTANDING.find(x=>x.id===p.sourceOutstandingId);
+      return so?` <button type="button" title="Raised from an Outstanding Liability — view it" style="border:0;background:none;cursor:pointer;font-size:10px;padding:0" onclick="event.stopPropagation();openOutstandingEntity('${p.e}','${so.status==='paid'?'paid':'open'}')">🔗</button>`:` <span title="Raised from an Outstanding Liability (since deleted)" style="font-size:10px">🔗</span>`;
+    })():''}</td>
     <td class="num">${fmt(p.amt)}</td>
     <td class="num">${p.approvedAmt==null?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
@@ -3713,7 +3717,7 @@ async function doMarkPlanPaid(id){
     const P=periodFromDateG(date);
     const row={source:'DPP_PAID',ord:Math.floor(Date.now()/1000),period_code:P.code,flow:'opex',
       entity_code:p.e,day_label:dayLbl(date),description:(p.desc||p.vendor||'').slice(0,200),raw_label:p.category||'Unknown',
-      vendor:p.vendor||null,source_label:'Daily Payment Plan (paid)',amount_idr:amt,contra:false};
+      vendor:p.vendor||null,source_label:'Daily Payment Plan #'+id+' (paid)',amount_idr:amt,contra:false,source_dpp_id:id};
     const txr=await authedFetch(SB_URL+'/rest/v1/transactions',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify([row])});
     if(!txr.ok) throw new Error((await txr.text())||('HTTP '+txr.status));
     const saved=(await txr.json())[0];
@@ -3733,7 +3737,7 @@ async function doMarkPlanPaid(id){
       const o=OUTSTANDING.find(x=>x.id===p.sourceOutstandingId);
       if(o&&o.remaining>0.5){
         const payAmt=Math.min(amt,o.remaining);
-        await adminAddBatch('outstanding_payments',[{outstanding_id:p.sourceOutstandingId,amount_idr:payAmt,paid_date:date,note:'Paid via Daily Payment Plan #'+id}]);
+        await adminAddBatch('outstanding_payments',[{outstanding_id:p.sourceOutstandingId,amount_idr:payAmt,paid_date:date,note:'Paid via Daily Payment Plan #'+id,source_dpp_id:id}]);
       }
     }
     // Full reload, not just an in-place DPP refetch — the new row also affects the Transactions
@@ -5137,7 +5141,7 @@ async function syncMayLineItemCategory(entity,type,oldCat,newCat,oldAmt,newAmt){
 async function openTxHistory(id,backCall){
   backCall=decodeURIComponent(backCall);
   let row=null;
-  try{ const rows=await sbFetch('transactions?select=created_at,created_by,source,source_label,upload_batch&id=eq.'+id); row=rows[0]; }catch(e){}
+  try{ const rows=await sbFetch('transactions?select=created_at,created_by,source,source_label,upload_batch,source_dpp_id&id=eq.'+id); row=rows[0]; }catch(e){}
   const x=TX.find(t=>t.id===id);
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Transaction Record Info</h4>`;
@@ -5149,6 +5153,7 @@ async function openTxHistory(id,backCall){
       +`<tr><td style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 6px 0">Source</td><td style="font-size:12.5px;padding:6px 0">${escH(row.source_label||row.source||'—')}</td></tr>`
       +`<tr><td style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 6px 0">Batch</td><td style="font-size:12.5px;padding:6px 0;word-break:break-all">${escH(row.upload_batch||'—')}</td></tr>`
       +`</tbody></table>`;
+    if(row.source_dpp_id) h+=`<button class="btn" style="margin-top:12px;background:#eef0f4;color:var(--ink);border:0" onclick="closeModal();openPlanThread(${row.source_dpp_id})">🔗 View Daily Payment Plan #${row.source_dpp_id}</button>`;
   } else {
     h+=`<p style="color:var(--muted);font-size:12.5px">Could not load record info for this transaction.</p>`;
   }
@@ -5193,6 +5198,10 @@ function outstandingRowHtml(o){
   let statusCell;
   const items=[];
   if(canEdit) items.push(menuItem(ICON.history()+' History',`openOutstandingHistory(${o.id},'${o.e}','${OPE_TAB}')`));
+  // Shown regardless of paid/open status — once a liability is settled via a Daily Payment Plan
+  // it should stay traceable to that plan forever, not just while it was still open.
+  const linkedPlan=DPP.find(p=>p.sourceOutstandingId===o.id&&p.status!=='rejected'&&p.status!=='cancelled');
+  if(canEdit&&linkedPlan) items.push(menuItem('🔗 View Payment Plan',`openPlanThread(${linkedPlan.id})`));
   if(o.status==='paid'){
     statusCell=`<span style="color:var(--green);font-weight:700">Paid on ${o.paidDate}</span>`;
     if(canEdit) items.push(menuItem(ICON.undo()+' Undo last payment',`reopenOutstanding(${o.id},'${o.e}')`));
@@ -5200,12 +5209,7 @@ function outstandingRowHtml(o){
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${overdueLabel(o.due,od)}</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
     if(canEdit) items.push(menuItem(ICON.dollar()+' Mark Paid',`openMarkPaidQuick(${o.id},'${o.e}','${OPE_TAB}')`));
-    if(canEdit){
-      const linked=DPP.some(p=>p.sourceOutstandingId===o.id&&p.status!=='rejected'&&p.status!=='cancelled');
-      items.push(linked
-        ? menuItem('✓ In Payment Plan',`viewPlansFor('${o.e}')`)
-        : menuItem('→ Add to Payment Plan',`openAddToPaymentPlan(${o.id})`));
-    }
+    if(canEdit&&!linkedPlan) items.push(menuItem('→ Add to Payment Plan',`openAddToPaymentPlan(${o.id})`));
   }
   // Document: an uploaded file (attachments) always wins over the legacy external link — real
   // upload replaced the old "paste a Drive link" field, which required the link be shared before
@@ -7290,8 +7294,8 @@ async function openOutstandingHistory(id,entityId,tab){
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOutstandingEntity('${entityId}','${tab}')">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(o?o.vendor:'')}${o&&o.invNo?` (Inv# ${escH(o.invNo)})`:''} — Payment History</h4>`;
   if(o) h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Invoice amount: <b style="color:var(--ink)">${fmt(o.amt)}</b> &nbsp;·&nbsp; Paid so far: <b style="color:var(--green)">${fmt(o.paidAmt)}</b> &nbsp;·&nbsp; Remaining: <b style="color:${o.remaining>0?'var(--red)':'var(--green)'}">${fmt(o.remaining)}</b></div>`;
-  h+=`<table><thead><tr><th>Date</th><th>Note</th><th class="num" style="text-align:right">Amount (IDR)</th></tr></thead><tbody>`
-    +(pays.length?pays.map(p=>`<tr><td style="font-size:12.5px;white-space:nowrap">${p.paid_date}</td><td style="font-size:12.5px">${escH(p.note||'—')}</td><td class="num" style="text-align:right">${fmt(+p.amount_idr)}</td></tr>`).join(''):`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No payments recorded yet</td></tr>`)
+  h+=`<table><thead><tr><th>Date</th><th>Note</th><th class="num" style="text-align:right">Amount (IDR)</th><th></th></tr></thead><tbody>`
+    +(pays.length?pays.map(p=>`<tr><td style="font-size:12.5px;white-space:nowrap">${p.paid_date}</td><td style="font-size:12.5px">${escH(p.note||'—')}</td><td class="num" style="text-align:right">${fmt(+p.amount_idr)}</td><td style="white-space:nowrap">${p.source_dpp_id?`<button type="button" style="border:0;background:none;cursor:pointer;color:var(--blue-300);font-size:11.5px;font-weight:600;padding:0" onclick="closeModal();openPlanThread(${p.source_dpp_id})">🔗 Plan #${p.source_dpp_id}</button>`:''}</td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No payments recorded yet</td></tr>`)
     +`</tbody></table>`;
   showModal('Payment History',h);
 }
