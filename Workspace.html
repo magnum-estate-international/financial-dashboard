@@ -3497,12 +3497,38 @@ function togglePlanRowMenu(id,btnEl){
 function pendingForMe(){
   return paymentPlansInScope().filter(p=>p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL));
 }
+// Column-filter state for the Daily Payment Plan list — persists across reopens within the
+// session (like the rest of the filter bar), reset only via the explicit "Clear filters" link.
+let DPP_FILTER={entity:'',vendor:'',category:'',status:''};
+function setDppFilter(key,val){ DPP_FILTER[key]=val; openPaymentPlans(); }
+function clearDppFilters(){ DPP_FILTER={entity:'',vendor:'',category:'',status:''}; openPaymentPlans(); }
 function openPaymentPlans(){
-  const rows=paymentPlansInScope().slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const scoped=paymentPlansInScope();
+  let rows=scoped.slice();
+  if(DPP_FILTER.entity) rows=rows.filter(p=>p.e===DPP_FILTER.entity);
+  if(DPP_FILTER.vendor) rows=rows.filter(p=>(p.vendor||'')===DPP_FILTER.vendor);
+  if(DPP_FILTER.category) rows=rows.filter(p=>(p.category||'')===DPP_FILTER.category);
+  if(DPP_FILTER.status) rows=rows.filter(p=>p.status===DPP_FILTER.status);
+  rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const mine=pendingForMe();
-  let h=mine.length?`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button></div>`:'';
+  // Options are built from the full in-scope set (not the already-filtered `rows`), so picking one
+  // filter never makes another filter's other options disappear.
+  const entOpts=[...new Set(scoped.map(p=>p.e))].sort((a,b)=>(ENT[a]?ENT[a].name:a).localeCompare(ENT[b]?ENT[b].name:b));
+  const vendorOpts=[...new Set(scoped.map(p=>p.vendor).filter(Boolean))].sort();
+  const catOpts=[...new Set(scoped.map(p=>p.category).filter(Boolean))].sort();
+  const statusOpts=[['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['cancelled','Cancelled']];
+  const selStyle='padding:6px 10px;border:1px solid #e4e7ef;border-radius:8px;font-size:12px;background:#fff;color:#3a4254';
+  const anyFilter=DPP_FILTER.entity||DPP_FILTER.vendor||DPP_FILTER.category||DPP_FILTER.status;
+  let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">`
+    +`<select style="${selStyle}" onchange="setDppFilter('entity',this.value)"><option value="">All Entities</option>${entOpts.map(id=>`<option value="${id}"${DPP_FILTER.entity===id?' selected':''}>${escH(ENT[id]?ENT[id].name:id)}</option>`).join('')}</select>`
+    +`<select style="${selStyle}" onchange="setDppFilter('vendor',this.value)"><option value="">All Vendors</option>${vendorOpts.map(v=>`<option value="${escH(v)}"${DPP_FILTER.vendor===v?' selected':''}>${escH(v)}</option>`).join('')}</select>`
+    +`<select style="${selStyle}" onchange="setDppFilter('category',this.value)"><option value="">All Categories</option>${catOpts.map(c=>`<option value="${escH(c)}"${DPP_FILTER.category===c?' selected':''}>${escH(c)}</option>`).join('')}</select>`
+    +`<select style="${selStyle}" onchange="setDppFilter('status',this.value)"><option value="">All Status</option>${statusOpts.map(([v,lab])=>`<option value="${v}"${DPP_FILTER.status===v?' selected':''}>${lab}</option>`).join('')}</select>`
+    +(anyFilter?`<button type="button" onclick="clearDppFilters()" style="border:0;background:none;color:var(--blue-300);font-size:12px;font-weight:700;cursor:pointer">Clear filters</button>`:'')
+    +(mine.length?`<button class="btn" style="background:#2b7a4b;color:#fff;border:0;margin-left:auto" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button>`:'')
+    +`</div>`;
   h+='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead><tbody>';
-  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.</td></tr>';
+  h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):`<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">${anyFilter?'No payment plans match these filters.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</td></tr>`;
   if(rows.length){
     const totPurpose=rows.reduce((s,p)=>s+p.amt,0);
     const totApprove=rows.reduce((s,p)=>s+(p.approvedAmt!=null?p.approvedAmt:0),0);
