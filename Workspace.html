@@ -3466,7 +3466,7 @@ function paymentPlanRowHtml(p){
     <td style="font-size:12.5px">${escH(eNm)}</td>
     <td style="font-size:12.5px">${escH(p.vendor||'—')}</td>
     <td style="font-size:12.5px">${escH(p.category||'—')}</td>
-    <td style="font-size:12.5px;color:var(--muted)">${escH(p.desc||'—')}</td>
+    <td style="font-size:12.5px;color:var(--muted)">${escH(p.desc||'—')}${p.sourceOutstandingId?` <span title="Raised from an Outstanding Liability" style="font-size:10px">🔗</span>`:''}</td>
     <td class="num">${fmt(p.amt)}</td>
     <td class="num">${p.approvedAmt==null?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
@@ -3726,11 +3726,69 @@ async function doMarkPlanPaid(id){
         financing_in:Number(c.financing_in||0),financing_out:Number(c.financing_out||0)})});
     if(!ptr.ok) throw new Error('Recorded the transaction, but failed to update the headline total: '+((await ptr.text())||('HTTP '+ptr.status)));
     await adminUpdateOne('daily_payment_plans',id,{paid_at:new Date().toISOString(),paid_by:MY_EMAIL,paid_tx_id:saved.id});
+    // If this plan was raised from an Outstanding Liability, settle that invoice too — capped at
+    // whatever remains on it right now (it may have shrunk via a separate direct payment since the
+    // plan was created), so the two ledgers never disagree even if the amounts have drifted.
+    if(p.sourceOutstandingId){
+      const o=OUTSTANDING.find(x=>x.id===p.sourceOutstandingId);
+      if(o&&o.remaining>0.5){
+        const payAmt=Math.min(amt,o.remaining);
+        await adminAddBatch('outstanding_payments',[{outstanding_id:p.sourceOutstandingId,amount_idr:payAmt,paid_date:date,note:'Paid via Daily Payment Plan #'+id}]);
+      }
+    }
     // Full reload, not just an in-place DPP refetch — the new row also affects the Transactions
-    // list and any Opex breakdown/chart derived from TX, not just this plan's own status.
+    // list, any Opex breakdown/chart derived from TX, and possibly the linked Outstanding Liability.
     alert('Marked as paid and added to Opex. The page will now refresh.');
     location.reload();
   }catch(e){ btn.disabled=false; btn.textContent='Mark as Paid & Add to Opex'; err.textContent='Failed to save: '+e.message; }
+}
+function viewPlansFor(e){ DPP_FILTER={entity:e,vendor:'',category:'',status:''}; openPaymentPlans(); }
+// ── Add to Payment Plan — lets finance raise a Daily Payment Plan straight from an existing
+// Outstanding Liability, carrying its vendor/category/description/remaining across, without
+// duplicating the liability record itself. Entity is fixed to the invoice's own entity, same
+// reasoning as elsewhere: approver scoping is keyed off it. ──
+async function openAddToPaymentPlan(outstandingId){
+  const o=OUTSTANDING.find(x=>x.id===outstandingId); if(!o) return;
+  await Promise.all([ensureVendorsG(),ensureOpexCatsG()]);
+  const today=new Date().toISOString().slice(0,10);
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">From Outstanding Liability — ${escH(ENT[o.e]?ENT[o.e].name:o.e)}, remaining <b style="color:var(--ink)">${fmt(o.remaining)}</b> of ${fmt(o.amt)}.</div>`;
+  h+=opeField('Plan date',`<input id="atp-date" type="date" value="${today}" style="${inp}">`)
+    +opeField('Due date',`<input id="atp-due" type="date" value="${o.due||''}" style="${inp}">`)
+    +opeField('Vendor',vendorSelectHtml('atp-vendor',o.vendor||'',inp))
+    +opeField('Category',categorySelectHtml('atp-cat',OPEX_CATS_G||[],o.cat||'',inp))
+    +opeField('Amount Purpose (IDR)',`<input id="atp-amt" inputmode="numeric" value="${Math.round(o.remaining)}" style="${inp}">`)
+    +opeField('Description',`<input id="atp-desc" value="${escH(o.desc||'')}" style="${inp}">`)
+    +`<button id="atp-send" class="btn" style="background:#d9a92c;color:#2a1c02;border:0" onclick="saveAddToPaymentPlan(${outstandingId})">Submit for approval</button>`
+    +`<span id="atp-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Add to Daily Payment Plan',h,true);
+}
+async function saveAddToPaymentPlan(outstandingId){
+  const err=document.getElementById('atp-err'); err.textContent='';
+  const btn=document.getElementById('atp-send');
+  const o=OUTSTANDING.find(x=>x.id===outstandingId); if(!o) return;
+  const date=document.getElementById('atp-date').value;
+  const due=document.getElementById('atp-due').value||null;
+  const vendor=(document.getElementById('atp-vendor').value||'').trim();
+  const category=(document.getElementById('atp-cat').value||'').trim();
+  const amtRaw=(document.getElementById('atp-amt').value||'').replace(/[^0-9]/g,'');
+  const amt=amtRaw===''?NaN:Number(amtRaw);
+  const desc=document.getElementById('atp-desc').value.trim();
+  if(!date) return void(err.textContent='Pick a plan date.');
+  if(!category) return void(err.textContent='Category is required.');
+  if(!desc) return void(err.textContent='Description is required.');
+  if(!amt||amt<=0) return void(err.textContent='Enter a valid amount.');
+  btn.disabled=true; btn.textContent='Submitting…';
+  try{
+    const row={entity_code:o.e,plan_date:date,due_date:due,vendor:vendor||null,category,description:desc,
+      amount_idr:amt,requested_by:MY_EMAIL,status:'pending',source_outstanding_id:outstandingId};
+    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plans',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify([row])});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const saved=(await r.json())[0];
+    DPP.unshift(mkDpp(saved));
+    closeModal();
+    viewPlansFor(o.e);
+  }catch(e){ btn.disabled=false; btn.textContent='Submit for approval'; err.textContent='Failed to save: '+e.message; }
 }
 // Entity is intentionally not editable here — approver scoping is keyed off it, and changing it
 // after the fact would silently invalidate whatever approvals already exist. Everything else about
@@ -5142,6 +5200,12 @@ function outstandingRowHtml(o){
     const od=daysOverdue(o.due);
     statusCell=od>0?`<span style="color:var(--red);font-weight:700">${overdueLabel(o.due,od)}</span>`:(od===0?`<span style="color:var(--amber);font-weight:700">Due today</span>`:`<span style="color:var(--muted)">Not yet due</span>`);
     if(canEdit) items.push(menuItem(ICON.dollar()+' Mark Paid',`openMarkPaidQuick(${o.id},'${o.e}','${OPE_TAB}')`));
+    if(canEdit){
+      const linked=DPP.some(p=>p.sourceOutstandingId===o.id&&p.status!=='rejected'&&p.status!=='cancelled');
+      items.push(linked
+        ? menuItem('✓ In Payment Plan',`viewPlansFor('${o.e}')`)
+        : menuItem('→ Add to Payment Plan',`openAddToPaymentPlan(${o.id})`));
+    }
   }
   // Document: an uploaded file (attachments) always wins over the legacy external link — real
   // upload replaced the old "paste a Drive link" field, which required the link be shared before
@@ -7724,7 +7788,7 @@ function mkApprover(r,approverEntities){
   const entities=(approverEntities||[]).filter(e=>e.approver_email===r.email).map(e=>e.entity_code);
   return {email:r.email,name:r.name||r.email,active:r.is_active!==false,entities};
 }
-function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[],paidAt:r.paid_at||null,paidBy:r.paid_by||null,paidTxId:r.paid_tx_id||null}; }
+function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[],paidAt:r.paid_at||null,paidBy:r.paid_by||null,paidTxId:r.paid_tx_id||null,sourceOutstandingId:r.source_outstanding_id||null}; }
 function mkDppComment(r){ return {id:r.id,planId:r.plan_id,email:r.author_email,body:r.body,createdAt:r.created_at}; }
 function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr}; }
 let INTERCOMPANY=[];
