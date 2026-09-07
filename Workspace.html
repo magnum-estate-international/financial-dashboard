@@ -3397,7 +3397,7 @@ function paymentPlanCard(){
     </div>`;
 }
 function paymentPlanStatusBadge(p){
-  if(p.status==='approved') return `<span style="color:var(--green);font-weight:700">Approved</span>`;
+  if(p.status==='approved') return p.paidAt?`<span style="color:var(--green);font-weight:700">Paid</span>`:`<span style="color:var(--green);font-weight:700">Approved</span>`;
   if(p.status==='rejected') return `<span style="color:var(--red);font-weight:700">Rejected</span>`;
   if(p.status==='cancelled') return `<span style="color:var(--muted);font-weight:700">Cancelled</span>`;
   return `<span style="color:#9a6f0a;font-weight:700">Pending</span>`;
@@ -3448,12 +3448,13 @@ function paymentPlanRowHtml(p){
       items.push(menuItem('✓ Change to Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
     }
   }
+  if(p.status==='approved'&&!p.paidAt&&canEdit) items.push(menuItem('💰 Mark Paid',`openMarkPlanPaid(${p.id})`,'#2b7a4b'));
   const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
   const unreadN=unreadCommentsFor(p.id);
   items.push(menuItem('💬 Discussion',`openPlanThread(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
   if(canEdit&&p.status!=='approved') items.push(menuItem(ICON.edit()+' Edit',`openEditPlan(${p.id})`));
-  if(canEdit) items.push(menuItem(ICON.trash()+' Delete',`deletePaymentPlan(${p.id})`,'var(--red)'));
+  if(canEdit&&!p.paidAt) items.push(menuItem(ICON.trash()+' Delete',`deletePaymentPlan(${p.id})`,'var(--red)'));
   const overdue=p.due&&p.status==='pending'&&daysOverdue(p.due)>0;
   const hasDoc=Array.isArray(p.attachments)&&p.attachments.length>0;
   let docCell='<td></td>';
@@ -3685,10 +3686,56 @@ async function cancelPaymentPlan(id){
     openPaymentPlans();
   }catch(e){ alert('Failed to cancel: '+e.message); }
 }
+// Mark Paid — books the plan into Opex the same way "Update Transaction" does (insert one
+// transactions row + patch entity_period_totals additively) and links the created transaction
+// back onto the plan via paid_tx_id, so it can never be booked twice. Uses Amount Approve when
+// a partial approval was recorded, else the full Amount Purpose.
+function openMarkPlanPaid(id){
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  const today=new Date().toISOString().slice(0,10);
+  const amt=p.approvedAmt!=null?p.approvedAmt:p.amt;
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')}<br>Will be recorded as an Opex transaction of <b style="color:var(--ink)">${fmt(amt)}</b> under category <b style="color:var(--ink)">${escH(p.category||'—')}</b>.</div>`;
+  h+=opeField('Payment date',`<input id="mpp-date" type="date" value="${today}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button id="mpp-send" class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="doMarkPlanPaid(${id})">Mark as Paid &amp; Add to Opex</button>`
+    +`<span id="mpp-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Mark as Paid',h);
+}
+async function doMarkPlanPaid(id){
+  const err=document.getElementById('mpp-err'); err.textContent='';
+  const btn=document.getElementById('mpp-send');
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  if(p.paidAt) return void(err.textContent='This plan was already marked paid.');
+  const date=document.getElementById('mpp-date').value;
+  if(!date) return void(err.textContent='Pick a payment date.');
+  const amt=p.approvedAmt!=null?p.approvedAmt:p.amt;
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const P=periodFromDateG(date);
+    const row={source:'DPP_PAID',ord:Math.floor(Date.now()/1000),period_code:P.code,flow:'opex',
+      entity_code:p.e,day_label:dayLbl(date),description:(p.desc||p.vendor||'').slice(0,200),raw_label:p.category||'Unknown',
+      vendor:p.vendor||null,source_label:'Daily Payment Plan (paid)',amount_idr:amt,contra:false};
+    const txr=await authedFetch(SB_URL+'/rest/v1/transactions',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify([row])});
+    if(!txr.ok) throw new Error((await txr.text())||('HTTP '+txr.status));
+    const saved=(await txr.json())[0];
+    const cur=await sbFetch('entity_period_totals?entity_code=eq.'+p.e+'&period_code=eq.'+P.code+'&select=revenue,opex,financing_in,financing_out');
+    const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
+    const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+      headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify({entity_code:p.e,period_code:P.code,
+        revenue:Number(c.revenue||0),opex:Number(c.opex||0)+amt,
+        financing_in:Number(c.financing_in||0),financing_out:Number(c.financing_out||0)})});
+    if(!ptr.ok) throw new Error('Recorded the transaction, but failed to update the headline total: '+((await ptr.text())||('HTTP '+ptr.status)));
+    await adminUpdateOne('daily_payment_plans',id,{paid_at:new Date().toISOString(),paid_by:MY_EMAIL,paid_tx_id:saved.id});
+    // Full reload, not just an in-place DPP refetch — the new row also affects the Transactions
+    // list and any Opex breakdown/chart derived from TX, not just this plan's own status.
+    alert('Marked as paid and added to Opex. The page will now refresh.');
+    location.reload();
+  }catch(e){ btn.disabled=false; btn.textContent='Mark as Paid & Add to Opex'; err.textContent='Failed to save: '+e.message; }
+}
 // Entity is intentionally not editable here — approver scoping is keyed off it, and changing it
 // after the fact would silently invalidate whatever approvals already exist. Everything else about
 // the proposal (dates, vendor, category, amount, description) can be corrected while it's still
-// pending/rejected/cancelled; once Approved, the RLS policy itself blocks any further edit.
+// pending/rejected/cancelled; the Edit menu item itself is hidden once Approved (see paymentPlanRowHtml).
 async function openEditPlan(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
   await Promise.all([ensureVendorsG(),ensureOpexCatsG()]);
@@ -7677,7 +7724,7 @@ function mkApprover(r,approverEntities){
   const entities=(approverEntities||[]).filter(e=>e.approver_email===r.email).map(e=>e.entity_code);
   return {email:r.email,name:r.name||r.email,active:r.is_active!==false,entities};
 }
-function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[]}; }
+function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[],paidAt:r.paid_at||null,paidBy:r.paid_by||null,paidTxId:r.paid_tx_id||null}; }
 function mkDppComment(r){ return {id:r.id,planId:r.plan_id,email:r.author_email,body:r.body,createdAt:r.created_at}; }
 function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr}; }
 let INTERCOMPANY=[];
