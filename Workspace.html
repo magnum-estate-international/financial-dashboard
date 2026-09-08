@@ -7322,63 +7322,6 @@ async function openOutstandingHistory(id,entityId,tab){
     +`</tbody></table>`;
   showModal('Payment History',h);
 }
-// ── Record-a-Payment picker (used by the Update Data panel, supports partial payments) ──
-function oppPickerHtml(openOP,inp){
-  if(!openOP.length) return '<div style="font-size:12.5px;color:#3a4254">No open outstanding liabilities to record a payment against.</div>';
-  return '<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Supports partial payments — enter less than the remaining balance and the invoice stays open with the updated balance.</div>'
-    +'<select id="opp-pick" style="'+inp+';width:100%;margin-bottom:8px" onchange="onOppPick()">'
-      +openOP.map(o=>{
-        const remaining=Number(o.amount_idr)-Number(o.paid_amount_idr||0);
-        const entName=ENT[o.entity_code]?ENT[o.entity_code].name:o.entity_code;
-        return '<option value="'+o.id+'" data-remaining="'+remaining+'">'+escH(entName)+' — '+(o.invoice_number?'Inv# '+escH(o.invoice_number)+' — ':'')+escH(o.vendor_name)+' — '+escH(o.description)+' — remaining IDR '+fmtIDR(remaining)+' (due '+o.due_date+')</option>';
-      }).join('')
-    +'</select>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
-      +'<input id="opp-amt" inputmode="numeric" placeholder="Payment amount (IDR)" style="'+inp+'">'
-      +'<input id="opp-date" type="date" aria-label="Payment date" style="'+inp+'">'
-    +'</div>'
-    +'<input id="opp-note" placeholder="Note (optional)" style="'+inp+';width:100%;margin-bottom:10px">'
-    +'<button id="opp-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Record payment</button>'
-    +'<div id="opp-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
-}
-function onOppPick(){
-  const pick=document.getElementById('opp-pick'), amtEl=document.getElementById('opp-amt');
-  if(!pick||!amtEl||!pick.selectedOptions[0]) return;
-  amtEl.value=pick.selectedOptions[0].dataset.remaining;
-}
-function wireOppPicker(inp){
-  onOppPick();
-  const btn=document.getElementById('opp-send');
-  if(btn) btn.onclick=()=>doRecordOutstandingPayment(inp);
-}
-async function doRecordOutstandingPayment(inp){
-  const btn=document.getElementById('opp-send'), pick=document.getElementById('opp-pick'),
-    amtEl=document.getElementById('opp-amt'), dateEl=document.getElementById('opp-date'), noteEl=document.getElementById('opp-note'),
-    msg=document.getElementById('opp-msg');
-  if(!btn||!pick) return;
-  msg.style.color='#b3261e'; msg.textContent='';
-  const id=pick.value, amt=Number(amtEl.value), date=dateEl.value;
-  const remaining=Number(pick.selectedOptions[0].dataset.remaining);
-  if(!amt||amt<=0) return void(msg.textContent='Enter a valid payment amount.');
-  if(!date) return void(msg.textContent='Pick a payment date.');
-  if(amt>remaining+0.5) return void(msg.textContent='Payment exceeds the remaining balance of IDR '+fmtIDR(remaining)+'.');
-  btn.disabled=true; btn.textContent='Saving…';
-  try{
-    await adminAddBatch('outstanding_payments',[{outstanding_id:Number(id),amount_idr:amt,paid_date:date,note:(noteEl.value||'').trim()||null}]);
-    const fresh=await sbFetch('outstanding_payables?select=*&order=due_date');
-    OUTSTANDING=fresh.map(mkOutstanding);
-    sbFetchAll('outstanding_payments?select=*').then(p=>{ OUTSTANDING_PAYMENTS=p; renderOutstandingTrendChart(); }).catch(()=>{});
-    renderKpiFin(agg());
-    const stillOpen=fresh.filter(o=>o.status==='open');
-    const wrap=document.getElementById('opp-wrap');
-    wrap.innerHTML=stillOpen.length?oppPickerHtml(stillOpen,inp):'<div style="font-size:12.5px;color:#2b7a4b">✓ Payment recorded. No more open outstanding liabilities.</div>';
-    if(stillOpen.length){ wireOppPicker(inp); const m=document.getElementById('opp-msg'); m.style.color='#2b7a4b'; m.textContent='✓ Payment recorded.'; }
-  }catch(e){
-    msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message;
-    btn.disabled=false; btn.textContent='Record payment';
-  }
-}
-
 // ─── DASHBOARD OVERVIEW PANELS (Financial Health / Cash In-Out / Revenue by Entity /
 // Top Expense Categories / Outstanding Aging / Inter-Company Summary) — every figure here is
 // derived from data already computed elsewhere on this dashboard (agg(), effMonth(), OUTSTANDING,
@@ -9518,15 +9461,6 @@ async function renderEntryBody(){
       +'<div id="rpi-preview" style="margin-top:14px"></div>'
       +'</div></details>';
   }
-  // ── Record a payment against an outstanding payable (supports partial payments) ──
-  {
-    let openOP=[];
-    try{ openOP=await sbFetch('outstanding_payables?select=*&status=eq.open&order=due_date'); }catch(e){}
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer">💵 Record a Payment</summary>'
-      +'<div id="opp-wrap" style="padding:12px 2px 0">'
-      +oppPickerHtml(openOP,inp)
-      +'</div></details>';
-  }
   // ── Manage Categories (admin) — add/rename/delete rows in `categories`, cascading a rename
   // across transactions/line_items/category_aliases since raw_label has no FK to categories.name.
   if(IS_ADMIN){
@@ -10314,7 +10248,6 @@ async function renderEntryBody(){
   }
   // ── Wire the "Replace Period Import" box ──
   if(IS_ADMIN) wireReplacePeriodImport();
-  wireOppPicker(inp);
   if(IS_ADMIN){ renderCategoriesBody(); renderVendorsBody(); }
   body.querySelectorAll('.ap').forEach(btn=>btn.onclick=async()=>{
     btn.disabled=true; btn.textContent='…';
