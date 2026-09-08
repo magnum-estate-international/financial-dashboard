@@ -5901,9 +5901,18 @@ async function saveTxOne(){
   if(!category) return void(msg.style.color='#b3261e', msg.textContent='Category is required.');
   if(!desc) return void(msg.style.color='#b3261e', msg.textContent='Description is required.');
   if(!amt||amt<=0||!isFinite(amt)) return void(msg.style.color='#b3261e', msg.textContent='Amount must be a positive number.');
+  const P=periodFromDateG(date);
+  // Same soft duplicate check the Excel importer already runs (matching entity/period/flow/
+  // category/vendor/amount/description against every transaction already loaded) — this path had
+  // no such guard at all, so a Mark Paid transaction (or an earlier manual entry) re-typed here by
+  // hand would silently double-count with no warning.
+  const dup=findDuplicateTx(TX,{entityMatch:entity,period:P.code,flowKey:flow,category,vendor,amt,desc});
+  if(dup){
+    const srcNote=dup.srcLabel?' (source: '+dup.srcLabel+')':'';
+    if(!confirm('A very similar transaction already exists — '+dup.d+' · '+(dup.k||'—')+' · '+(dup.vendor||'—')+' · '+fmt(dup.amt)+' · "'+dup.desc+'"'+srcNote+'.\n\nSave this one anyway?')) return;
+  }
   btn.disabled=true; btn.textContent='Saving…';
   try{
-    const P=periodFromDateG(date);
     const row={source:'TX_SINGLE',ord:Math.floor(Date.now()/1000),period_code:P.code,flow,
       entity_code:entity,day_label:dayLbl(date),description:desc.slice(0,200),raw_label:category,
       vendor:vendor||null,source_label:'Manual entry',amount_idr:amt,contra:false};
