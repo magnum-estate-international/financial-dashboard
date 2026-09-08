@@ -3603,7 +3603,11 @@ function openPlanThread(id){
   };
   const decisions=DPP_APPROVALS.filter(a=>a.planId===id).map(d=>({ts:d.decidedAt,d}));
   const comments=DPP_COMMENTS.filter(c=>c.planId===id).map(c=>({ts:c.createdAt,c}));
-  const items=[...decisions,...comments].sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  // A visible "Marked as Paid" record in the plan's own timeline, not just the status badge — so
+  // it stays clear who booked it, for how much, and whether the linked Outstanding Liability was
+  // settled at the same time, without having to jump elsewhere to piece that together.
+  const paidEvent=p.paidAt?[{ts:p.paidAt,paid:true}]:[];
+  const items=[...decisions,...comments,...paidEvent].sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openPaymentPlans()">‹ Back</button>`;
   h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.approvedAmt!=null?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
   h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
@@ -3612,6 +3616,10 @@ function openPlanThread(id){
       const d=it.d, col=d.decision==='approved'?'var(--green)':'var(--red)';
       const amtNote=(d.decision==='approved'&&d.approvedAmt!=null&&d.approvedAmt<p.amt)?` — approved amount ${fmt(d.approvedAmt)}`:'';
       return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:${col}">${escH(nameOf(d.email))} ${d.decision}</span> this plan${amtNote}${d.note?': “'+escH(d.note)+'”':''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
+    }
+    if(it.paid){
+      const outstandingNote=p.sourceOutstandingId?' and settled the linked Outstanding Liability':'';
+      return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:var(--green)">${escH(nameOf(p.paidBy))} marked this plan as Paid</span> — recorded ${fmt(p.paidAmountIdr!=null?p.paidAmountIdr:p.amt)} as Opex${outstandingNote}<div style="color:var(--muted);font-size:11px">${fmtTs(p.paidAt)}</div></div>`;
     }
     const c=it.c;
     return `<div style="margin-bottom:10px;background:#f7f8fd;border-radius:10px;padding:8px 12px">
@@ -3755,7 +3763,7 @@ async function doMarkPlanPaid(id,ceiling){
         revenue:Number(c.revenue||0),opex:Number(c.opex||0)+amt,
         financing_in:Number(c.financing_in||0),financing_out:Number(c.financing_out||0)})});
     if(!ptr.ok) throw new Error('Recorded the transaction, but failed to update the headline total: '+((await ptr.text())||('HTTP '+ptr.status)));
-    await adminUpdateOne('daily_payment_plans',id,{paid_at:new Date().toISOString(),paid_by:MY_EMAIL,paid_tx_id:saved.id});
+    await adminUpdateOne('daily_payment_plans',id,{paid_at:new Date().toISOString(),paid_by:MY_EMAIL,paid_tx_id:saved.id,paid_amount_idr:amt});
     // If this plan was raised from an Outstanding Liability, settle that invoice too — capped at
     // whatever remains on it right now (it may have shrunk via a separate direct payment since the
     // plan was created), so the two ledgers never disagree even if the amounts have drifted.
@@ -7758,7 +7766,7 @@ function mkApprover(r,approverEntities){
   const entities=(approverEntities||[]).filter(e=>e.approver_email===r.email).map(e=>e.entity_code);
   return {email:r.email,name:r.name||r.email,active:r.is_active!==false,entities};
 }
-function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[],paidAt:r.paid_at||null,paidBy:r.paid_by||null,paidTxId:r.paid_tx_id||null,sourceOutstandingId:r.source_outstanding_id||null}; }
+function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[],paidAt:r.paid_at||null,paidBy:r.paid_by||null,paidTxId:r.paid_tx_id||null,paidAmountIdr:r.paid_amount_idr==null?null:+r.paid_amount_idr,sourceOutstandingId:r.source_outstanding_id||null}; }
 function mkDppComment(r){ return {id:r.id,planId:r.plan_id,email:r.author_email,body:r.body,createdAt:r.created_at}; }
 function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr}; }
 let INTERCOMPANY=[];
