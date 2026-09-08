@@ -4383,7 +4383,7 @@ function openOpexBreakdown(view){
       const entOpts=Array.from(new Set(rows.map(t=>t.e))).sort();
       const catOpts=Array.from(new Set(rows.map(t=>t.k).filter(Boolean))).sort();
       const inp='padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:100%;box-sizing:border-box';
-      h+=`<div class="table-scroll" style="max-height:420px"><table id="txd-table-date"><thead><tr>`
+      h+=`<div class="table-scroll" style="max-height:64vh"><table id="txd-table-date"><thead><tr>`
         +thFilterableTx('Date','date',`<input id="txdf-date" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
         +thFilterableTx('Entity','ent',`<select id="txdf-ent" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${entOpts.map(id=>`<option value="${escH(id)}">${escH(ENT[id]?ENT[id].name:id)}</option>`).join('')}</select>`)
         +thFilterableTx('Category','cat',`<select id="txdf-cat" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${catOpts.map(k=>`<option value="${escH(k)}">${escH(k)}</option>`).join('')}</select>`)
@@ -4435,7 +4435,7 @@ function openOpexBreakdown(view){
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   }
   h+=`</div>`;
-  showModal('Operating Expenses — Breakdown',h);
+  showModal('Operating Expenses — Breakdown',h,view==='date');
   if(view==='date'){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-date',totalId:'txd-total-date'}; updateTxdFilterIndicators(); }
 }
 function opexBdSearchFilter(term){
