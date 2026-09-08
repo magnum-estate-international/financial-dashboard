@@ -5881,10 +5881,41 @@ function computeTxRow(r){
 // entity_period_totals additively for that entity+period — never recompute the headline from
 // scratch, since it can legitimately run ahead of itemized detail. ──
 function onTx1FlowChange(){
-  const isRev=document.getElementById('tx1-flow').value==='rev';
+  const flow=document.getElementById('tx1-flow').value;
+  const isRev=flow==='rev', isLoan=flow==='loan';
   const opexWrap=document.getElementById('tx1-cat-opex-wrap'), revWrap=document.getElementById('tx1-cat-rev-wrap');
+  const opexRevFields=document.getElementById('tx1-opexrev-fields'), loanFields=document.getElementById('tx1-loan-fields');
   if(opexWrap) opexWrap.style.display=isRev?'none':'';
   if(revWrap) revWrap.style.display=isRev?'':'none';
+  if(opexRevFields) opexRevFields.style.display=isLoan?'none':'';
+  if(loanFields) loanFields.style.display=isLoan?'':'none';
+}
+// Loan Affiliate books straight into intercompany_transactions — same table the Loan Affiliate
+// card and Bank Ledger's AR/AP rows already feed — since it's a separate ledger from Opex/Revenue
+// (entity_period_totals is never touched for it, exactly like those other AR/AP entry points).
+async function saveTxOneLoan(entity,date,desc,amt){
+  const msg=document.getElementById('tx1-msg');
+  const type=document.getElementById('tx1-ic-type').value;
+  const cp=(document.getElementById('tx1-ic-cp').value||'').trim();
+  if(!cp) return void(msg.style.color='#b3261e', msg.textContent='Counterparty is required.');
+  const dup=findDuplicateIcTx(IC_TX,{owner:eName(entity),cp,type,date,amt,desc});
+  if(dup){
+    if(!confirm('A very similar Loan Affiliate transaction already exists — '+dup.date+' · '+dup.type+' · '+dup.cp+' · '+fmt(dup.amt)+' · "'+dup.desc+'".\n\nSave this one anyway?')) return;
+  }
+  const btn=document.getElementById('tx1-send');
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const row={owner_label:eName(entity),counterparty_label:cp,type,tx_date:date,description:desc||null,amount_idr:amt,source_label:'Manual entry'};
+    await adminAddBatch('intercompany_transactions',[row]);
+    const fresh=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
+    IC_TX=fresh.map(mkIcTx);
+    renderKpiCash(agg());
+    document.getElementById('tx1-desc').value='';
+    document.getElementById('tx1-amt').value='';
+    document.getElementById('tx1-ic-cp').value='';
+    msg.style.color='#2b7a4b'; msg.textContent='Loan Affiliate transaction saved.';
+  }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
+  btn.disabled=false; btn.textContent='Save transaction';
 }
 async function saveTxOne(){
   const msg=document.getElementById('tx1-msg'); msg.textContent='';
@@ -5892,15 +5923,16 @@ async function saveTxOne(){
   const entity=document.getElementById('tx1-ent').value;
   const flow=document.getElementById('tx1-flow').value;
   const date=document.getElementById('tx1-date').value;
-  const category=(document.getElementById(flow==='rev'?'tx1-cat-rev':'tx1-cat-opex').value||'').trim();
-  const vendor=(document.getElementById('tx1-vendor').value||'').trim();
   const desc=document.getElementById('tx1-desc').value.trim();
   const amtRaw=(document.getElementById('tx1-amt').value||'').replace(/[^0-9]/g,'');
   const amt=amtRaw===''?NaN:Number(amtRaw);
   if(!date) return void(msg.style.color='#b3261e', msg.textContent='Date is required.');
-  if(!category) return void(msg.style.color='#b3261e', msg.textContent='Category is required.');
   if(!desc) return void(msg.style.color='#b3261e', msg.textContent='Description is required.');
   if(!amt||amt<=0||!isFinite(amt)) return void(msg.style.color='#b3261e', msg.textContent='Amount must be a positive number.');
+  if(flow==='loan') return void await saveTxOneLoan(entity,date,desc,amt);
+  const category=(document.getElementById(flow==='rev'?'tx1-cat-rev':'tx1-cat-opex').value||'').trim();
+  const vendor=(document.getElementById('tx1-vendor').value||'').trim();
+  if(!category) return void(msg.style.color='#b3261e', msg.textContent='Category is required.');
   const P=periodFromDateG(date);
   // Same soft duplicate check the Excel importer already runs (matching entity/period/flow/
   // category/vendor/amount/description against every transaction already loaded) — this path had
@@ -9347,14 +9379,26 @@ async function renderEntryBody(){
     +'<div id="tx-single">'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option></select>'
+    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option></select>'
     +'<input id="tx1-date" type="date" aria-label="Date" style="'+inp+'">'
     +'<input id="tx1-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
     +'</div>'
+    +'<div id="tx1-opexrev-fields">'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<div id="tx1-cat-opex-wrap">'+categorySelectHtml('tx1-cat-opex',OPEX_CATS_G||[],'',inp)+'</div>'
     +'<div id="tx1-cat-rev-wrap" style="display:none">'+categorySelectHtml('tx1-cat-rev',CATS_BY_KIND_G.revenue||[],'',inp)+'</div>'
     +vendorSelectHtml('tx1-vendor','',inp)
+    +'</div>'
+    +'</div>'
+    // Loan Affiliate books straight into intercompany_transactions (the same table the Loan
+    // Affiliate card and Bank Ledger's AR/AP rows already feed) — it has no category/vendor,
+    // just who owes whom: this entity is the Owner, Counterparty is free text since the other
+    // side is often a holding/investment PT not tracked as its own entity in this dashboard.
+    +'<div id="tx1-loan-fields" style="display:none">'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<select id="tx1-ic-type" style="'+inp+'"><option value="AP">AP — this PT owes the counterparty</option><option value="AR">AR — the counterparty owes this PT</option></select>'
+    +'<input id="tx1-ic-cp" placeholder="Counterparty" style="'+inp+'">'
+    +'</div>'
     +'</div>'
     +'<input id="tx1-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
     +'<button id="tx1-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save transaction</button>'
