@@ -4357,24 +4357,10 @@ function opexVendorBreakdown(){
   });
   return byVendor;
 }
-// Grouped by the transaction's own day_label (e.g. "26 Aug") — same residual-gap convention as
-// By Vendor, since a.opex can run ahead of itemized detail (headline totals aren't derived from TX).
-function opexDateBreakdown(){
-  const ids=new Set(scopeIds());
-  const byDate={};
-  activeMonths().forEach(mo=>{
-    TX.filter(t=>(t.mo||'MAY')===mo && ids.has(t.e) && t.type==='opex').forEach(t=>{
-      const d=t.d||'—';
-      byDate[d]=(byDate[d]||0)+t.amt;
-    });
-  });
-  return byDate;
-}
 function openOpexBreakdown(view){
   view=OPEX_BD_VIEW=view||OPEX_BD_VIEW||'category';
   SORT_RERENDER['opexent']=()=>openOpexBreakdown('entity');
   SORT_RERENDER['opexvendor']=()=>openOpexBreakdown('vendor');
-  SORT_RERENDER['opexdate']=()=>openOpexBreakdown('date');
   const a=agg();
   const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#d9a92c;color:#2a1c02;border:0':''}" onclick="openOpexBreakdown('${v}')">${label}</button>`;
   let h=`<div style="display:flex;gap:8px;margin-bottom:14px;justify-content:space-between;align-items:center">
@@ -4385,34 +4371,31 @@ function openOpexBreakdown(view){
   if(view==='category'){
     h+=bdTableHtml(a.opexBD,a.opex,'neg');
   } else if(view==='date'){
-    const byDate=opexDateBreakdown();
-    const cur=Object.values(byDate).reduce((s,v)=>s+v,0);
-    const gap=Math.round(a.opex-cur);
-    if(gap>0.5) byDate['Other expense (no date detail)']=(byDate['Other expense (no date detail)']||0)+gap;
-    // Default order is chronological (most recent first) rather than by amount — a date axis reads
-    // naturally in date order; sortApply only overrides once the user actually clicks the Amount header.
-    let items=Object.entries(byDate);
-    const dateKey=([d])=>{ const iso=isoFromDayLabel(d); return iso?new Date(iso).getTime():-Infinity; };
-    const activeKey=sortActiveKey('opexdate');
-    if(activeKey==='amt') items=sortApply('opexdate',items,([,v])=>v);
-    else if(activeKey==='date') items=sortApply('opexdate',items,dateKey);
-    else items=items.sort((x,y)=>dateKey(y)-dateKey(x));
-    h+=`<div class="pn-sub" style="margin-bottom:8px">Click a date to see transaction detail</div>`;
-    h+=`<table><thead><tr><th>${sortHeader('opexdate','Date','date')}</th><th class="num">${sortHeader('opexdate','Amount (IDR)','amt')}</th><th class="num">%</th></tr></thead><tbody>`;
-    if(items.length){
-      items.forEach(([d,amt])=>{
-        const pct=a.opex>0?(amt/a.opex*100).toFixed(1):'0.0';
-        const isResidual=d==='Other expense (no date detail)';
-        if(isResidual){
-          h+=`<tr><td>${escH(d)}</td><td class="num neg">${fmt(amt)}</td><td class="num">${pct}%</td></tr>`;
-        } else {
-          h+=`<tr style="cursor:pointer" onclick="openOpexDate('${encodeURIComponent(d)}')"><td>${escH(d)} <span style="color:var(--blue-300);font-weight:700">›</span></td><td class="num neg">${fmt(amt)}</td><td class="num">${pct}%</td></tr>`;
-        }
-      });
+    // Itemized, not aggregated — every opex transaction in scope, newest date first. No separate
+    // drill-down step needed since this view already is the per-transaction list.
+    const ids=scopeIds();
+    const rows=TX.filter(t=>activeMonths().includes(t.mo||'MAY')&&ids.includes(t.e)&&t.type==='opex');
+    const dateKey=t=>{ const iso=isoFromDayLabel(t.d); return iso?new Date(iso).getTime():-Infinity; };
+    rows.sort((x,y)=>dateKey(y)-dateKey(x));
+    const backCall=`openOpexBreakdown('date')`;
+    let s=0;
+    if(rows.length){
+      const entOpts=Array.from(new Set(rows.map(t=>t.e))).sort();
+      const catOpts=Array.from(new Set(rows.map(t=>t.k).filter(Boolean))).sort();
+      const inp='padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:100%;box-sizing:border-box';
+      h+=`<div class="table-scroll" style="max-height:420px"><table id="txd-table-date"><thead><tr>`
+        +thFilterableTx('Date','date',`<input id="txdf-date" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+        +thFilterableTx('Entity','ent',`<select id="txdf-ent" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${entOpts.map(id=>`<option value="${escH(id)}">${escH(ENT[id]?ENT[id].name:id)}</option>`).join('')}</select>`)
+        +thFilterableTx('Category','cat',`<select id="txdf-cat" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${catOpts.map(k=>`<option value="${escH(k)}">${escH(k)}</option>`).join('')}</select>`)
+        +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+        +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
+        +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
+        +`<th></th><th></th></tr></thead><tbody>`;
+      rows.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex','neg',false,true,backCall);});
+      h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="5"><strong>TOTAL</strong></td><td class="num neg"><strong id="txd-total-date">${fmt(s)}</strong></td><td></td><td></td></tr></tbody></table></div>`;
     } else {
-      h+=`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No dated expenses in scope</td></tr>`;
+      h+=`<table><tbody><tr><td style="text-align:center;color:var(--muted);padding:20px">No itemized opex transactions in scope</td></tr></tbody></table>`;
     }
-    h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL</strong></td><td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num"><strong>100%</strong></td></tr></tbody></table>`;
   } else if(view==='vendor'){
     const byVendor=opexVendorBreakdown();
     const cur=Object.values(byVendor).reduce((s,v)=>s+v,0);
@@ -4453,6 +4436,7 @@ function openOpexBreakdown(view){
   }
   h+=`</div>`;
   showModal('Operating Expenses — Breakdown',h);
+  if(view==='date'){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-date',totalId:'txd-total-date'}; updateTxdFilterIndicators(); }
 }
 function opexBdSearchFilter(term){
   term=(term||'').trim().toLowerCase();
@@ -4493,36 +4477,6 @@ function openOpexVendor(encVendor){
   if(!tx.length) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No itemized transactions for this vendor in scope — it's part of the "Other expense (no vendor detail)" residual.</p>`;
   showModal(`${escH(vendor)} — Operating Expenses`,h,true);
   if(tx.length){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-ov',totalId:'txd-total-ov'}; updateTxdFilterIndicators(); }
-}
-function openOpexDate(encDate){
-  const date=decodeURIComponent(encDate);
-  const ids=scopeIds();
-  const tx=TX.filter(t=>activeMonths().includes(t.mo||'MAY')&&ids.includes(t.e)&&t.type==='opex'&&(t.d||'—')===date);
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOpexBreakdown('date')">‹ Back to breakdown</button>`;
-  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">${escH(date)} — Operating Expenses</h4>`;
-  let s=0;
-  const backCall=`openOpexDate('${encDate}')`;
-  if(tx.length){
-    const entOpts=Array.from(new Set(tx.map(t=>t.e))).sort();
-    const catOpts=Array.from(new Set(tx.map(t=>t.k).filter(Boolean))).sort();
-    const inp='padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:100%;box-sizing:border-box';
-    h+=`<div class="table-scroll" style="max-height:340px"><table id="txd-table-od"><thead><tr>`
-      +thFilterableTx('Date','date',`<input id="txdf-date" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
-      +thFilterableTx('Entity','ent',`<select id="txdf-ent" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${entOpts.map(id=>`<option value="${escH(id)}">${escH(ENT[id]?ENT[id].name:id)}</option>`).join('')}</select>`)
-      +thFilterableTx('Category','cat',`<select id="txdf-cat" onchange="applyTxDetailFilters()" style="${inp}"><option value="">All</option>${catOpts.map(k=>`<option value="${escH(k)}">${escH(k)}</option>`).join('')}</select>`)
-      +thFilterableTx('Vendor','vendor',`<input id="txdf-vendor" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
-      +thFilterableTx('Description','desc',`<input id="txdf-desc" type="text" placeholder="Contains…" oninput="applyTxDetailFilters()" style="${inp}">`)
-      +thFilterableTx(txdSortHeader('Amount (IDR)'),'amt',txdNum('txdf-amt-min','Min')+txdNum('txdf-amt-max','Max'))
-      +`<th></th><th></th></tr></thead><tbody>`;
-    tx.forEach(t=>{s+=t.amt; h+=txRowHtml(t,'opex','neg',false,true,backCall);});
-  } else {
-    h+=`<table><tbody>`;
-  }
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?5:1}"><strong>TOTAL</strong></td><td class="num neg"><strong id="txd-total-od">${fmt(s)}</strong></td><td></td><td></td></tr></tbody></table>`;
-  if(tx.length) h+=`</div>`;
-  if(!tx.length) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No itemized transactions for this date in scope — it's part of the "Other expense (no date detail)" residual.</p>`;
-  showModal(`${escH(date)} — Operating Expenses`,h,true);
-  if(tx.length){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-od',totalId:'txd-total-od'}; updateTxdFilterIndicators(); }
 }
 function openOpexEntity(id){
   SORT_RERENDER['opexentcat']=()=>openOpexEntity(id);
