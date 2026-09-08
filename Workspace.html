@@ -3704,24 +3704,40 @@ async function cancelPaymentPlan(id){
 // transactions row + patch entity_period_totals additively) and links the created transaction
 // back onto the plan via paid_tx_id, so it can never be booked twice. Uses Amount Approve when
 // a partial approval was recorded, else the full Amount Purpose.
+function onMppModeChange(){
+  const diff=document.querySelector('input[name="mpp-mode"]:checked').value==='diff';
+  document.getElementById('mpp-amt-wrap').style.display=diff?'':'none';
+}
 function openMarkPlanPaid(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
   const today=new Date().toISOString().slice(0,10);
-  const amt=p.approvedAmt!=null?p.approvedAmt:p.amt;
-  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')}<br>Will be recorded as an Opex transaction of <b style="color:var(--ink)">${fmt(amt)}</b> under category <b style="color:var(--ink)">${escH(p.category||'—')}</b>.</div>`;
-  h+=opeField('Payment date',`<input id="mpp-date" type="date" value="${today}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
-    +`<button id="mpp-send" class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="doMarkPlanPaid(${id})">Mark as Paid &amp; Add to Opex</button>`
+  const ceiling=p.approvedAmt!=null?p.approvedAmt:p.amt;
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')}<br>Approved amount: <b style="color:var(--ink)">${fmt(ceiling)}</b> · category <b style="color:var(--ink)">${escH(p.category||'—')}</b></div>`;
+  h+=`<div style="font-size:12.5px;margin-bottom:10px">
+      <label style="display:block;margin-bottom:6px;cursor:pointer"><input type="radio" name="mpp-mode" value="same" checked onchange="onMppModeChange()"> Paid the full approved amount (${fmt(ceiling)})</label>
+      <label style="display:block;cursor:pointer"><input type="radio" name="mpp-mode" value="diff" onchange="onMppModeChange()"> Paid a different amount</label>
+    </div>`
+    +`<div id="mpp-amt-wrap" style="display:none">`+opeField('Amount actually paid (IDR) — cannot exceed the approved amount',`<input id="mpp-amt" inputmode="numeric" value="${Math.round(ceiling)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)+`</div>`
+    +opeField('Payment date',`<input id="mpp-date" type="date" value="${today}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button id="mpp-send" class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="doMarkPlanPaid(${id},${ceiling})">Mark as Paid &amp; Add to Opex</button>`
     +`<span id="mpp-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal('Mark as Paid',h);
 }
-async function doMarkPlanPaid(id){
+async function doMarkPlanPaid(id,ceiling){
   const err=document.getElementById('mpp-err'); err.textContent='';
   const btn=document.getElementById('mpp-send');
   const p=DPP.find(x=>x.id===id); if(!p) return;
   if(p.paidAt) return void(err.textContent='This plan was already marked paid.');
   const date=document.getElementById('mpp-date').value;
   if(!date) return void(err.textContent='Pick a payment date.');
-  const amt=p.approvedAmt!=null?p.approvedAmt:p.amt;
+  const isDiff=document.querySelector('input[name="mpp-mode"]:checked').value==='diff';
+  let amt=ceiling;
+  if(isDiff){
+    const raw=(document.getElementById('mpp-amt').value||'').replace(/[^0-9]/g,'');
+    amt=raw===''?NaN:Number(raw);
+    if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Enter a valid paid amount.');
+    if(amt>ceiling+0.5) return void(err.textContent='Paid amount can\'t exceed the approved amount of '+fmt(ceiling)+'.');
+  }
   btn.disabled=true; btn.textContent='Saving…';
   try{
     const P=periodFromDateG(date);
