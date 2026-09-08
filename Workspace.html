@@ -5664,7 +5664,13 @@ function parseFlexDate(v){
     if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
     m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-    const d=new Date(s); if(!isNaN(d)) return d.toISOString().slice(0,10);
+    // Last-resort fallback for a date written some other way (e.g. "15 Aug 2026" in a CSV cell,
+    // or a text-formatted Excel cell) — anything other than strict ISO is parsed by the JS engine
+    // as LOCAL midnight, not UTC. Reading it back with the LOCAL getters (not toISOString, which is
+    // UTC) is what makes this round-trip correctly — in WITA (UTC+8) toISOString() here silently
+    // shifted every such date back by one full day.
+    const d=new Date(s);
+    if(!isNaN(d)) return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   }
   return null;
 }
