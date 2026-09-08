@@ -3590,7 +3590,17 @@ function openPlanThread(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
   markPlanThreadRead(id);
   const nameOf=email=>(PAYMENT_APPROVERS.find(a=>a.email===email)||{}).name||email;
-  const fmtTs=ts=>(ts||'').slice(0,16).replace('T',' ');
+  // decidedAt/createdAt are UTC timestamptz values from Postgres — slicing the raw string (the old
+  // approach) just showed the UTC wall-clock time mislabeled as local. Convert explicitly to WITA
+  // (Asia/Makassar, UTC+8) instead of relying on the viewer's own device timezone, since the whole
+  // company operates on WITA regardless of where a laptop happens to be set.
+  const fmtTs=ts=>{
+    if(!ts) return '';
+    const d=new Date(ts);
+    const date=d.toLocaleDateString('en-CA',{timeZone:'Asia/Makassar'});
+    const time=d.toLocaleTimeString('en-GB',{timeZone:'Asia/Makassar',hour:'2-digit',minute:'2-digit'});
+    return date+' '+time+' WITA';
+  };
   const decisions=DPP_APPROVALS.filter(a=>a.planId===id).map(d=>({ts:d.decidedAt,d}));
   const comments=DPP_COMMENTS.filter(c=>c.planId===id).map(c=>({ts:c.createdAt,c}));
   const items=[...decisions,...comments].sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
