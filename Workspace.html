@@ -3397,9 +3397,9 @@ function paymentPlanCard(){
     </div>`;
 }
 function paymentPlanStatusBadge(p){
-  if(p.status==='approved') return p.paidAt?`<span style="color:var(--green);font-weight:700">Paid</span>`:`<span style="color:var(--green);font-weight:700">Approved</span>`;
+  if(p.status==='approved') return p.paidAt?`<span style="color:#2f6fb0;font-weight:700">Paid</span>`:`<span style="color:var(--green);font-weight:700">Approved</span>`;
   if(p.status==='rejected') return `<span style="color:var(--red);font-weight:700">Rejected</span>`;
-  if(p.status==='cancelled') return `<span style="color:var(--muted);font-weight:700">Cancelled</span>`;
+  if(p.status==='cancelled') return `<span style="color:var(--red);font-weight:700">Cancelled</span>`;
   return `<span style="color:#9a6f0a;font-weight:700">Pending</span>`;
 }
 // entityCode is required — an approver is only an approver for the PT(s) they're explicitly
