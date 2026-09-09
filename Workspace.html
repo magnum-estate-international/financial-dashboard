@@ -3391,7 +3391,7 @@ function paymentPlanCard(){
   const needsMeStat=`<div onclick="event.stopPropagation();openApproveAllModal()" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
       <span style="color:var(--blue-300);display:inline-flex">${ICON.bell(14)}</span>
       <span style="font-size:15px;font-weight:800;color:var(--blue-300)">${needsMe}</span>
-      <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Needs your OK</span>
+      <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Awaiting Approve</span>
     </div>`;
   const stats=[
     stat(ICON.file(14),scoped.length,'Total plans','var(--ink)',''),
