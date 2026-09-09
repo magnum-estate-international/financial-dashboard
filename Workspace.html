@@ -6006,8 +6006,8 @@ async function saveTxOnePinbuk(entity,date,desc,amt){
   btn.disabled=true; btn.textContent='Saving…';
   try{
     const rows=[
-      {bank_account_id:fromId,entity_code:entity,tx_date:date,code:'pinbuk',debit:0,kredit:amt,description:desc||null,source_label:'Manual entry',created_by:MY_EMAIL},
-      {bank_account_id:toId,entity_code:entity,tx_date:date,code:'pinbuk',debit:amt,kredit:0,description:desc||null,source_label:'Manual entry',created_by:MY_EMAIL}
+      {bank_account_id:fromId,entity_code:entity,tx_date:date,code:'pinbuk',category:'Pinbuk',debit:0,kredit:amt,description:desc||null,source_label:'Manual entry',created_by:MY_EMAIL},
+      {bank_account_id:toId,entity_code:entity,tx_date:date,code:'pinbuk',category:'Pinbuk',debit:amt,kredit:0,description:desc||null,source_label:'Manual entry',created_by:MY_EMAIL}
     ];
     const r=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(rows)});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
