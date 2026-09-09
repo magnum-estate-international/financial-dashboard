@@ -5941,13 +5941,23 @@ function computeTxRow(r){
 // scratch, since it can legitimately run ahead of itemized detail. ──
 function onTx1FlowChange(){
   const flow=document.getElementById('tx1-flow').value;
-  const isRev=flow==='rev', isLoan=flow==='loan';
+  const isRev=flow==='rev', isLoan=flow==='loan', isPinbuk=flow==='pinbuk';
   const opexWrap=document.getElementById('tx1-cat-opex-wrap'), revWrap=document.getElementById('tx1-cat-rev-wrap');
-  const opexRevFields=document.getElementById('tx1-opexrev-fields'), loanFields=document.getElementById('tx1-loan-fields');
+  const opexRevFields=document.getElementById('tx1-opexrev-fields'), loanFields=document.getElementById('tx1-loan-fields'), pinbukFields=document.getElementById('tx1-pinbuk-fields');
   if(opexWrap) opexWrap.style.display=isRev?'none':'';
   if(revWrap) revWrap.style.display=isRev?'':'none';
-  if(opexRevFields) opexRevFields.style.display=isLoan?'none':'';
+  if(opexRevFields) opexRevFields.style.display=(isLoan||isPinbuk)?'none':'';
   if(loanFields) loanFields.style.display=isLoan?'':'none';
+  if(pinbukFields){ pinbukFields.style.display=isPinbuk?'':'none'; if(isPinbuk) fillTx1PinbukAccts(); }
+}
+// Populates the From/To Account dropdowns whenever Pinbuk is selected or the Entity changes while
+// it's already selected — scoped to that entity's own active bank accounts only, since a Pinbuk
+// transfer is always between two accounts of the same PT (never across entities).
+function fillTx1PinbukAccts(){
+  const entity=document.getElementById('tx1-ent').value;
+  const accts=BANK_ACCOUNTS.filter(a=>a.entity===entity&&a.active);
+  const opts=accts.length?accts.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabel(a))+'</option>').join(''):'<option value="">No bank accounts set up for this entity</option>';
+  ['tx1-pinbuk-from','tx1-pinbuk-to'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=opts; });
 }
 // Loan Affiliate books straight into intercompany_transactions — same table the Loan Affiliate
 // card and Bank Ledger's AR/AP rows already feed — since it's a separate ledger from Opex/Revenue
@@ -5976,6 +5986,38 @@ async function saveTxOneLoan(entity,date,desc,amt){
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
 }
+// Pinbuk books straight into bank_ledger_entries — one Credit (cash out) row on the source account
+// and one Debit (cash in) row on the destination account, both tagged code:'pinbuk', exactly the
+// two-sided pattern the Bank Ledger importer already relies on for a transfer between the group's
+// own accounts. Never touches transactions/entity_period_totals/intercompany_transactions, so it
+// never lands in Revenue/Expenses/Loan Affiliate — the two accounts' own balances still move
+// (the transfer is fully recorded and stays balanced), the PT's combined cash position doesn't.
+async function saveTxOnePinbuk(entity,date,desc,amt){
+  const msg=document.getElementById('tx1-msg');
+  const fromId=Number(document.getElementById('tx1-pinbuk-from').value);
+  const toId=Number(document.getElementById('tx1-pinbuk-to').value);
+  if(!fromId||!toId) return void(msg.style.color='#b3261e', msg.textContent='Pick both a From and a To account.');
+  if(fromId===toId) return void(msg.style.color='#b3261e', msg.textContent='From and To must be different accounts.');
+  const dup=findDuplicateBl(BANK_LEDGER,{acctMatch:{id:fromId},date,code:'pinbuk',debit:0,kredit:amt,desc});
+  if(dup){
+    if(!confirm('A very similar Pinbuk transfer already exists on this account — '+dup.date+' · '+fmt(dup.kredit)+' · "'+dup.desc+'".\n\nSave this one anyway?')) return;
+  }
+  const btn=document.getElementById('tx1-send');
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const rows=[
+      {bank_account_id:fromId,entity_code:entity,tx_date:date,code:'pinbuk',debit:0,kredit:amt,description:desc||null,source_label:'Manual entry',created_by:MY_EMAIL},
+      {bank_account_id:toId,entity_code:entity,tx_date:date,code:'pinbuk',debit:amt,kredit:0,description:desc||null,source_label:'Manual entry',created_by:MY_EMAIL}
+    ];
+    const r=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(rows)});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    (await r.json()).forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
+    document.getElementById('tx1-desc').value='';
+    document.getElementById('tx1-amt').value='';
+    msg.style.color='#2b7a4b'; msg.textContent='Pinbuk transfer saved — view it via Cash Position → the account\'s own ledger.';
+  }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
+  btn.disabled=false; btn.textContent='Save transaction';
+}
 async function saveTxOne(){
   const msg=document.getElementById('tx1-msg'); msg.textContent='';
   const btn=document.getElementById('tx1-send');
@@ -5989,6 +6031,7 @@ async function saveTxOne(){
   if(!desc) return void(msg.style.color='#b3261e', msg.textContent='Description is required.');
   if(!amt||amt<=0||!isFinite(amt)) return void(msg.style.color='#b3261e', msg.textContent='Amount must be a positive number.');
   if(flow==='loan') return void await saveTxOneLoan(entity,date,desc,amt);
+  if(flow==='pinbuk') return void await saveTxOnePinbuk(entity,date,desc,amt);
   const category=(document.getElementById(flow==='rev'?'tx1-cat-rev':'tx1-cat-opex').value||'').trim();
   const vendor=(document.getElementById('tx1-vendor').value||'').trim();
   if(!category) return void(msg.style.color='#b3261e', msg.textContent='Category is required.');
@@ -9437,8 +9480,8 @@ async function renderEntryBody(){
     +'</div>'
     +'<div id="tx-single">'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-    +'<select id="tx1-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option></select>'
+    +'<select id="tx1-ent" style="'+inp+'" onchange="onTx1FlowChange()">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option></select>'
     +'<input id="tx1-date" type="date" aria-label="Date" style="'+inp+'">'
     +'<input id="tx1-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
     +'</div>'
@@ -9457,6 +9500,15 @@ async function renderEntryBody(){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-ic-type" style="'+inp+'"><option value="AP">AP — this PT owes the counterparty</option><option value="AR">AR — the counterparty owes this PT</option></select>'
     +'<input id="tx1-ic-cp" placeholder="Counterparty" style="'+inp+'">'
+    +'</div>'
+    +'</div>'
+    // Pinbuk (transfer between two accounts of the same PT) needs a specific From/To bank account,
+    // not a category/vendor — filled in by fillTx1PinbukAccts() once this entity has accounts loaded.
+    +'<div id="tx1-pinbuk-fields" style="display:none">'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records a transfer between two of this entity\'s own bank accounts — not income or expense, but still recorded so both accounts\' balances stay correct. Not included in any card total; view it later via Cash Position → the account\'s own ledger.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<select id="tx1-pinbuk-from" style="'+inp+'"></select>'
+    +'<select id="tx1-pinbuk-to" style="'+inp+'"></select>'
     +'</div>'
     +'</div>'
     +'<input id="tx1-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
