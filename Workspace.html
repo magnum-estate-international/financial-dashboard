@@ -3449,7 +3449,7 @@ function paymentPlanRowHtml(p){
     }
   }
   if(p.status==='approved'&&!p.paidAt&&canEdit) items.push(menuItem('💰 Mark Paid',`openMarkPlanPaid(${p.id})`,'#2b7a4b'));
-  if(canEdit&&p.approvedAmt!=null&&!p.paidAt) items.push(menuItem('✏️ Edit Approved Amount',`openEditApprovedAmount(${p.id},'openPaymentPlans()')`));
+  if(canEdit&&p.status==='approved'&&p.approvedAmt!=null&&!p.paidAt) items.push(menuItem('✏️ Edit Approved Amount',`openEditApprovedAmount(${p.id},'openPaymentPlans()')`));
   if(p.paidTxId) items.push(menuItem('🔎 View Opex Transaction',`openTxHistory(${p.paidTxId},'${encodeURIComponent('openPaymentPlans()').replace(/'/g,'%27')}')`));
   const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
   const unreadN=unreadCommentsFor(p.id);
@@ -3473,7 +3473,7 @@ function paymentPlanRowHtml(p){
       return so?` <button type="button" title="Raised from an Outstanding Liability — view it" style="border:0;background:none;cursor:pointer;font-size:10px;padding:0" onclick="event.stopPropagation();openOutstandingEntity('${p.e}','${so.status==='paid'?'paid':'open'}')">🔗</button>`:` <span title="Raised from an Outstanding Liability (since deleted)" style="font-size:10px">🔗</span>`;
     })():''}</td>
     <td class="num">${fmt(p.amt)}</td>
-    <td class="num">${p.approvedAmt==null?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
+    <td class="num">${(p.status!=='approved'||p.approvedAmt==null)?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
     <td style="font-size:12px">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${(()=>{
       if(p.status!=='pending') return '';
@@ -3542,7 +3542,7 @@ function openPaymentPlans(){
   h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):`<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">${anyFilter?'No payment plans match these filters.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</td></tr>`;
   if(rows.length){
     const totPurpose=rows.reduce((s,p)=>s+p.amt,0);
-    const totApprove=rows.reduce((s,p)=>s+(p.approvedAmt!=null?p.approvedAmt:0),0);
+    const totApprove=rows.reduce((s,p)=>s+((p.status==='approved'&&p.approvedAmt!=null)?p.approvedAmt:0),0);
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="6"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(totPurpose)}</strong></td><td class="num"><strong>${fmt(totApprove)}</strong></td><td colspan="5"></td></tr>`;
   }
   h+='</tbody></table></div>';
@@ -3616,8 +3616,11 @@ function openPlanThread(id){
   const items=[...decisions,...comments,...paidEvent].sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openPaymentPlans()">‹ Back</button>`;
   const canEditThread=IS_ADMIN||MY_ROLE==='editor';
-  const editApproveLink=(canEditThread&&p.approvedAmt!=null&&!p.paidAt)?` <a href="#" onclick="event.preventDefault();openEditApprovedAmount(${id},'openPlanThread(${id})')" style="font-size:11px;color:var(--blue-300);text-decoration:none">✏️ edit</a>`:'';
-  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.approvedAmt!=null?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>${editApproveLink}`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
+  // Amount Approve isn't final until every required approver has actually signed off — showing it
+  // mid-approval (e.g. 2/4) would present a not-yet-agreed figure as if it were settled.
+  const approveFinal=p.status==='approved'&&p.approvedAmt!=null;
+  const editApproveLink=(canEditThread&&approveFinal&&!p.paidAt)?` <a href="#" onclick="event.preventDefault();openEditApprovedAmount(${id},'openPlanThread(${id})')" style="font-size:11px;color:var(--blue-300);text-decoration:none">✏️ edit</a>`:'';
+  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${approveFinal?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>${editApproveLink}`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
   h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
   h+=items.length?items.map(it=>{
     if(it.d){
