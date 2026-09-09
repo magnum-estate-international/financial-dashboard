@@ -3513,7 +3513,12 @@ function openPaymentPlans(){
   if(DPP_FILTER.entity) rows=rows.filter(p=>p.e===DPP_FILTER.entity);
   if(DPP_FILTER.vendor) rows=rows.filter(p=>(p.vendor||'')===DPP_FILTER.vendor);
   if(DPP_FILTER.category) rows=rows.filter(p=>(p.category||'')===DPP_FILTER.category);
-  if(DPP_FILTER.status) rows=rows.filter(p=>p.status===DPP_FILTER.status);
+  // "Paid" and "Approved" both correspond to status==='approved' underneath (paidAt is what
+  // differentiates them, same as the status badge itself) — so the two filters are kept mutually
+  // exclusive here rather than "Approved" silently also matching every already-paid plan.
+  if(DPP_FILTER.status==='paid') rows=rows.filter(p=>p.status==='approved'&&p.paidAt);
+  else if(DPP_FILTER.status==='approved') rows=rows.filter(p=>p.status==='approved'&&!p.paidAt);
+  else if(DPP_FILTER.status) rows=rows.filter(p=>p.status===DPP_FILTER.status);
   rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const mine=pendingForMe();
   // Options are built from the full in-scope set (not the already-filtered `rows`), so picking one
@@ -3521,7 +3526,7 @@ function openPaymentPlans(){
   const entOpts=[...new Set(scoped.map(p=>p.e))].sort((a,b)=>(ENT[a]?ENT[a].name:a).localeCompare(ENT[b]?ENT[b].name:b));
   const vendorOpts=[...new Set(scoped.map(p=>p.vendor).filter(Boolean))].sort();
   const catOpts=[...new Set(scoped.map(p=>p.category).filter(Boolean))].sort();
-  const statusOpts=[['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['cancelled','Cancelled']];
+  const statusOpts=[['pending','Pending'],['approved','Approved'],['paid','Paid'],['rejected','Rejected'],['cancelled','Cancelled']];
   const selStyle='padding:6px 10px;border:1px solid #e4e7ef;border-radius:8px;font-size:12px;background:#fff;color:#3a4254';
   const anyFilter=DPP_FILTER.entity||DPP_FILTER.vendor||DPP_FILTER.category||DPP_FILTER.status;
   let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">`
