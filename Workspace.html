@@ -3449,6 +3449,7 @@ function paymentPlanRowHtml(p){
     }
   }
   if(p.status==='approved'&&!p.paidAt&&canEdit) items.push(menuItem('💰 Mark Paid',`openMarkPlanPaid(${p.id})`,'#2b7a4b'));
+  if(canEdit&&p.approvedAmt!=null&&!p.paidAt) items.push(menuItem('✏️ Edit Approved Amount',`openEditApprovedAmount(${p.id},'openPaymentPlans()')`));
   if(p.paidTxId) items.push(menuItem('🔎 View Opex Transaction',`openTxHistory(${p.paidTxId},'${encodeURIComponent('openPaymentPlans()').replace(/'/g,'%27')}')`));
   const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
   const unreadN=unreadCommentsFor(p.id);
@@ -3614,7 +3615,9 @@ function openPlanThread(id){
   const paidEvent=p.paidAt?[{ts:p.paidAt,paid:true}]:[];
   const items=[...decisions,...comments,...paidEvent].sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openPaymentPlans()">‹ Back</button>`;
-  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.approvedAmt!=null?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
+  const canEditThread=IS_ADMIN||MY_ROLE==='editor';
+  const editApproveLink=(canEditThread&&p.approvedAmt!=null&&!p.paidAt)?` <a href="#" onclick="event.preventDefault();openEditApprovedAmount(${id},'openPlanThread(${id})')" style="font-size:11px;color:var(--blue-300);text-decoration:none">✏️ edit</a>`:'';
+  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${p.approvedAmt!=null?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>${editApproveLink}`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
   h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
   h+=items.length?items.map(it=>{
     if(it.d){
@@ -3832,6 +3835,38 @@ async function saveAddToPaymentPlan(outstandingId){
     closeModal();
     viewPlansFor(o.e);
   }catch(e){ btn.disabled=false; btn.textContent='Submit for approval'; err.textContent='Failed to save: '+e.message; }
+}
+// Edit Approved Amount — a direct override for when approvers agreed on a different figure than
+// what got recorded through the Approve action itself (e.g. the actual number only surfaced in a
+// Discussion comment afterward, like "pay 10 mln not 30 mln"). Separate from the general Edit
+// above, which stays locked once Approved to protect the original proposal's integrity — this one
+// exists specifically to correct the approved amount after the fact, so it stays available even
+// once the plan is Approved (just not once it's already Paid, since the Opex transaction would
+// already be booked off the old figure by then).
+function openEditApprovedAmount(id,backCall){
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  const current=p.approvedAmt!=null?p.approvedAmt:p.amt;
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')}<br>Amount Purpose: <b style="color:var(--ink)">${fmt(p.amt)}</b></div>`;
+  h+=opeField('Amount Approve (IDR) — cannot exceed the Amount Purpose',`<input id="eaa-amt" inputmode="numeric" value="${Math.round(current)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button id="eaa-send" class="btn" style="background:#d9a92c;color:#2a1c02;border:0" onclick="saveEditApprovedAmount(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save</button>`
+    +`<span id="eaa-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Approved Amount',h);
+}
+async function saveEditApprovedAmount(id,backCall){
+  backCall=decodeURIComponent(backCall);
+  const err=document.getElementById('eaa-err'); err.textContent='';
+  const btn=document.getElementById('eaa-send');
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  const raw=(document.getElementById('eaa-amt').value||'').replace(/[^0-9]/g,'');
+  const amt=raw===''?NaN:Number(raw);
+  if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Enter a valid amount.');
+  if(amt>p.amt+0.5) return void(err.textContent='Amount Approve can\'t exceed the Amount Purpose of '+fmt(p.amt)+'.');
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    await adminUpdateOne('daily_payment_plans',id,{approved_amount_idr:amt});
+    p.approvedAmt=amt;
+    eval(backCall);
+  }catch(e){ btn.disabled=false; btn.textContent='Save'; err.textContent='Failed to save: '+e.message; }
 }
 // Entity is intentionally not editable here — approver scoping is keyed off it, and changing it
 // after the fact would silently invalidate whatever approvals already exist. Everything else about
