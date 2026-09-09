@@ -3861,10 +3861,26 @@ async function saveEditApprovedAmount(id,backCall){
   const amt=raw===''?NaN:Number(raw);
   if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Enter a valid amount.');
   if(amt>p.amt+0.5) return void(err.textContent='Amount Approve can\'t exceed the Amount Purpose of '+fmt(p.amt)+'.');
+  const oldAmt=p.approvedAmt;
+  if(Math.round(amt)===Math.round(oldAmt)) return void(err.textContent='That\'s already the current Amount Approve.');
   btn.disabled=true; btn.textContent='Saving…';
   try{
     await adminUpdateOne('daily_payment_plans',id,{approved_amount_idr:amt});
     p.approvedAmt=amt;
+    // Posted as a real Discussion comment (not just an in-memory note) — same table/RLS as a normal
+    // comment, so it's a permanent, attributed record of who changed the approved figure and when,
+    // right alongside the approvals/discussion that led to it.
+    try{
+      const cr=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_comments',{method:'POST',
+        headers:{'Content-Type':'application/json','Prefer':'return=representation'},
+        body:JSON.stringify([{plan_id:id,author_email:MY_EMAIL,body:'Changed Amount Approve from '+fmt(oldAmt)+' to '+fmt(amt)+'.'}])});
+      if(cr.ok){
+        const [savedC]=await cr.json();
+        DPP_COMMENTS.push(mkDppComment(savedC));
+        authedFetch(SB_URL+'/functions/v1/notify-payment-plan-comment',{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify({plan_id:id,comment_id:savedC.id})}).catch(()=>{});
+      }
+    }catch(e){}
     eval(backCall);
   }catch(e){ btn.disabled=false; btn.textContent='Save'; err.textContent='Failed to save: '+e.message; }
 }
