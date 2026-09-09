@@ -3388,18 +3388,21 @@ function paymentPlanCard(){
       <span style="font-size:15px;font-weight:800;color:${color||'var(--ink)'}">${n}</span>
       <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">${label}</span>
     </div>`;
+  const needsMeStat=`<div onclick="event.stopPropagation();openApproveAllModal()" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
+      <span style="color:var(--blue-300);display:inline-flex">${ICON.bell(14)}</span>
+      <span style="font-size:15px;font-weight:800;color:var(--blue-300)">${needsMe}</span>
+      <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Needs your OK</span>
+    </div>`;
   const stats=[
     stat(ICON.file(14),scoped.length,'Total plans','var(--ink)',''),
+    // For an approver, what needs their own action sits right after the headline count — before
+    // Pending/Approved/Paid/Rejected, which are whole-scope totals, not personal to-dos.
+    ...(needsMe!==null?[needsMeStat]:[]),
     stat(clockIcon(14),pend.length,'Pending','#9a6f0a','pending'),
     stat(ICON.check(14),approved.length,'Approved','var(--green)','approved'),
     stat(ICON.check(14),paid.length,'Paid','#2f6fb0','paid'),
     stat(xIcon(14),rejected.length,'Rejected','var(--red)','rejected'),
   ];
-  if(needsMe!==null) stats.push(`<div onclick="event.stopPropagation();openApproveAllModal()" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
-      <span style="color:var(--blue-300);display:inline-flex">${ICON.bell(14)}</span>
-      <span style="font-size:15px;font-weight:800;color:var(--blue-300)">${needsMe}</span>
-      <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Needs your OK</span>
-    </div>`);
   return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.check(17)}</div><div class="lab">Daily Payment Plan</div></div>
