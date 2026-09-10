@@ -138,6 +138,7 @@ select:focus-visible{outline:none;border-color:#b8860b;box-shadow:0 0 0 3px rgba
 .kpi5{display:flex;flex-wrap:wrap;gap:15px;margin-bottom:15px}
 .kpi5>.pcard{flex:1 1 200px}
 .kpi2{display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
+.kpi3{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:15px;margin-bottom:15px}
 .kpi1{display:grid;grid-template-columns:minmax(200px,340px);gap:15px;margin-bottom:15px}
 .pcard{background:var(--card);border-radius:16px;box-shadow:var(--shadow-sm);padding:21px 22px;
   border:var(--border);position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
@@ -266,7 +267,8 @@ footer::before{content:"";display:block;width:56px;height:4px;margin:0 auto 16px
 a{color:#9a6f0a}
 :focus-visible{outline:2px solid #b8860b;outline-offset:2px}
 @media(max-width:980px){.kpi4,.cols-eq,.cols-3{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 14px 40px}.toolbar{position:static}}
-@media(max-width:600px){.kpi4,.kpi2,.cols-eq,.cols-3{grid-template-columns:1fr}}
+@media(max-width:600px){.kpi4,.kpi2,.kpi3,.cols-eq,.cols-3{grid-template-columns:1fr}}
+@media(max-width:980px){.kpi3{grid-template-columns:repeat(2,1fr)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
 @media print{.toolbar{display:none}}
 </style>
@@ -411,6 +413,7 @@ a{color:#9a6f0a}
 <div class="kpi1" id="kpiFinRow">
   <div id="kpiIntercompany"></div>
   <div id="kpiFin"></div>
+  <div id="kpiOrec"></div>
 </div>
 
 <div class="grid cols-eq" style="margin-bottom:16px">
@@ -3333,7 +3336,96 @@ function renderKpiFin(a){
       <div class="big" style="color:#8a5a1e">${fmt(a.capDep)}</div>
       <div class="meta">Stanislav Sadovnikov &amp; Igor Maksimov</div>
     </div>`:'';
-  const row=document.getElementById('kpiFinRow'); if(row) row.className=a.capDep>0?'kpi2':'kpi1';
+  const ko=document.getElementById('kpiOrec'); if(ko) ko.innerHTML=otherReceivableCard();
+  const shown=1+(a.capDep>0?1:0)+(otherReceivablesInScope().length?1:0);
+  const row=document.getElementById('kpiFinRow'); if(row) row.className=shown===3?'kpi3':(shown===2?'kpi2':'kpi1');
+}
+// ─── Other Receivable — money advanced to/refunded by an individual (shareholder or other related
+// party). Kept out of every headline card total (Financing In/Out, Net Financing) exactly like
+// Loan Affiliate and Capital Deposit already are — this is its own thing, viewable on demand. ───
+function otherReceivablesInScope(){
+  const ids=new Set(scopeIds());
+  return OTHER_RECV.filter(r=>ids.has(r.e));
+}
+function otherReceivableCard(){
+  const rows=otherReceivablesInScope();
+  if(!rows.length) return '';
+  const net=rows.reduce((s,r)=>s+(r.dir==='out'?r.amt:-r.amt),0);
+  const people=new Set(rows.map(r=>r.cp)).size;
+  return `<div class="pcard boxed gold-hl clickable" onclick="openOtherReceivable()">
+      <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
+      <div class="kpi-head"><div class="kpi-ic">${ICON.file(17)}</div><div class="lab">Other Receivable</div></div>
+      <div class="big ${net>0?'neg':''}" style="${net>0?'':'color:var(--muted)'}">${fmt(Math.abs(net))}</div>
+      <div class="meta">${rows.length} transaction${rows.length>1?'s':''} · ${people} ${people>1?'people':'person'} — click to view</div>
+    </div>`;
+}
+function otherReceivableByCp(){
+  const rows=otherReceivablesInScope();
+  const byCp={};
+  rows.forEach(r=>{ (byCp[r.cp]=byCp[r.cp]||[]).push(r); });
+  return Object.keys(byCp).map(cp=>{
+    const list=byCp[cp];
+    const out=list.filter(r=>r.dir==='out').reduce((s,r)=>s+r.amt,0);
+    const inn=list.filter(r=>r.dir==='in').reduce((s,r)=>s+r.amt,0);
+    return {cp,out,inn,net:out-inn,n:list.length};
+  });
+}
+function openOtherReceivable(){
+  const groups=otherReceivableByCp().sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+  const totOut=groups.reduce((s,g)=>s+g.out,0), totIn=groups.reduce((s,g)=>s+g.inn,0);
+  let h=`<div class="pn-sub" style="margin-bottom:8px">Money advanced to or refunded by individuals (shareholders/related parties) — separate from Loan Affiliate (between PTs) and Shareholder Capital Deposit. "Paid Out" increases the receivable; "Refunded" reduces it. Not included in any headline financing total.</div>`;
+  h+=`<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:160px;background:#fdeef1;border-radius:12px;padding:12px 16px">
+      <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#b3261e;text-transform:uppercase">Total Paid Out</div>
+      <div style="font-size:19px;font-weight:800;color:#b3261e;margin-top:3px">${fmt(totOut)}</div>
+    </div>
+    <div style="flex:1;min-width:160px;background:#e3f2e8;border-radius:12px;padding:12px 16px">
+      <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#2b7a4b;text-transform:uppercase">Total Refunded</div>
+      <div style="font-size:19px;font-weight:800;color:#2b7a4b;margin-top:3px">${fmt(totIn)}</div>
+    </div>
+    <div style="flex:1;min-width:160px;background:${totOut-totIn>=0?'#fdeef1':'#e3f2e8'};border-radius:12px;padding:12px 16px">
+      <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:${totOut-totIn>=0?'#b3261e':'#2b7a4b'};text-transform:uppercase">Outstanding</div>
+      <div style="font-size:19px;font-weight:800;color:${totOut-totIn>=0?'#b3261e':'#2b7a4b'};margin-top:3px">${fmt(Math.abs(totOut-totIn))}</div>
+    </div>
+  </div>`;
+  if(!groups.length){
+    h+=`<p style="color:var(--muted);font-size:12.5px">No Other Receivable transactions yet — add one via <b>Update Data → Update Transaction → One at a time</b>.</p>`;
+    showModal('Other Receivable',h,true);
+    return;
+  }
+  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Counterparty</th><th class="num">Transactions</th><th class="num">Paid Out</th><th class="num">Refunded</th><th class="num">Outstanding</th></tr></thead><tbody>`;
+  groups.forEach(g=>{
+    h+=`<tr class="clickable" style="cursor:pointer" onclick="openOtherReceivableCp('${encodeURIComponent(g.cp)}')">
+      <td style="font-size:12.5px">${escH(g.cp)} <span style="color:var(--blue-300);font-weight:700">›</span></td>
+      <td class="num" style="color:var(--muted)">${g.n}</td>
+      <td class="num" style="color:#b3261e">${g.out?fmt(g.out):'—'}</td>
+      <td class="num" style="color:#2b7a4b">${g.inn?fmt(g.inn):'—'}</td>
+      <td class="num" style="font-weight:800;color:${g.net>=0?'#b3261e':'#2b7a4b'}">${g.net>=0?fmt(g.net):'− '+fmt(Math.abs(g.net))}</td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div>`;
+  showModal('Other Receivable',h,true);
+}
+function openOtherReceivableCp(encCp){
+  const cp=decodeURIComponent(encCp);
+  const rows=otherReceivablesInScope().filter(r=>r.cp===cp).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOtherReceivable()">‹ Back to all people</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(cp)}</h4>`;
+  let running=0;
+  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Date</th><th>Entity</th><th>Description</th><th class="num">Out</th><th class="num">Refund (In)</th><th class="num">Balance</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    running+=r.dir==='out'?r.amt:-r.amt;
+    h+=`<tr>
+      <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||r.day||'—'}</td>
+      <td style="font-size:12.5px">${escH(eName(r.e))}</td>
+      <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}${sourceTagHtml(r.source)}</td>
+      <td class="num neg">${r.dir==='out'?fmt(r.amt):''}</td>
+      <td class="num pos">${r.dir==='in'?fmt(r.amt):''}</td>
+      <td class="num" style="font-weight:800;color:${running>=0?'#b3261e':'#2b7a4b'}">${running>=0?fmt(running):'− '+fmt(Math.abs(running))}</td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div>`;
+  showModal('Other Receivable — '+cp,h,true);
 }
 function mkOutstanding(o){
   const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
@@ -5977,14 +6069,15 @@ function computeTxRow(r){
 // scratch, since it can legitimately run ahead of itemized detail. ──
 function onTx1FlowChange(){
   const flow=document.getElementById('tx1-flow').value;
-  const isRev=flow==='rev', isLoan=flow==='loan', isPinbuk=flow==='pinbuk';
+  const isRev=flow==='rev', isLoan=flow==='loan', isPinbuk=flow==='pinbuk', isOrec=flow==='orec';
   const opexWrap=document.getElementById('tx1-cat-opex-wrap'), revWrap=document.getElementById('tx1-cat-rev-wrap');
-  const opexRevFields=document.getElementById('tx1-opexrev-fields'), loanFields=document.getElementById('tx1-loan-fields'), pinbukFields=document.getElementById('tx1-pinbuk-fields');
+  const opexRevFields=document.getElementById('tx1-opexrev-fields'), loanFields=document.getElementById('tx1-loan-fields'), pinbukFields=document.getElementById('tx1-pinbuk-fields'), orecFields=document.getElementById('tx1-orec-fields');
   if(opexWrap) opexWrap.style.display=isRev?'none':'';
   if(revWrap) revWrap.style.display=isRev?'':'none';
-  if(opexRevFields) opexRevFields.style.display=(isLoan||isPinbuk)?'none':'';
+  if(opexRevFields) opexRevFields.style.display=(isLoan||isPinbuk||isOrec)?'none':'';
   if(loanFields) loanFields.style.display=isLoan?'':'none';
   if(pinbukFields){ pinbukFields.style.display=isPinbuk?'':'none'; if(isPinbuk) fillTx1PinbukAccts(); }
+  if(orecFields) orecFields.style.display=isOrec?'':'none';
 }
 // Populates the From/To Account dropdowns whenever Pinbuk is selected or the Entity changes while
 // it's already selected — scoped to that entity's own active bank accounts only, since a Pinbuk
@@ -6054,6 +6147,36 @@ async function saveTxOnePinbuk(entity,date,desc,amt){
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
 }
+// Other Receivable books straight into other_receivables — a dedicated table since the counterparty
+// here is an individual (shareholder or other related party), not a PT (intercompany_transactions)
+// or a bank account (bank_ledger_entries). Never touches entity_period_totals, exactly like Loan
+// Affiliate and Pinbuk — it's its own thing, viewable via its own card, not folded into any total.
+async function saveTxOneOtherReceivable(entity,date,desc,amt){
+  const msg=document.getElementById('tx1-msg');
+  const cp=(document.getElementById('tx1-orec-cp').value||'').trim();
+  const dir=document.getElementById('tx1-orec-dir').value;
+  if(!cp) return void(msg.style.color='#b3261e', msg.textContent='Counterparty is required.');
+  const dup=findDuplicateOrec(OTHER_RECV,{e:entity,cp,dir,date,amt,desc});
+  if(dup){
+    if(!confirm('A very similar Other Receivable transaction already exists — '+(dup.date||dup.day||'—')+' · '+(dup.dir==='out'?'Out':'In (Refund)')+' · '+dup.cp+' · '+fmt(dup.amt)+' · "'+dup.desc+'".\n\nSave this one anyway?')) return;
+  }
+  const btn=document.getElementById('tx1-send');
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const P=periodFromDateG(date);
+    const row={entity_code:entity,period_code:P.code,day_label:dayLbl(date),tx_date:date,
+      counterparty:cp,direction:dir,amount_idr:amt,description:desc||null,source_label:'Manual entry',created_by:MY_EMAIL};
+    const r=await authedFetch(SB_URL+'/rest/v1/other_receivables',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify([row])});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    (await r.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
+    renderKpiFin(agg());
+    document.getElementById('tx1-desc').value='';
+    document.getElementById('tx1-amt').value='';
+    document.getElementById('tx1-orec-cp').value='';
+    msg.style.color='#2b7a4b'; msg.textContent='Other Receivable transaction saved.';
+  }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
+  btn.disabled=false; btn.textContent='Save transaction';
+}
 async function saveTxOne(){
   const msg=document.getElementById('tx1-msg'); msg.textContent='';
   const btn=document.getElementById('tx1-send');
@@ -6068,6 +6191,7 @@ async function saveTxOne(){
   if(!amt||amt<=0||!isFinite(amt)) return void(msg.style.color='#b3261e', msg.textContent='Amount must be a positive number.');
   if(flow==='loan') return void await saveTxOneLoan(entity,date,desc,amt);
   if(flow==='pinbuk') return void await saveTxOnePinbuk(entity,date,desc,amt);
+  if(flow==='orec') return void await saveTxOneOtherReceivable(entity,date,desc,amt);
   const category=(document.getElementById(flow==='rev'?'tx1-cat-rev':'tx1-cat-opex').value||'').trim();
   const vendor=(document.getElementById('tx1-vendor').value||'').trim();
   if(!category) return void(msg.style.color='#b3261e', msg.textContent='Category is required.');
@@ -6210,6 +6334,11 @@ let IC_TX_ROWS=[];
 function findDuplicateIcTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
   return list.find(o=>norm(o.owner)===norm(r.owner) && norm(o.cp)===norm(r.cp) && o.type===r.type
+    && (o.date||'')===(r.date||'') && Math.round(o.amt)===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
+}
+function findDuplicateOrec(list,r){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return list.find(o=>o.e===r.e && norm(o.cp)===norm(r.cp) && o.dir===r.dir
     && (o.date||'')===(r.date||'') && Math.round(o.amt)===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
 }
 function computeIcTxRow(r){
@@ -7969,6 +8098,17 @@ function mkIcTx(r){
     desc:r.description||'',amt:+r.amount_idr,source:r.source_label,
     createdBy:r.created_by,createdAt:r.created_at};
 }
+// Other Receivable — money advanced to / refunded by an individual (shareholder or other related
+// party), kept separate from Loan Affiliate (PT-to-PT, intercompany_transactions) and Capital
+// Deposit (loan_flows, flow_type='Capital deposit') since neither of those fit a person as the
+// counterparty. 'out' = paid to the person (increases the receivable); 'in' = refund/repayment
+// received back from them (reduces it).
+let OTHER_RECV=[];
+function mkOrec(r){
+  return {id:r.id,e:r.entity_code,period:r.period_code,day:r.day_label,date:r.tx_date,
+    cp:r.counterparty,dir:r.direction,amt:+r.amount_idr,desc:r.description||'',
+    source:r.source_label,createdBy:r.created_by,createdAt:r.created_at};
+}
 let BANK_ACCOUNTS=[];
 let BANK_LEDGER=[];
 function mkBankAccount(r){
@@ -8296,6 +8436,11 @@ async function runDashboard(){
     IC_TX=(await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date'))
       .map(mkIcTx);
   }catch(e){ IC_TX=[]; }
+  // Other Receivable ledger (individuals, not PTs) — same fetch-once-and-hold shape as IC_TX above.
+  try{
+    OTHER_RECV=(await sbFetchAll('other_receivables?select=*&order=entity_code,tx_date'))
+      .map(mkOrec);
+  }catch(e){ OTHER_RECV=[]; }
   // Bank accounts (master list) and their ledger entries (the unified Debit/Kredit recap that
   // routes into Revenue/Expenses/Loan Affiliate and also drives the per-account running balance
   // shown on Cash Position) — kept as two separate fetches since the ledger can grow large.
@@ -9531,7 +9676,7 @@ async function renderEntryBody(){
     +'<div id="tx-single">'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-ent" style="'+inp+'" onchange="onTx1FlowChange()">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option></select>'
+    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option></select>'
     +'<input id="tx1-date" type="date" aria-label="Date" style="'+inp+'">'
     +'<input id="tx1-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
     +'</div>'
@@ -9559,6 +9704,15 @@ async function renderEntryBody(){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-pinbuk-from" style="'+inp+'"></select>'
     +'<select id="tx1-pinbuk-to" style="'+inp+'"></select>'
+    +'</div>'
+    +'</div>'
+    // Other Receivable — money advanced to or refunded by an individual (shareholder or other
+    // related party), not a PT — Counterparty is free text, same reasoning as Loan Affiliate.
+    +'<div id="tx1-orec-fields" style="display:none">'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records money paid to or refunded by an individual (e.g. a shareholder) — separate from Loan Affiliate (between PTs) and Capital Deposit. Not included in any headline financing total; view it later via the Other Receivable card.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<input id="tx1-orec-cp" placeholder="Counterparty (person\'s name)" style="'+inp+'">'
+    +'<select id="tx1-orec-dir" style="'+inp+'"><option value="out">Out — paid to this person</option><option value="in">In — refund from this person</option></select>'
     +'</div>'
     +'</div>'
     +'<input id="tx1-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
