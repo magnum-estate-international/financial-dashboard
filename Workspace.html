@@ -6236,7 +6236,7 @@ async function saveTxOneLoan(entity,date,desc,amt){
     renderKpiCash(agg());
     document.getElementById('tx1-desc').value='';
     document.getElementById('tx1-amt').value='';
-    document.getElementById('tx1-ic-cp').value='';
+    clearSearchableSelect('tx1-ic-cp');
     msg.style.color='#2b7a4b'; msg.textContent='Loan Affiliate transaction saved.';
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
@@ -6448,7 +6448,11 @@ function txVendorCell(r,i){
     if(r.vendor && r.vendor!=='Unknown') return escH(r.vendor);
     return fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
   }
-  if(r.flowKey==='loan'||r.flowKey==='orec'||r.flowKey==='capdep'){
+  if(r.flowKey==='loan'){
+    if(r.cp) return escH(r.cp);
+    return fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,icCounterpartyOptions(),'— pick counterparty —','counterparty');
+  }
+  if(r.flowKey==='orec'||r.flowKey==='capdep'){
     if(r.cp) return escH(r.cp);
     return `<input id="tx-fix-vendor-${i}" placeholder="${r.flowKey==='capdep'?'Shareholder name':'Counterparty'}" style="font-size:11px;padding:3px 4px;width:140px" onchange="fixTxField(${i},'vendor',this.value)">`;
   }
@@ -7215,6 +7219,21 @@ function clearSearchableSelect(id){
 }
 function vendorSelectHtml(id,current,extraStyle){
   return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search or add vendor…',style:extraStyle||'',allowCreate:'vendor'});
+}
+// Loan Affiliate's counterparty is free text (many counterparties are holding/investment PTs not
+// tracked as entities here), but that also means the exact same PT gets typed inconsistently across
+// entries (e.g. "PT Magnum Estate International" vs "PT Magnum Estate Int'l") — which silently
+// splits what should be one counterparty's balance into two separate rows in the AR/AP summary.
+// Suggesting every tracked entity name plus every counterparty label already used in
+// intercompany_transactions (via the already-loaded IC_TX) nudges toward reusing an existing exact
+// spelling, while allowCreate still lets a genuinely new counterparty be typed freely.
+function icCounterpartyOptions(){
+  const names=new Set(EIDS.map(eName));
+  IC_TX.forEach(r=>{ if(r.owner) names.add(r.owner); if(r.cp) names.add(r.cp); });
+  return Array.from(names).sort();
+}
+function icCounterpartySelectHtml(id,current,extraStyle){
+  return searchableSelectHtml(id,icCounterpartyOptions(),current||'',{placeholder:'Search or add counterparty…',style:extraStyle||'',allowCreate:'counterparty'});
 }
 function categorySelectHtml(id,options,current,extraStyle){
   return searchableSelectHtml(id,options,current||'',{placeholder:'Search or add category…',style:extraStyle||'',allowCreate:'category'});
@@ -9999,7 +10018,7 @@ async function renderEntryBody(){
     +'<div id="tx1-loan-fields" style="display:none">'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-ic-type" style="'+inp+'"><option value="AP">AP — this PT owes the counterparty</option><option value="AR">AR — the counterparty owes this PT</option></select>'
-    +'<input id="tx1-ic-cp" placeholder="Counterparty" style="'+inp+'">'
+    +icCounterpartySelectHtml('tx1-ic-cp','',inp)
     +'</div>'
     +'</div>'
     // Pinbuk (transfer between two accounts of the same PT) needs a specific From/To bank account,
