@@ -6084,7 +6084,21 @@ function findCategoryByFlow(name,flowKey){
   }
   return null;
 }
-const FLOW_LABEL={opex:'Opex',rev:'Revenue',loan:'Loan Affiliate',pinbuk:'Pinbuk',orec:'Other Receivable'};
+const FLOW_LABEL={opex:'Opex',rev:'Revenue',loan:'Loan Affiliate',pinbuk:'Pinbuk',orec:'Other Receivable',capdep:'Shareholder Capital Deposit'};
+// Re-fetches loan_flows and rebuilds every LOANS_BY_MONTH[period] bucket already known to the page
+// (Q2 recomputed as their sum) — called after a Loan Affiliate Summary insert (Shareholder Capital
+// Deposit, via Update Transaction) so the card/summary reflect it without a full page reload.
+async function refreshLoanFlows(){
+  const loans=await sbFetch('loan_flows?select=*&order=id');
+  const mkLoan=r=>({f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr});
+  Object.keys(LOANS_BY_MONTH).forEach(p=>{ if(p!=='Q2'&&p!=='CUSTOM') LOANS_BY_MONTH[p]=loans.filter(l=>l.period_code===p).map(mkLoan); });
+  LOANS_APR=LOANS_BY_MONTH.APR||[]; LOANS_MAY=LOANS_BY_MONTH.MAY||[]; LOANS_JUN=LOANS_BY_MONTH.JUN||[];
+  LOANS_BY_MONTH.Q2=[...LOANS_APR,...LOANS_MAY,...LOANS_JUN];
+}
+function findDuplicateCapDep(period,cp,entityName,amt){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return (LOANS_BY_MONTH[period]||[]).find(l=>l.ty==='Capital deposit' && norm(l.f)===norm(cp) && norm(l.t)===norm(entityName) && Math.round(l.amt)===Math.round(amt||0));
+}
 // Bank account lookup for Pinbuk rows: r.catMatch/r.vendorMatch hold a bank_account id (string) once
 // fixed via the inline picker; r.catRaw/r.vendorRaw hold whatever label text came from the Excel file
 // (matched against that entity's own account list, same free-text-label convention as Vendor/Category).
@@ -6102,7 +6116,7 @@ function computeTxRow(r){
   let error=null;
   if(!r.entityMatch) error='Entity not recognized';
   else if(!r.date) error='Invalid date';
-  else if(!r.flowKey) error='Flow must be Opex, Revenue, Loan Affiliate, Pinbuk, or Other Receivable';
+  else if(!r.flowKey) error='Flow must be Opex, Revenue, Loan Affiliate, Pinbuk, Other Receivable, or Shareholder Capital Deposit';
   else if(!r.desc) error='Missing description';
   else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
   r.category=''; r.vendor=''; r.icType=null; r.cp=''; r.dir=null; r.fromAcct=null; r.toAcct=null;
@@ -6130,6 +6144,11 @@ function computeTxRow(r){
       r.cp=String(r.vendorMatch||r.vendorRaw||'').trim();
       if(!r.dir) error='Direction must be In or Out (Category column)';
       else if(!r.cp) error='Counterparty is required (Vendor column)';
+    } else if(r.flowKey==='capdep'){
+      // Shareholder Capital Deposit is always money IN from a shareholder into this PT — no
+      // Type/Direction needed, just who. Category column is unused for this flow.
+      r.cp=String(r.vendorMatch||r.vendorRaw||'').trim();
+      if(!r.cp) error='Shareholder name is required (Vendor column)';
     }
   }
   r.error=error;
@@ -6152,6 +6171,10 @@ function computeTxRow(r){
       r.dup=findDuplicateBl(BANK_LEDGER,{acctMatch:r.fromAcct,date:r.date,code:'pinbuk',debit:0,kredit:r.amt,desc:r.desc});
     } else if(r.flowKey==='orec'){
       r.dup=findDuplicateOrec(OTHER_RECV,{e:r.entityMatch,cp:r.cp,dir:r.dir,date:r.date,amt:r.amt,desc:r.desc});
+    } else if(r.flowKey==='capdep'){
+      const P=periodFromDateG(r.date);
+      r.period=P.code; r.periodLabel=P.label;
+      r.dup=findDuplicateCapDep(P.code,r.cp,eName(r.entityMatch),r.amt);
     }
   }
 }
@@ -6162,15 +6185,16 @@ function computeTxRow(r){
 // scratch, since it can legitimately run ahead of itemized detail. ──
 function onTx1FlowChange(){
   const flow=document.getElementById('tx1-flow').value;
-  const isRev=flow==='rev', isLoan=flow==='loan', isPinbuk=flow==='pinbuk', isOrec=flow==='orec';
+  const isRev=flow==='rev', isLoan=flow==='loan', isPinbuk=flow==='pinbuk', isOrec=flow==='orec', isCapdep=flow==='capdep';
   const opexWrap=document.getElementById('tx1-cat-opex-wrap'), revWrap=document.getElementById('tx1-cat-rev-wrap');
-  const opexRevFields=document.getElementById('tx1-opexrev-fields'), loanFields=document.getElementById('tx1-loan-fields'), pinbukFields=document.getElementById('tx1-pinbuk-fields'), orecFields=document.getElementById('tx1-orec-fields');
+  const opexRevFields=document.getElementById('tx1-opexrev-fields'), loanFields=document.getElementById('tx1-loan-fields'), pinbukFields=document.getElementById('tx1-pinbuk-fields'), orecFields=document.getElementById('tx1-orec-fields'), capdepFields=document.getElementById('tx1-capdep-fields');
   if(opexWrap) opexWrap.style.display=isRev?'none':'';
   if(revWrap) revWrap.style.display=isRev?'':'none';
-  if(opexRevFields) opexRevFields.style.display=(isLoan||isPinbuk||isOrec)?'none':'';
+  if(opexRevFields) opexRevFields.style.display=(isLoan||isPinbuk||isOrec||isCapdep)?'none':'';
   if(loanFields) loanFields.style.display=isLoan?'':'none';
   if(pinbukFields){ pinbukFields.style.display=isPinbuk?'':'none'; if(isPinbuk) fillTx1PinbukAccts(); }
   if(orecFields) orecFields.style.display=isOrec?'':'none';
+  if(capdepFields) capdepFields.style.display=isCapdep?'':'none';
 }
 // Populates the From/To Account dropdowns whenever Pinbuk is selected or the Entity changes while
 // it's already selected — scoped to that entity's own active bank accounts only, since a Pinbuk
@@ -6270,6 +6294,35 @@ async function saveTxOneOtherReceivable(entity,date,desc,amt){
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
 }
+// Shareholder Capital Deposit books straight into loan_flows (flow_type='Capital deposit') — the
+// same table the "Shareholder Capital Deposit" card and Loan Affiliate Summary already read, and a
+// different table from the "Loan Affiliate" flow above (intercompany_transactions) despite the
+// similar name: this is capital injected BY a person, tracked on its own ledger predating the AR/AP
+// one. Always money in (from_label = shareholder, to_label = this PT) — no Type/Direction to pick.
+async function saveTxOneCapDep(entity,date,desc,amt){
+  const msg=document.getElementById('tx1-msg');
+  const cp=(document.getElementById('tx1-capdep-cp').value||'').trim();
+  if(!cp) return void(msg.style.color='#b3261e', msg.textContent='Shareholder name is required.');
+  const P=periodFromDateG(date);
+  const dup=findDuplicateCapDep(P.code,cp,eName(entity),amt);
+  if(dup){
+    if(!confirm('A very similar Shareholder Capital Deposit already exists — '+P.label+' · '+cp+' · '+fmt(dup.amt)+'.\n\nSave this one anyway?')) return;
+  }
+  const btn=document.getElementById('tx1-send');
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const row={period_code:P.code,from_label:cp,to_label:eName(entity),flow_type:'Capital deposit',
+      amount_idr:amt,from_group:null,to_group:ENT[entity].grp,description:desc||null,source_label:'Manual entry',created_by:MY_EMAIL};
+    await adminAddBatch('loan_flows',[row]);
+    await refreshLoanFlows();
+    renderKpiFin(agg());
+    document.getElementById('tx1-desc').value='';
+    document.getElementById('tx1-amt').value='';
+    document.getElementById('tx1-capdep-cp').value='';
+    msg.style.color='#2b7a4b'; msg.textContent='Shareholder Capital Deposit saved.';
+  }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
+  btn.disabled=false; btn.textContent='Save transaction';
+}
 async function saveTxOne(){
   const msg=document.getElementById('tx1-msg'); msg.textContent='';
   const btn=document.getElementById('tx1-send');
@@ -6284,6 +6337,7 @@ async function saveTxOne(){
   if(!amt||amt<=0||!isFinite(amt)) return void(msg.style.color='#b3261e', msg.textContent='Amount must be a positive number.');
   if(flow==='loan') return void await saveTxOneLoan(entity,date,desc,amt);
   if(flow==='pinbuk') return void await saveTxOnePinbuk(entity,date,desc,amt);
+  if(flow==='capdep') return void await saveTxOneCapDep(entity,date,desc,amt);
   if(flow==='orec') return void await saveTxOneOtherReceivable(entity,date,desc,amt);
   const category=(document.getElementById(flow==='rev'?'tx1-cat-rev':'tx1-cat-opex').value||'').trim();
   const vendor=(document.getElementById('tx1-vendor').value||'').trim();
@@ -6349,11 +6403,12 @@ function txEntityCell(r,i){
 }
 function txFlowCell(r,i){
   if(r.flowKey) return FLOW_LABEL[r.flowKey]||r.flowKey;
-  return `<select id="tx-fix-flow-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'flow',this.value)"><option value="">— pick —</option><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option></select>`;
+  return `<select id="tx-fix-flow-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'flow',this.value)"><option value="">— pick —</option><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option><option value="capdep">Shareholder Capital Deposit</option></select>`;
 }
 // Category/Vendor cells are flow-aware: Opex/Revenue keep the usual category/vendor pickers;
 // Loan Affiliate repurposes them as Type (AP/AR) + Counterparty (free text); Pinbuk as From/To bank
-// account (scoped to the row's own entity); Other Receivable as Direction (In/Out) + Counterparty.
+// account (scoped to the row's own entity); Other Receivable as Direction (In/Out) + Counterparty;
+// Shareholder Capital Deposit only needs Counterparty (Category is unused for this flow).
 function txCatCell(r,i){
   if(!r.flowKey) return '<span style="color:var(--muted);font-size:11px">— pick Flow —</span>';
   if(r.flowKey==='opex'||r.flowKey==='rev'){
@@ -6375,6 +6430,7 @@ function txCatCell(r,i){
     if(r.dir) return r.dir==='out'?'Out':'In';
     return `<select id="tx-fix-cat-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'cat',this.value)"><option value="">— In/Out —</option><option value="out">Out</option><option value="in">In</option></select>`;
   }
+  if(r.flowKey==='capdep') return '<span style="color:var(--muted);font-size:11px">— not used —</span>';
   return '';
 }
 function txVendorCell(r,i){
@@ -6383,9 +6439,9 @@ function txVendorCell(r,i){
     if(r.vendor && r.vendor!=='Unknown') return escH(r.vendor);
     return fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
   }
-  if(r.flowKey==='loan'||r.flowKey==='orec'){
+  if(r.flowKey==='loan'||r.flowKey==='orec'||r.flowKey==='capdep'){
     if(r.cp) return escH(r.cp);
-    return `<input id="tx-fix-vendor-${i}" placeholder="Counterparty" style="font-size:11px;padding:3px 4px;width:140px" onchange="fixTxField(${i},'vendor',this.value)">`;
+    return `<input id="tx-fix-vendor-${i}" placeholder="${r.flowKey==='capdep'?'Shareholder name':'Counterparty'}" style="font-size:11px;padding:3px 4px;width:140px" onchange="fixTxField(${i},'vendor',this.value)">`;
   }
   if(r.flowKey==='pinbuk'){
     if(r.toAcct) return escH(bankAccountLabel(r.toAcct));
@@ -6432,6 +6488,7 @@ function renderTxPreview(){
       const loanRows=valid.filter(r=>r.flowKey==='loan');
       const pinbukRows=valid.filter(r=>r.flowKey==='pinbuk');
       const orecRows=valid.filter(r=>r.flowKey==='orec');
+      const capdepRows=valid.filter(r=>r.flowKey==='capdep');
       let n=0;
 
       if(opexRevRows.length){
@@ -6497,6 +6554,13 @@ function renderTxPreview(){
         if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
         (await resp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
         n+=orecRows.length;
+      }
+
+      if(capdepRows.length){
+        const rows=capdepRows.map(r=>({period_code:r.period,from_label:r.cp,to_label:eName(r.entityMatch),flow_type:'Capital deposit',amount_idr:r.amt,from_group:null,to_group:ENT[r.entityMatch].grp,description:r.desc||null,source_label:'Excel import'}));
+        await adminAddBatch('loan_flows',rows);
+        await refreshLoanFlows();
+        n+=rows.length;
       }
 
       TX_ROWS=[];
@@ -9853,7 +9917,7 @@ async function renderEntryBody(){
   // entity_period_totals additive-patch logic as the bulk importer's save handler. ──
   h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Update Transaction</summary>'
     +'<div style="padding:12px 2px 0">'
-    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single transaction directly, or import many at once via Excel — Opex, Revenue, Loan Affiliate, Pinbuk, and Other Receivable are all supported here. New rows are added to the consolidated numbers immediately.</div>'
+    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single transaction directly, or import many at once via Excel — Opex, Revenue, Loan Affiliate, Pinbuk, Other Receivable, and Shareholder Capital Deposit are all supported here. New rows are added to the consolidated numbers immediately.</div>'
     +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
     +'<button id="tx-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
     +'<button id="tx-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
@@ -9861,7 +9925,7 @@ async function renderEntryBody(){
     +'<div id="tx-single">'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-ent" style="'+inp+'" onchange="onTx1FlowChange()">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option></select>'
+    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option><option value="capdep">Shareholder Capital Deposit</option></select>'
     +'<input id="tx1-date" type="date" aria-label="Date" style="'+inp+'">'
     +'<input id="tx1-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
     +'</div>'
@@ -9903,6 +9967,16 @@ async function renderEntryBody(){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<input id="tx1-orec-cp" placeholder="Counterparty (person\'s name)" style="'+inp+'">'
     +'<select id="tx1-orec-dir" style="'+inp+'"><option value="out">Out — paid to this person</option><option value="in">In — refund from this person</option></select>'
+    +'</div>'
+    +'</div>'
+    // Shareholder Capital Deposit — always money IN from a shareholder, booked into loan_flows
+    // (flow_type='Capital deposit'), the same table the Shareholder Capital Deposit card and Loan
+    // Affiliate Summary already read — a different table from "Loan Affiliate" above despite the
+    // similar name. Just who, no Type/Direction to pick.
+    +'<div id="tx1-capdep-fields" style="display:none">'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records capital injected by a shareholder into this PT — tracked on its own \"Shareholder Capital Deposit\" card, separate from Loan Affiliate and Other Receivable. Not included in any Opex/Revenue/Financing total.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<input id="tx1-capdep-cp" placeholder="Shareholder name" style="'+inp+'">'
     +'</div>'
     +'</div>'
     +'<input id="tx1-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
@@ -10156,9 +10230,9 @@ async function renderEntryBody(){
       await downloadValidatedTemplate('transactions_template.xlsx','Transactions',
         ['Date','Entity','Flow','Category','Vendor','Description','Amount'],
         ['2026-07-01',eName(EIDS[0]),'Opex',opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','Sample transaction description',1000000],
-        [{col:'B',values:EIDS.map(eName)},{col:'C',values:['Opex','Revenue','Loan Affiliate','Pinbuk','Other Receivable']},
+        [{col:'B',values:EIDS.map(eName)},{col:'C',values:['Opex','Revenue','Loan Affiliate','Pinbuk','Other Receivable','Shareholder Capital Deposit']},
          {col:'D',values:opexCatsTpl.concat(revCatsTpl,['AP','AR','In','Out'])},{col:'E',values:VENDORS_G||[]}],
-        'Flow = Opex/Revenue: Category/Vendor as usual.  Flow = Loan Affiliate: Category = AP or AR, Vendor = Counterparty PT.  Flow = Pinbuk: Category = From account label, Vendor = To account label (exact match to that entity\'s own bank accounts).  Flow = Other Receivable: Category = In or Out, Vendor = Counterparty person\'s name.');
+        'Flow = Opex/Revenue: Category/Vendor as usual.  Flow = Loan Affiliate: Category = AP or AR, Vendor = Counterparty PT.  Flow = Pinbuk: Category = From account label, Vendor = To account label (exact match to that entity\'s own bank accounts).  Flow = Other Receivable: Category = In or Out, Vendor = Counterparty person\'s name.  Flow = Shareholder Capital Deposit: Category is unused, Vendor = Shareholder\'s name.');
     } finally { txTplBtn.disabled=false; }
   };
   const txFileInp=document.getElementById('tx-file');
@@ -10189,6 +10263,7 @@ async function renderEntryBody(){
         :/^loan|^intercompany|^inter-company|^inter company/.test(flowRaw)?'loan'
         :/^pinbuk/.test(flowRaw)?'pinbuk'
         :/^other receivable|^receivable|^orec/.test(flowRaw)?'orec'
+        :/^shareholder|^capital|^capdep/.test(flowRaw)?'capdep'
         :null;
       const catRaw=kCat!=null?r[kCat]:'', catMatch=(flowKey==='opex'||flowKey==='rev')?findCategoryByFlow(catRaw,flowKey):null;
       const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=(flowKey==='opex'||flowKey==='rev')?findVendor(vendorRaw):null;
