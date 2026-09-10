@@ -10048,7 +10048,11 @@ async function renderEntryBody(){
         const debitRaw=kDebit!=null?r[kDebit]:'', kreditRaw=kKredit!=null?r[kKredit]:'';
         const saldoRaw=kSaldo!=null?r[kSaldo]:'';
         const catRaw=kCat!=null?String(r[kCat]||'').trim():'';
-        const catMatch=findBlCategory(catRaw,code);
+        // Pinbuk rows are auto-categorized as "Pinbuk" (same as the one-at-a-time Update
+        // Transaction flow) rather than requiring the file's own Kategori column to have a value —
+        // historical statements/imports never had a "Pinbuk" category to put there, so requiring
+        // one here would reject every Pinbuk row in an otherwise-valid file.
+        const catMatch=code==='pinbuk'?'Pinbuk':findBlCategory(catRaw,code);
         const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
         const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
         const cp=kCp!=null?String(r[kCp]||'').trim():'';
