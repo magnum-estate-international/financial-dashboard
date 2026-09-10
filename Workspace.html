@@ -6029,9 +6029,12 @@ function isoFromDayLabel(d){
 let TX_ROWS=[];
 function findDuplicateTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
+  // o.amt is stored signed (contra/refund rows negative) while r.amt is always the positive
+  // amount as typed/imported — compare on magnitude so a refund row can still be flagged as a
+  // duplicate of another refund row, not silently exempted from the check.
   return list.find(o=>o.e===r.entityMatch && o.mo===r.period && o.type===r.flowKey
     && norm(o.k)===norm(r.category) && norm(o.vendor)===norm(r.vendor||r.vendorMatch||'Unknown')
-    && Math.round(o.amt)===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
+    && Math.round(Math.abs(o.amt))===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
 }
 function findCategoryByFlow(name,flowKey){
   if(!name) return null;
@@ -6056,6 +6059,13 @@ function computeTxRow(r){
   r.error=error;
   r.category=r.catMatch||r.catRaw||'';
   r.vendor=r.vendorMatch||r.vendorRaw||'Unknown';
+  // A refund/reimbursement uses the same two special categories as the Bank Ledger importer
+  // (see OPEX_REFUND_CATEGORY/REV_REFUND_CATEGORY below): money coming back for a cost already
+  // booked stays filed under Opex (so it still shows in Opex detail) but nets OFF the Opex total;
+  // money paid back out for revenue already booked stays filed under Revenue but nets it off —
+  // never the other flow, so it doesn't inflate whichever side it's entered under.
+  r.contra=(r.flowKey==='opex'&&r.category===OPEX_REFUND_CATEGORY)||(r.flowKey==='rev'&&r.category===REV_REFUND_CATEGORY);
+  r.signedAmt=r.contra?-(r.amt||0):r.amt;
   if(!error){
     const P=periodFromDateG(r.date);
     r.period=P.code; r.periodLabel=P.label;
@@ -6205,15 +6215,20 @@ async function saveTxOne(){
     const srcNote=dup.srcLabel?' (source: '+dup.srcLabel+')':'';
     if(!confirm('A very similar transaction already exists — '+dup.d+' · '+(dup.k||'—')+' · '+(dup.vendor||'—')+' · '+fmt(dup.amt)+' · "'+dup.desc+'"'+srcNote+'.\n\nSave this one anyway?')) return;
   }
+  // Same refund convention as the bulk importer/Bank Ledger: picking the dedicated Refund category
+  // under Opex (money back for a cost already booked) or under Revenue (money paid back out for
+  // revenue already booked) nets the amount OFF that same side instead of adding to it.
+  const contra=(flow==='opex'&&category===OPEX_REFUND_CATEGORY)||(flow==='rev'&&category===REV_REFUND_CATEGORY);
+  const signedAmt=contra?-amt:amt;
   btn.disabled=true; btn.textContent='Saving…';
   try{
     const row={source:'TX_SINGLE',ord:Math.floor(Date.now()/1000),period_code:P.code,flow,
       entity_code:entity,day_label:dayLbl(date),description:desc.slice(0,200),raw_label:category,
-      vendor:vendor||null,source_label:'Manual entry',amount_idr:amt,contra:false};
+      vendor:vendor||null,source_label:'Manual entry',amount_idr:signedAmt,contra};
     await adminAddBatch('transactions',[row]);
     const cur=await sbFetch('entity_period_totals?entity_code=eq.'+entity+'&period_code=eq.'+P.code+'&select=revenue,opex,financing_in,financing_out');
     const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
-    const inc={revenue:flow==='rev'?amt:0,opex:flow==='opex'?amt:0};
+    const inc={revenue:flow==='rev'?signedAmt:0,opex:flow==='opex'?signedAmt:0};
     const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
       headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
       body:JSON.stringify({entity_code:entity,period_code:P.code,
@@ -6225,7 +6240,7 @@ async function saveTxOne(){
     document.getElementById('tx1-amt').value='';
     clearSearchableSelect(flow==='rev'?'tx1-cat-rev':'tx1-cat-opex');
     clearSearchableSelect('tx1-vendor');
-    msg.style.color='#2b7a4b'; msg.textContent='Transaction saved — the page refreshes when you close this panel.';
+    msg.style.color='#2b7a4b'; msg.textContent=(contra?'Refund saved — netted off '+(flow==='rev'?'Revenue':'Opex')+'. ':'Transaction saved. ')+'The page refreshes when you close this panel.';
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
 }
@@ -6260,7 +6275,7 @@ function renderTxPreview(){
   let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Date</th><th>Entity</th><th>Flow</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
   TX_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
-    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':'OK');
+    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':(r.contra?'OK · nets off as refund':'OK'));
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
       +'<td style="font-size:12px">'+txEntityCell(r,i)+'</td>'
@@ -6289,19 +6304,20 @@ function renderTxPreview(){
         source:'TX_MULTI',ord:baseOrd+i,period_code:r.period,flow:r.flowKey,
         entity_code:r.entityMatch,day_label:dayLbl(r.date),
         description:String(r.desc||'').slice(0,200),raw_label:r.category,
-        source_label:'Excel import',upload_batch:batchId,amount_idr:r.amt,contra:false}));
+        source_label:'Excel import',upload_batch:batchId,amount_idr:r.signedAmt,contra:r.contra}));
       if(txRows.length) await adminAddBatch('transactions',txRows);
       // keep entity_period_totals in sync — ADD the new amount on top of whatever total already
       // exists (never recompute the headline from scratch), since a headline can legitimately be
       // larger than the sum of itemized detail (un-itemised bank-recap gap) and blindly overwriting
-      // it with sum(detail) would silently erase that gap.
+      // it with sum(detail) would silently erase that gap. A refund row's signedAmt is negative, so
+      // it naturally nets OFF whichever side (Opex or Revenue) it's filed under.
       const touched={};
       valid.forEach(r=>{ (touched[r.entityMatch]=touched[r.entityMatch]||new Set()).add(r.period); });
       for(const ent of Object.keys(touched)){
         for(const per of touched[ent]){
           const added=valid.filter(r=>r.entityMatch===ent && r.period===per);
           const inc={revenue:0,opex:0};
-          added.forEach(r=>{ inc[r.flowKey==='rev'?'revenue':'opex']+=r.amt; });
+          added.forEach(r=>{ inc[r.flowKey==='rev'?'revenue':'opex']+=r.signedAmt; });
           const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
           const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
           const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
@@ -9686,6 +9702,11 @@ async function renderEntryBody(){
     +'<div id="tx1-cat-rev-wrap" style="display:none">'+categorySelectHtml('tx1-cat-rev',CATS_BY_KIND_G.revenue||[],'',inp)+'</div>'
     +vendorSelectHtml('tx1-vendor','',inp)
     +'</div>'
+    // Refund/reimbursement: money coming back in for a cost already booked stays Opex, category
+    // "Refund / Reimbursement Received" — nets OFF Opex instead of adding to it. Money paid back
+    // out for revenue already booked stays Revenue, category "Deposit Refund Paid" — nets OFF
+    // Revenue. Same convention as Bank Ledger import, just surfaced here too.
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Refunding money already recorded? Pick category <b>"Refund / Reimbursement Received"</b> under Opex if cash is coming back in, or <b>"Deposit Refund Paid"</b> under Revenue if cash is going back out — either nets off the total instead of adding to it.</div>'
     +'</div>'
     // Loan Affiliate books straight into intercompany_transactions (the same table the Loan
     // Affiliate card and Bank Ledger's AR/AP rows already feed) — it has no category/vendor,
