@@ -6456,6 +6456,30 @@ function txVendorCell(r,i){
   }
   return '';
 }
+// Rows currently expanded to show their matched existing transaction inline, so the user can judge
+// "is this really the same transaction?" (findDuplicateTx doesn't compare dates at all, so the
+// existing row's actual date is often the one piece of evidence that settles it) without leaving
+// the import screen to go search for it elsewhere.
+let TX_DUP_OPEN=new Set();
+function toggleTxDupCheck(i){
+  if(TX_DUP_OPEN.has(i)) TX_DUP_OPEN.delete(i); else TX_DUP_OPEN.add(i);
+  renderTxPreview();
+}
+function txDupCompareRowHtml(i,dup){
+  return `<tr style="background:#fffaf0"><td></td><td colspan="8" style="padding:8px 12px 12px;font-size:12px">`
+    +`<div style="border:1px solid #f0cb87;border-radius:8px;padding:8px 10px;background:#fff">`
+    +`<div style="font-weight:700;color:#8a5a1e;margin-bottom:6px">Already saved as:</div>`
+    +`<table style="width:100%"><tr>`
+    +`<td style="color:var(--muted);padding-right:14px;white-space:nowrap">${escH(dup.d||'—')}</td>`
+    +`<td style="padding-right:14px">${escH(ENT[dup.e]?ENT[dup.e].name:(dup.e||'—'))}</td>`
+    +`<td style="padding-right:14px;color:var(--muted)">${escH(dup.k||'—')}</td>`
+    +`<td style="padding-right:14px;color:var(--muted)">${escH(dup.vendor||'—')}</td>`
+    +`<td class="num" style="padding-right:14px">${fmt(Math.abs(dup.amt))}</td>`
+    +`<td style="color:var(--muted)">${escH(dup.desc||'—')}</td>`
+    +`</tr></table>`
+    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.srcLabel||'—')}${dup.d?' · this row\'s own date is what to compare — matching here is checked on entity/category/vendor/amount/description only, not the date':''}</div>`
+    +`</div></td></tr>`;
+}
 function renderTxPreview(){
   const el=document.getElementById('tx-preview'); if(!el) return;
   if(!TX_ROWS.length){ el.innerHTML=''; return; }
@@ -6463,7 +6487,10 @@ function renderTxPreview(){
   let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Date</th><th>Entity</th><th>Flow</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
   TX_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
-    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':(r.contra?'OK · nets off as refund':'OK'));
+    const open=TX_DUP_OPEN.has(i);
+    const status=r.error?escH(r.error):(r.dup
+      ?`<button type="button" onclick="toggleTxDupCheck(${i})" style="border:0;background:none;cursor:pointer;padding:0;font:inherit;color:#8a5a1e;font-weight:700;text-decoration:underline;text-decoration-style:dotted">⚠ Possible duplicate — ${open?'hide':'check'}</button>`
+      :(r.contra?'OK · nets off as refund':'OK'));
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
       +'<td style="font-size:12px">'+txEntityCell(r,i)+'</td>'
@@ -6473,6 +6500,7 @@ function renderTxPreview(){
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
       +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
       +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
+    if(r.dup && open) h+=txDupCompareRowHtml(i,r.dup);
   });
   h+='</tbody></table></div>';
   const dupN=valid.filter(r=>r.dup).length;
@@ -6568,7 +6596,7 @@ function renderTxPreview(){
         n+=rows.length;
       }
 
-      TX_ROWS=[];
+      TX_ROWS=[]; TX_DUP_OPEN=new Set();
       document.getElementById('tx-import-msg').style.color='#2b7a4b';
       document.getElementById('tx-import-msg').textContent='✓ Added '+n+' new transaction'+(n===1?'':'s')+' — the page refreshes when you close this panel.';
       impBtn.textContent='Imported ✓';
@@ -10250,6 +10278,7 @@ async function renderEntryBody(){
     }
     const sheet=wb.Sheets[wb.SheetNames[0]];
     const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
+    TX_DUP_OPEN=new Set();
     if(!rows.length){ TX_ROWS=[]; renderTxPreview(); return; }
     const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
     const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
