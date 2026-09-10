@@ -4460,7 +4460,25 @@ function openOpexBreakdown(view){
     // drill-down step needed since this view already is the per-transaction list.
     const ids=scopeIds();
     const rows=TX.filter(t=>activeMonths().includes(t.mo||'MAY')&&ids.includes(t.e)&&t.type==='opex');
-    const dateKey=t=>{ const iso=isoFromDayLabel(t.d); return iso?new Date(iso).getTime():-Infinity; };
+    // A handful of older consolidated-import rows carry a date RANGE as day_label (e.g. "01–30 Apr",
+    // "07 & 29 May") instead of a single "DD Mon" date — isoFromDayLabel can't parse those at all,
+    // which silently dumped them to the very bottom regardless of how recent they actually were.
+    // Falls back to the first day-number + month-abbreviation found anywhere in the string (its
+    // start date) so every row still sorts somewhere sensible.
+    const dateKey=t=>{
+      const d=t.d||'';
+      let iso=isoFromDayLabel(d);
+      // isoFromDayLabel only checks that a recognizable month follows the FIRST space — for
+      // "01–30 Apr" that's parts=["01–30","Apr"], which passes its own check but pads a garbage
+      // day ("01–30") into the string, producing an Invalid Date rather than an empty result. Must
+      // actually try parsing before trusting it, not just check it's non-empty.
+      let ts=iso?new Date(iso).getTime():NaN;
+      if(isNaN(ts)){
+        const m=d.match(/(\d{1,2})\D*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/);
+        if(m){ iso=isoFromDayLabel(m[1]+' '+m[2]); ts=iso?new Date(iso).getTime():NaN; }
+      }
+      return isNaN(ts)?-Infinity:ts;
+    };
     rows.sort((x,y)=>dateKey(y)-dateKey(x));
     const backCall=`openOpexBreakdown('date')`;
     let s=0;
