@@ -6084,29 +6084,76 @@ function findCategoryByFlow(name,flowKey){
   }
   return null;
 }
+const FLOW_LABEL={opex:'Opex',rev:'Revenue',loan:'Loan Affiliate',pinbuk:'Pinbuk',orec:'Other Receivable'};
+// Bank account lookup for Pinbuk rows: r.catMatch/r.vendorMatch hold a bank_account id (string) once
+// fixed via the inline picker; r.catRaw/r.vendorRaw hold whatever label text came from the Excel file
+// (matched against that entity's own account list, same free-text-label convention as Vendor/Category).
+function findBankAccountByRef(accts,matchVal,rawVal){
+  if(matchVal){ const id=Number(matchVal); return accts.find(a=>a.id===id)||null; }
+  const q=String(rawVal||'').trim().toLowerCase(); if(!q) return null;
+  return accts.find(a=>bankAccountLabel(a).toLowerCase()===q) || accts.find(a=>(a.label||'').toLowerCase()===q) || null;
+}
+// The bulk Excel importer shares one flat column layout (Category, Vendor) across all 5 flows —
+// Opex/Revenue use them as-is; Loan Affiliate repurposes them as Type (AP/AR) + Counterparty;
+// Pinbuk as From Account + To Account; Other Receivable as Direction (In/Out) + Counterparty. This
+// avoids a different template per flow, mirroring how Bank Ledger import already repurposes its
+// own Category column for the refund special-cases.
 function computeTxRow(r){
   let error=null;
   if(!r.entityMatch) error='Entity not recognized';
   else if(!r.date) error='Invalid date';
-  else if(!r.flowKey) error='Flow must be Opex or Revenue';
-  else if(!r.catMatch) error='Category not recognized — pick one, or add it via Manage Categories first';
+  else if(!r.flowKey) error='Flow must be Opex, Revenue, Loan Affiliate, Pinbuk, or Other Receivable';
   else if(!r.desc) error='Missing description';
   else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
-  r.error=error;
-  r.category=r.catMatch||r.catRaw||'';
-  r.vendor=r.vendorMatch||r.vendorRaw||'Unknown';
-  // A refund/reimbursement uses the same two special categories as the Bank Ledger importer
-  // (see OPEX_REFUND_CATEGORY/REV_REFUND_CATEGORY below): money coming back for a cost already
-  // booked stays filed under Opex (so it still shows in Opex detail) but nets OFF the Opex total;
-  // money paid back out for revenue already booked stays filed under Revenue but nets it off —
-  // never the other flow, so it doesn't inflate whichever side it's entered under.
-  r.contra=(r.flowKey==='opex'&&r.category===OPEX_REFUND_CATEGORY)||(r.flowKey==='rev'&&r.category===REV_REFUND_CATEGORY);
-  r.signedAmt=r.contra?-(r.amt||0):r.amt;
+  r.category=''; r.vendor=''; r.icType=null; r.cp=''; r.dir=null; r.fromAcct=null; r.toAcct=null;
   if(!error){
-    const P=periodFromDateG(r.date);
-    r.period=P.code; r.periodLabel=P.label;
-    r.dup=findDuplicateTx(TX,r);
-  } else { r.period=null; r.dup=null; }
+    if(r.flowKey==='opex'||r.flowKey==='rev'){
+      r.category=r.catMatch||r.catRaw||'';
+      r.vendor=r.vendorMatch||r.vendorRaw||'Unknown';
+      if(!r.category) error='Category not recognized — pick one, or add it via Manage Categories first';
+    } else if(r.flowKey==='loan'){
+      const t=String(r.catMatch||r.catRaw||'').trim().toUpperCase();
+      r.icType=(t==='AP'||t==='AR')?t:null;
+      r.cp=String(r.vendorMatch||r.vendorRaw||'').trim();
+      if(!r.icType) error='Type must be AP or AR (Category column)';
+      else if(!r.cp) error='Counterparty is required (Vendor column)';
+    } else if(r.flowKey==='pinbuk'){
+      const accts=r.entityMatch?BANK_ACCOUNTS.filter(a=>a.entity===r.entityMatch&&a.active):[];
+      r.fromAcct=findBankAccountByRef(accts,r.catMatch,r.catRaw);
+      r.toAcct=findBankAccountByRef(accts,r.vendorMatch,r.vendorRaw);
+      if(!r.fromAcct) error='From Account not recognized for this entity (Category column)';
+      else if(!r.toAcct) error='To Account not recognized for this entity (Vendor column)';
+      else if(r.fromAcct.id===r.toAcct.id) error='From and To must be different accounts';
+    } else if(r.flowKey==='orec'){
+      const d=String(r.catMatch||r.catRaw||'').trim().toLowerCase();
+      r.dir=(d==='in'||d==='out')?d:null;
+      r.cp=String(r.vendorMatch||r.vendorRaw||'').trim();
+      if(!r.dir) error='Direction must be In or Out (Category column)';
+      else if(!r.cp) error='Counterparty is required (Vendor column)';
+    }
+  }
+  r.error=error;
+  r.period=null; r.periodLabel=null; r.dup=null; r.contra=false; r.signedAmt=r.amt;
+  if(!error){
+    if(r.flowKey==='opex'||r.flowKey==='rev'){
+      const P=periodFromDateG(r.date);
+      r.period=P.code; r.periodLabel=P.label;
+      // A refund/reimbursement uses the same two special categories as the Bank Ledger importer
+      // (see OPEX_REFUND_CATEGORY/REV_REFUND_CATEGORY below): money coming back for a cost already
+      // booked stays filed under Opex (so it still shows in Opex detail) but nets OFF the Opex
+      // total; money paid back out for revenue already booked stays filed under Revenue but nets it
+      // off — never the other flow, so it doesn't inflate whichever side it's entered under.
+      r.contra=(r.flowKey==='opex'&&r.category===OPEX_REFUND_CATEGORY)||(r.flowKey==='rev'&&r.category===REV_REFUND_CATEGORY);
+      r.signedAmt=r.contra?-(r.amt||0):r.amt;
+      r.dup=findDuplicateTx(TX,r);
+    } else if(r.flowKey==='loan'){
+      r.dup=findDuplicateIcTx(IC_TX,{owner:eName(r.entityMatch),cp:r.cp,type:r.icType,date:r.date,amt:r.amt,desc:r.desc});
+    } else if(r.flowKey==='pinbuk'){
+      r.dup=findDuplicateBl(BANK_LEDGER,{acctMatch:r.fromAcct,date:r.date,code:'pinbuk',debit:0,kredit:r.amt,desc:r.desc});
+    } else if(r.flowKey==='orec'){
+      r.dup=findDuplicateOrec(OTHER_RECV,{e:r.entityMatch,cp:r.cp,dir:r.dir,date:r.date,amt:r.amt,desc:r.desc});
+    }
+  }
 }
 // ── Update Transaction — single-entry save, used by the "One at a time" tab in the Update
 // Transaction section. Mirrors the bulk importer's own save path exactly (see the tx-import
@@ -6283,7 +6330,15 @@ async function saveTxOne(){
 function fixTxField(i,field,value){
   const r=TX_ROWS[i]; if(!r) return;
   if(field==='entity') r.entityMatch=value||null;
-  else if(field==='flow') r.flowKey=value||null;
+  else if(field==='flow'){
+    r.flowKey=value||null;
+    // Only clear the fix-cell OVERRIDE (catMatch/vendorMatch) — a value explicitly picked under the
+    // old flow (e.g. an Opex category) is meaningless once the flow changes. The raw Excel text
+    // (catRaw/vendorRaw) is left alone and re-evaluated under the new flow's own rules, since it's
+    // flow-agnostic source data (e.g. a Category cell that already said "AP" still resolves
+    // correctly if the flow is fixed to Loan Affiliate).
+    r.catMatch=null; r.vendorMatch=null;
+  }
   else if(field==='cat') r.catMatch=value||null;
   else if(field==='vendor') r.vendorMatch=value||null;
   computeTxRow(r);
@@ -6293,16 +6348,52 @@ function txEntityCell(r,i){
   return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('tx-fix-ent-'+i,`fixTxField(${i},'entity',this.value)`);
 }
 function txFlowCell(r,i){
-  if(r.flowKey) return r.flowKey==='rev'?'Revenue':'Opex';
-  return `<select id="tx-fix-flow-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'flow',this.value)"><option value="">— pick —</option><option value="opex">Opex</option><option value="rev">Revenue</option></select>`;
+  if(r.flowKey) return FLOW_LABEL[r.flowKey]||r.flowKey;
+  return `<select id="tx-fix-flow-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'flow',this.value)"><option value="">— pick —</option><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option></select>`;
 }
+// Category/Vendor cells are flow-aware: Opex/Revenue keep the usual category/vendor pickers;
+// Loan Affiliate repurposes them as Type (AP/AR) + Counterparty (free text); Pinbuk as From/To bank
+// account (scoped to the row's own entity); Other Receivable as Direction (In/Out) + Counterparty.
 function txCatCell(r,i){
-  if(r.catMatch) return escH(r.catMatch);
-  const opts=r.flowKey==='rev'?(CATS_BY_KIND_G.revenue||[]):(OPEX_CATS_G||[]);
-  return fixPickCellHtml('tx-fix-cat-'+i,`fixTxField(${i},'cat',this.value)`,opts,'— pick category —','category');
+  if(!r.flowKey) return '<span style="color:var(--muted);font-size:11px">— pick Flow —</span>';
+  if(r.flowKey==='opex'||r.flowKey==='rev'){
+    if(r.category) return escH(r.category);
+    const opts=r.flowKey==='rev'?(CATS_BY_KIND_G.revenue||[]):(OPEX_CATS_G||[]);
+    return fixPickCellHtml('tx-fix-cat-'+i,`fixTxField(${i},'cat',this.value)`,opts,'— pick category —','category');
+  }
+  if(r.flowKey==='loan'){
+    if(r.icType) return r.icType;
+    return `<select id="tx-fix-cat-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'cat',this.value)"><option value="">— Type —</option><option value="AP">AP</option><option value="AR">AR</option></select>`;
+  }
+  if(r.flowKey==='pinbuk'){
+    if(r.fromAcct) return escH(bankAccountLabel(r.fromAcct));
+    if(!r.entityMatch) return '<span style="color:var(--muted);font-size:11px">— pick Entity —</span>';
+    const accts=BANK_ACCOUNTS.filter(a=>a.entity===r.entityMatch&&a.active);
+    return `<select id="tx-fix-cat-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'cat',this.value)"><option value="">— From account —</option>`+accts.map(a=>`<option value="${a.id}">${escH(bankAccountLabel(a))}</option>`).join('')+`</select>`;
+  }
+  if(r.flowKey==='orec'){
+    if(r.dir) return r.dir==='out'?'Out':'In';
+    return `<select id="tx-fix-cat-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'cat',this.value)"><option value="">— In/Out —</option><option value="out">Out</option><option value="in">In</option></select>`;
+  }
+  return '';
 }
 function txVendorCell(r,i){
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+  if(!r.flowKey) return '';
+  if(r.flowKey==='opex'||r.flowKey==='rev'){
+    if(r.vendor && r.vendor!=='Unknown') return escH(r.vendor);
+    return fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+  }
+  if(r.flowKey==='loan'||r.flowKey==='orec'){
+    if(r.cp) return escH(r.cp);
+    return `<input id="tx-fix-vendor-${i}" placeholder="Counterparty" style="font-size:11px;padding:3px 4px;width:140px" onchange="fixTxField(${i},'vendor',this.value)">`;
+  }
+  if(r.flowKey==='pinbuk'){
+    if(r.toAcct) return escH(bankAccountLabel(r.toAcct));
+    if(!r.entityMatch) return '';
+    const accts=BANK_ACCOUNTS.filter(a=>a.entity===r.entityMatch&&a.active);
+    return `<select id="tx-fix-vendor-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'vendor',this.value)"><option value="">— To account —</option>`+accts.map(a=>`<option value="${a.id}">${escH(bankAccountLabel(a))}</option>`).join('')+`</select>`;
+  }
+  return '';
 }
 function renderTxPreview(){
   const el=document.getElementById('tx-preview'); if(!el) return;
@@ -6334,44 +6425,86 @@ function renderTxPreview(){
   if(impBtn) impBtn.onclick=async()=>{
     impBtn.disabled=true; impBtn.textContent='Importing…';
     try{
-      const baseOrd=Math.floor(Date.now()/1000);
-      const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
-      const txRows=valid.map((r,i)=>({
-        source:'TX_MULTI',ord:baseOrd+i,period_code:r.period,flow:r.flowKey,
-        entity_code:r.entityMatch,day_label:dayLbl(r.date),
-        description:String(r.desc||'').slice(0,200),raw_label:r.category,
-        source_label:'Excel import',upload_batch:batchId,amount_idr:r.signedAmt,contra:r.contra}));
-      if(txRows.length) await adminAddBatch('transactions',txRows);
-      // keep entity_period_totals in sync — ADD the new amount on top of whatever total already
-      // exists (never recompute the headline from scratch), since a headline can legitimately be
-      // larger than the sum of itemized detail (un-itemised bank-recap gap) and blindly overwriting
-      // it with sum(detail) would silently erase that gap. A refund row's signedAmt is negative, so
-      // it naturally nets OFF whichever side (Opex or Revenue) it's filed under.
-      const touched={};
-      valid.forEach(r=>{ (touched[r.entityMatch]=touched[r.entityMatch]||new Set()).add(r.period); });
-      for(const ent of Object.keys(touched)){
-        for(const per of touched[ent]){
-          const added=valid.filter(r=>r.entityMatch===ent && r.period===per);
-          const inc={revenue:0,opex:0};
-          added.forEach(r=>{ inc[r.flowKey==='rev'?'revenue':'opex']+=r.signedAmt; });
-          const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
-          const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
-          const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
-            headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-            body:JSON.stringify({entity_code:ent,period_code:per,
-              revenue:Number(c.revenue||0)+inc.revenue, opex:Number(c.opex||0)+inc.opex,
-              financing_in:Number(c.financing_in||0), financing_out:Number(c.financing_out||0)})});
-          // Silent failure here (RLS reject, network error) previously left the itemized transaction
-          // rows saved but the headline KPI total stale/under-counted with no indication anything
-          // was wrong — surface it instead so a failed import batch is visibly incomplete.
-          if(!ptr.ok) throw new Error('Saved the transactions, but failed to update '+ent+' '+per+"'s headline total: "+((await ptr.text())||('HTTP '+ptr.status)));
+      // One shared preview/fix-cell table feeds four different destination tables — split by flow
+      // and route each group to the exact same insert path its own "One at a time" flow already
+      // uses (saveTxOneLoan/saveTxOnePinbuk/saveTxOneOtherReceivable), just batched.
+      const opexRevRows=valid.filter(r=>r.flowKey==='opex'||r.flowKey==='rev');
+      const loanRows=valid.filter(r=>r.flowKey==='loan');
+      const pinbukRows=valid.filter(r=>r.flowKey==='pinbuk');
+      const orecRows=valid.filter(r=>r.flowKey==='orec');
+      let n=0;
+
+      if(opexRevRows.length){
+        const baseOrd=Math.floor(Date.now()/1000);
+        const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
+        const txRows=opexRevRows.map((r,i)=>({
+          source:'TX_MULTI',ord:baseOrd+i,period_code:r.period,flow:r.flowKey,
+          entity_code:r.entityMatch,day_label:dayLbl(r.date),
+          description:String(r.desc||'').slice(0,200),raw_label:r.category,
+          source_label:'Excel import',upload_batch:batchId,amount_idr:r.signedAmt,contra:r.contra}));
+        await adminAddBatch('transactions',txRows);
+        n+=txRows.length;
+        // keep entity_period_totals in sync — ADD the new amount on top of whatever total already
+        // exists (never recompute the headline from scratch), since a headline can legitimately be
+        // larger than the sum of itemized detail (un-itemised bank-recap gap) and blindly overwriting
+        // it with sum(detail) would silently erase that gap. A refund row's signedAmt is negative,
+        // so it naturally nets OFF whichever side (Opex or Revenue) it's filed under.
+        const touched={};
+        opexRevRows.forEach(r=>{ (touched[r.entityMatch]=touched[r.entityMatch]||new Set()).add(r.period); });
+        for(const ent of Object.keys(touched)){
+          for(const per of touched[ent]){
+            const added=opexRevRows.filter(r=>r.entityMatch===ent && r.period===per);
+            const inc={revenue:0,opex:0};
+            added.forEach(r=>{ inc[r.flowKey==='rev'?'revenue':'opex']+=r.signedAmt; });
+            const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
+            const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
+            const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+              headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+              body:JSON.stringify({entity_code:ent,period_code:per,
+                revenue:Number(c.revenue||0)+inc.revenue, opex:Number(c.opex||0)+inc.opex,
+                financing_in:Number(c.financing_in||0), financing_out:Number(c.financing_out||0)})});
+            // Silent failure here (RLS reject, network error) previously left the itemized
+            // transaction rows saved but the headline KPI total stale/under-counted with no
+            // indication anything was wrong — surface it instead so a failed batch is visibly
+            // incomplete.
+            if(!ptr.ok) throw new Error('Saved the transactions, but failed to update '+ent+' '+per+"'s headline total: "+((await ptr.text())||('HTTP '+ptr.status)));
+          }
         }
       }
+
+      if(loanRows.length){
+        const rows=loanRows.map(r=>({owner_label:eName(r.entityMatch),counterparty_label:r.cp,type:r.icType,tx_date:r.date,description:r.desc||null,amount_idr:r.amt,source_label:'Excel import'}));
+        await adminAddBatch('intercompany_transactions',rows);
+        const fresh=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
+        IC_TX=fresh.map(mkIcTx);
+        n+=rows.length;
+      }
+
+      if(pinbukRows.length){
+        const rows=pinbukRows.flatMap(r=>[
+          {bank_account_id:r.fromAcct.id,entity_code:r.entityMatch,tx_date:r.date,code:'pinbuk',category:'Pinbuk',debit:0,kredit:r.amt,description:r.desc||null,source_label:'Excel import'},
+          {bank_account_id:r.toAcct.id,entity_code:r.entityMatch,tx_date:r.date,code:'pinbuk',category:'Pinbuk',debit:r.amt,kredit:0,description:r.desc||null,source_label:'Excel import'}
+        ]);
+        const resp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(rows)});
+        if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
+        (await resp.json()).forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
+        n+=pinbukRows.length;
+      }
+
+      if(orecRows.length){
+        const rows=orecRows.map(r=>({entity_code:r.entityMatch,period_code:periodFromDateG(r.date).code,day_label:dayLbl(r.date),tx_date:r.date,counterparty:r.cp,direction:r.dir,amount_idr:r.amt,description:r.desc||null,source_label:'Excel import'}));
+        const resp=await authedFetch(SB_URL+'/rest/v1/other_receivables',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(rows)});
+        if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
+        (await resp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
+        n+=orecRows.length;
+      }
+
       TX_ROWS=[];
       document.getElementById('tx-import-msg').style.color='#2b7a4b';
-      document.getElementById('tx-import-msg').textContent='✓ Added '+txRows.length+' new transaction'+(txRows.length===1?'':'s')+' — the page refreshes when you close this panel.';
+      document.getElementById('tx-import-msg').textContent='✓ Added '+n+' new transaction'+(n===1?'':'s')+' — the page refreshes when you close this panel.';
       impBtn.textContent='Imported ✓';
       ENTRY_DIRTY=true;
+      renderKpiCash(agg());
     }catch(e){
       document.getElementById('tx-import-msg').style.color='#b3261e';
       document.getElementById('tx-import-msg').textContent='Import failed: '+e.message;
@@ -9720,7 +9853,7 @@ async function renderEntryBody(){
   // entity_period_totals additive-patch logic as the bulk importer's save handler. ──
   h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Update Transaction</summary>'
     +'<div style="padding:12px 2px 0">'
-    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single Revenue or Opex transaction directly, or import many at once via Excel. New rows are added to the consolidated numbers immediately.</div>'
+    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single transaction directly, or import many at once via Excel — Opex, Revenue, Loan Affiliate, Pinbuk, and Other Receivable are all supported here. New rows are added to the consolidated numbers immediately.</div>'
     +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
     +'<button id="tx-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
     +'<button id="tx-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
@@ -10015,10 +10148,17 @@ async function renderEntryBody(){
     try{
       await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
       const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
+      // One flat sheet covers all 5 flows — Category/Vendor are repurposed per Flow (see
+      // computeTxRow): Loan Affiliate uses them as Type (AP/AR) + Counterparty; Pinbuk as the
+      // From/To bank account's exact label (per that row's Entity); Other Receivable as
+      // Direction (In/Out) + Counterparty. The dropdown lists below are the union of every flow's
+      // valid values, so whichever Flow a row uses, its Category/Vendor cell still offers a pick.
       await downloadValidatedTemplate('transactions_template.xlsx','Transactions',
         ['Date','Entity','Flow','Category','Vendor','Description','Amount'],
         ['2026-07-01',eName(EIDS[0]),'Opex',opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','Sample transaction description',1000000],
-        [{col:'B',values:EIDS.map(eName)},{col:'C',values:['Opex','Revenue']},{col:'D',values:opexCatsTpl.concat(revCatsTpl)},{col:'E',values:VENDORS_G||[]}]);
+        [{col:'B',values:EIDS.map(eName)},{col:'C',values:['Opex','Revenue','Loan Affiliate','Pinbuk','Other Receivable']},
+         {col:'D',values:opexCatsTpl.concat(revCatsTpl,['AP','AR','In','Out'])},{col:'E',values:VENDORS_G||[]}],
+        'Flow = Opex/Revenue: Category/Vendor as usual.  Flow = Loan Affiliate: Category = AP or AR, Vendor = Counterparty PT.  Flow = Pinbuk: Category = From account label, Vendor = To account label (exact match to that entity\'s own bank accounts).  Flow = Other Receivable: Category = In or Out, Vendor = Counterparty person\'s name.');
     } finally { txTplBtn.disabled=false; }
   };
   const txFileInp=document.getElementById('tx-file');
@@ -10040,9 +10180,18 @@ async function renderEntryBody(){
       const date=kDate!=null?parseFlexDate(r[kDate]):null;
       const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameG(entityRaw);
       const flowRaw=kFlow!=null?String(r[kFlow]||'').trim().toLowerCase():'';
-      const flowKey=/^rev/.test(flowRaw)?'rev':(/^opex|^expense/.test(flowRaw)?'opex':null);
-      const catRaw=kCat!=null?r[kCat]:'', catMatch=flowKey?findCategoryByFlow(catRaw,flowKey):null;
-      const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=findVendor(vendorRaw);
+      // Category/Vendor columns are repurposed per flow (see computeTxRow) — only run the
+      // category/vendor master-list lookups for Opex/Revenue, where those columns actually hold a
+      // category/vendor; for the other flows catRaw/vendorRaw are left for computeTxRow to
+      // interpret as Type+Counterparty, From/To account, or Direction+Counterparty.
+      const flowKey=/^rev/.test(flowRaw)?'rev'
+        :/^opex|^expense/.test(flowRaw)?'opex'
+        :/^loan|^intercompany|^inter-company|^inter company/.test(flowRaw)?'loan'
+        :/^pinbuk/.test(flowRaw)?'pinbuk'
+        :/^other receivable|^receivable|^orec/.test(flowRaw)?'orec'
+        :null;
+      const catRaw=kCat!=null?r[kCat]:'', catMatch=(flowKey==='opex'||flowKey==='rev')?findCategoryByFlow(catRaw,flowKey):null;
+      const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=(flowKey==='opex'||flowKey==='rev')?findVendor(vendorRaw):null;
       const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
       const amt=kAmt!=null?Number(r[kAmt]):NaN;
       const row={date,entityRaw,entityMatch,flowRaw,flowKey,catRaw,catMatch,vendorRaw,vendorMatch,desc,amt};
