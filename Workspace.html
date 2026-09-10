@@ -6401,15 +6401,29 @@ function renderBlPreview(){
   h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> ledger entr'+(valid.length===1?'y':'ies')+' — '+valid.length+' of '+BL_ROWS.length+' row(s) ready'
     +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved entry (same account, date, code, amount &amp; description) — review before importing':'')
     +(BL_ROWS.length>valid.length?'. Fix the flagged rows above and they\'ll be included automatically':'')+'.</div>';
-  h+='<button id="bl-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' entr'+(valid.length===1?'y':'ies')+'</button>';
+  // Re-uploading an edited "Export current data" file re-includes every unchanged row too — those
+  // all land here flagged as possible duplicates, so defaulting this checked (only shown when there
+  // actually are any) keeps that workflow from silently double-recording everything already saved.
+  if(dupN>0) h+='<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3a4254;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="bl-skip-dup" checked onchange="updateBlImportBtn()"> Skip the '+dupN+' row'+(dupN===1?'':'s')+' flagged as possible duplicate'+(dupN===1?'':'s')+'</label>';
+  h+='<button id="bl-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'></button>';
   h+='<div id="bl-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
+  window.updateBlImportBtn=()=>{
+    const btn=document.getElementById('bl-import'); if(!btn) return;
+    const skip=document.getElementById('bl-skip-dup')?.checked;
+    const n=skip?valid.length-dupN:valid.length;
+    btn.textContent='Import '+n+' entr'+(n===1?'y':'ies');
+    btn.disabled=n<=0;
+  };
+  updateBlImportBtn();
   const impBtn=document.getElementById('bl-import');
   if(impBtn) impBtn.onclick=async()=>{
     impBtn.disabled=true; impBtn.textContent='Importing…';
     try{
+      const skipDup=document.getElementById('bl-skip-dup')?.checked;
+      const toImport=skipDup?valid.filter(r=>!r.dup):valid;
       // 1) Every row becomes its own bank_ledger_entries row, regardless of Code.
-      const ledgerRows=valid.map(r=>({
+      const ledgerRows=toImport.map(r=>({
         bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:r.date,code:r.code,
         debit:r.debit,kredit:r.kredit,description:r.desc||null,
         category:r.category||null,
@@ -6425,8 +6439,8 @@ function renderBlPreview(){
       // relies on the insert response preserving submission order (true for a plain PostgREST
       // bulk insert) to match each saved row back to its source row's Document Link.
       let docOk=0,docFail=0;
-      for(let i=0;i<valid.length;i++){
-        const link=(valid[i].docLink||'').trim(); if(!link) continue;
+      for(let i=0;i<toImport.length;i++){
+        const link=(toImport[i].docLink||'').trim(); if(!link) continue;
         const saved=savedLedgerRows[i]; if(!saved) continue;
         try{
           const att=await fetchAndAttachDoc('bank-ledger-docs',saved.entity_code,saved.id,link);
@@ -6437,7 +6451,7 @@ function renderBlPreview(){
       }
       // 2) Revenue/Opex rows also land in `transactions`, same row shape as Import Transactions,
       // and patch entity_period_totals additively (never overwrite) so headline KPIs stay in sync.
-      const revOpex=valid.filter(r=>r.code==='revenue'||r.code==='opex');
+      const revOpex=toImport.filter(r=>r.code==='revenue'||r.code==='opex');
       if(revOpex.length){
         const baseOrd=Math.floor(Date.now()/1000);
         const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
@@ -6472,7 +6486,7 @@ function renderBlPreview(){
       }
       // 3) AR/AP rows also land in `intercompany_transactions`, same row shape as Import Loan
       // Affiliate Transactions, using this account's own PT as the owner.
-      const arAp=valid.filter(r=>r.code==='ar'||r.code==='ap');
+      const arAp=toImport.filter(r=>r.code==='ar'||r.code==='ap');
       if(arAp.length){
         const icRows=arAp.map(r=>({owner_label:(ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity),counterparty_label:r.cp,
           type:r.code.toUpperCase(),tx_date:r.date,description:r.desc||null,amount_idr:r.amt,source_label:'Bank Ledger import'}));
@@ -6483,7 +6497,7 @@ function renderBlPreview(){
       // 4) Capital rows (shareholder deposits/withdrawals) patch entity_period_totals.financing_in/
       // financing_out additively — same convention as step 2 — so they show up in the Financing
       // In/Out KPI without needing a counterparty PT the way AR/AP do.
-      const capital=valid.filter(r=>r.code==='capital');
+      const capital=toImport.filter(r=>r.code==='capital');
       if(capital.length){
         const touchedCap={};
         capital.forEach(r=>{ const per=periodFromDateG(r.date).code; (touchedCap[r.acctMatch.entity]=touchedCap[r.acctMatch.entity]||new Set()).add(per); });
@@ -6505,7 +6519,7 @@ function renderBlPreview(){
       }
       BL_ROWS=[];
       document.getElementById('bl-import-msg').style.color='#2b7a4b';
-      document.getElementById('bl-import-msg').textContent='✓ Added '+valid.length+' ledger entr'+(valid.length===1?'y':'ies')
+      document.getElementById('bl-import-msg').textContent='✓ Added '+toImport.length+' ledger entr'+(toImport.length===1?'y':'ies')
         +(docOk?', '+docOk+' document'+(docOk===1?'':'s')+' attached':'')
         +(docFail?', '+docFail+' document link'+(docFail===1?'':'s')+' failed to import (check they\'re shared "Anyone with the link")':'')+'.';
       impBtn.textContent='Imported ✓';
@@ -6514,7 +6528,7 @@ function renderBlPreview(){
     }catch(e){
       document.getElementById('bl-import-msg').style.color='#b3261e';
       document.getElementById('bl-import-msg').textContent='Import failed: '+e.message;
-      impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' entr'+(valid.length===1?'y':'ies');
+      impBtn.disabled=false; updateBlImportBtn();
     }
   };
 }
@@ -9621,9 +9635,11 @@ async function renderEntryBody(){
       +'</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="bl-template" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
+      +'<button id="bl-export" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
       +'<label for="bl-file" id="bl-file-label" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#e4e7ef;color:#9aa1b1;font-size:12px;font-weight:700;padding:7px 14px;cursor:not-allowed">'+ICON.clip()+'Choose Excel/CSV file</label>'
       +'<input id="bl-file" type="file" accept=".xlsx,.xls,.csv" style="display:none" disabled>'
       +'</div>'
+      +'<div style="font-size:11.5px;color:var(--muted);margin:-6px 0 10px">To add missing transactions to what\'s already recorded (e.g. old Pinbuk transfers that were never entered): click <b>Export current data</b>, add the missing rows into that same file, then re-upload it — rows that already match an existing entry are flagged as possible duplicates in the preview below and can be excluded before importing.</div>'
       +'<span id="bl-filename" style="font-size:12px;color:#3a4254"></span>'
       +'<div id="bl-preview" style="margin-top:12px"></div>'
       +'</div></details>';
@@ -9985,10 +10001,12 @@ async function renderEntryBody(){
   // ambiguity and keeps the template a straightforward one-account buku bank layout. ──
   {
     const blAcctSel=document.getElementById('bl-acct'), blTplBtn=document.getElementById('bl-template'),
+      blExpBtn=document.getElementById('bl-export'),
       blFileInp=document.getElementById('bl-file'), blFileLabel=document.getElementById('bl-file-label');
     const setBlAcctEnabled=()=>{
       const has=!!(blAcctSel&&blAcctSel.value);
       if(blTplBtn) blTplBtn.disabled=!has;
+      if(blExpBtn) blExpBtn.disabled=!has;
       if(blFileInp) blFileInp.disabled=!has;
       if(blFileLabel){ blFileLabel.style.background=has?'#f5e8c8':'#e4e7ef'; blFileLabel.style.color=has?'#9a6f0a':'#9aa1b1'; blFileLabel.style.cursor=has?'pointer':'not-allowed'; }
       BL_ROWS=[]; renderBlPreview();
@@ -10011,6 +10029,31 @@ async function renderEntryBody(){
           null,
           [{col:'A',value:acctLbl}]);
       } finally { blTplBtn.disabled=false; }
+    };
+    // Export current data — lets an existing gap (e.g. old Pinbuk transfers that were never entered)
+    // be filled in by editing this account's own real history rather than composing a file from
+    // scratch: download it, insert the missing rows anywhere in the sheet, re-upload the whole file.
+    // Same column layout as the template, so it re-imports through the exact same file input —
+    // re-uploaded rows that already match an existing entry get flagged as possible duplicates in
+    // the preview (see findDuplicateBl) rather than silently double-recorded.
+    if(blExpBtn) blExpBtn.onclick=()=>{
+      const acct=BANK_ACCOUNTS.find(a=>String(a.id)===blAcctSel.value); if(!acct) return;
+      blExpBtn.disabled=true;
+      try{
+        const acctLbl=bankAccountLabel(acct);
+        const entries=BANK_LEDGER.filter(r=>r.acctId===acct.id).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')||a.id-b.id);
+        let running=acct.opening;
+        const rows=[['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty (PT)','Document Link']];
+        entries.forEach(r=>{
+          running+=r.debit-r.kredit;
+          rows.push([acctLbl,r.date,BL_CODE_LBL[r.code]||r.code,r.desc,r.debit||'',r.kredit||'',running,r.category||'',r.vendor||'',r.cp||'','']);
+        });
+        const wb=XLSX.utils.book_new();
+        const ws=XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols']=[{wch:26},{wch:12},{wch:10},{wch:40},{wch:14},{wch:14},{wch:14},{wch:22},{wch:20},{wch:24},{wch:40}];
+        XLSX.utils.book_append_sheet(wb,ws,'Bank Ledger');
+        XLSX.writeFile(wb,'bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'_export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+      } finally { blExpBtn.disabled=false; }
     };
     if(blFileInp) blFileInp.onchange=async()=>{
       const acct=BANK_ACCOUNTS.find(a=>String(a.id)===blAcctSel.value); if(!acct) return;
