@@ -3452,6 +3452,24 @@ function outstandingCard(){
     </div>`;
 }
 const DPP_REQUIRED_APPROVALS=4;
+// Fast track: a plan under Rp5,000,000 can reach Approved once Diana and Marleen alone have signed
+// off (see recompute_payment_plan_status() in the DB) — Stan/Igor can still approve/reject like any
+// other plan, but small amounts don't need to wait on all 4. Kept in sync with that trigger's
+// hardcoded threshold/emails; a change on one side needs the matching change on the other.
+const DPP_FAST_TRACK_LIMIT=5000000;
+const DPP_FAST_TRACK_EMAILS=['z.diana@magnumestate.pro','marleen@magnumestate.pro'];
+function paymentPlanIsFastTracked(p){
+  return p.amt<DPP_FAST_TRACK_LIMIT && DPP_FAST_TRACK_EMAILS.every(email=>DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===email&&a.decision==='approved'));
+}
+// Below the required count but already Approved only happens via the fast track above — call that
+// out next to the count instead of showing a bare "2/4" that reads as still one signature short.
+function paymentPlanProgressText(p){
+  const base=`${p.approvedCount}/${DPP_REQUIRED_APPROVALS}`;
+  if(p.status==='approved'&&p.approvedCount<DPP_REQUIRED_APPROVALS&&paymentPlanIsFastTracked(p)){
+    return `${base} <span style="color:var(--green)" title="Under Rp5,000,000 — Diana + Marleen approving is enough">(fast-tracked)</span>`;
+  }
+  return base;
+}
 function paymentPlansInScope(){
   const ids=new Set(scopeIds());
   return DPP.filter(p=>ids.has(p.e));
@@ -3581,7 +3599,7 @@ function paymentPlanRowHtml(p){
     <td class="num">${fmt(p.amt)}</td>
     <td class="num">${(p.status!=='approved'||p.approvedAmt==null)?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
-    <td style="font-size:12px">${p.approvedCount}/${DPP_REQUIRED_APPROVALS}${(()=>{
+    <td style="font-size:12px">${paymentPlanProgressText(p)}${(()=>{
       if(p.status!=='pending') return '';
       const pendingNames=approversForEntity(p.e).filter(a=>!DPP_APPROVALS.some(d=>d.planId===p.id&&d.email===a.email)).map(a=>a.name);
       return pendingNames.length?`<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Pending: ${escH(pendingNames.join(', '))}</div>`:'';
@@ -3730,7 +3748,7 @@ function openPlanThread(id){
   // mid-approval (e.g. 2/4) would present a not-yet-agreed figure as if it were settled.
   const approveFinal=p.status==='approved'&&p.approvedAmt!=null;
   const editApproveLink=(canEditThread&&approveFinal&&!p.paidAt)?` <a href="#" onclick="event.preventDefault();openEditApprovedAmount(${id},'openPlanThread(${id})')" style="font-size:11px;color:var(--blue-300);text-decoration:none">✏️ edit</a>`:'';
-  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${approveFinal?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>${editApproveLink}`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${p.approvedCount}/${DPP_REQUIRED_APPROVALS} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
+  h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${approveFinal?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>${editApproveLink}`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${paymentPlanProgressText(p)} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
   h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
   h+=items.length?items.map(it=>{
     if(it.d){
@@ -9926,14 +9944,16 @@ async function renderEntryBody(){
       +'</div></details>';
   }
   // ── Add a Daily Payment Plan — a proposed payment finance wants to make, which only becomes
-  // "Approved" once designated approvers (see Manage Approvers below) sign off from the dashboard.
-  // A single rejection is a hard veto (status flips to Rejected immediately) — see
-  // recompute_payment_plan_status() in the DB. Reaching Approved does NOT create a transaction —
-  // the actual payment is still recorded separately, later, via Import Transactions/Bank Ledger. ──
+  // "Approved" once designated approvers (see Manage Approvers below) sign off from the dashboard —
+  // normally all DPP_REQUIRED_APPROVALS of them, but under DPP_FAST_TRACK_LIMIT Diana + Marleen
+  // alone are enough (see paymentPlanIsFastTracked / recompute_payment_plan_status() in the DB).
+  // A single rejection is a hard veto (status flips to Rejected immediately) regardless of amount.
+  // Reaching Approved does NOT create a transaction — the actual payment is still recorded
+  // separately, later, via Import Transactions/Bank Ledger. ──
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.check()+'Add a Daily Payment Plan</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Propose a payment for management to approve from the dashboard — needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved, and any single rejection cancels it. This only tracks the plan/approval status; the actual payment is still recorded separately once it happens.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Propose a payment for management to approve from the dashboard — needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved (under Rp'+fmt(DPP_FAST_TRACK_LIMIT)+', Diana + Marleen approving is enough on its own), and any single rejection cancels it. This only tracks the plan/approval status; the actual payment is still recorded separately once it happens.</div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
       +'<select id="dpp-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
       +'<input id="dpp-date" type="date" aria-label="Plan date" style="'+inp+'">'
@@ -10245,7 +10265,7 @@ async function renderEntryBody(){
   if(IS_ADMIN){
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.shield()+'Manage Approvers</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Who can approve/reject a Daily Payment Plan from the dashboard, scoped to specific PT(s) — an approver only sees Approve/Reject for the PTs they\'re assigned to. A plan needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Who can approve/reject a Daily Payment Plan from the dashboard, scoped to specific PT(s) — an approver only sees Approve/Reject for the PTs they\'re assigned to. A plan needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved — except under Rp'+fmt(DPP_FAST_TRACK_LIMIT)+', where Diana + Marleen approving is enough on its own (Stan and Igor can still weigh in, but small plans don\'t wait on them).</div>'
       +'<div id="approver-list" style="margin-bottom:14px"></div>'
       +'<div style="font-size:12.5px;font-weight:700;color:#141b2d;margin-bottom:8px">Add an approver</div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
