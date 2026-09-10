@@ -6511,21 +6511,35 @@ function renderTxPreview(){
   h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> transaction'+(valid.length===1?'':'s')+' — '+valid.length+' of '+TX_ROWS.length+' row(s) ready'
     +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved transaction (same date, entity, category, vendor, amount &amp; description) — review before importing':'')
     +(TX_ROWS.length>valid.length?'. Fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
-  h+='<button id="tx-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' transaction'+(valid.length===1?'':'s')+'</button>';
+  // Checked a duplicate against the existing record (via the "check" toggle above) and confirmed
+  // it's the same transaction? Tick this instead of editing the source file — it drops exactly
+  // those rows from this import, same convention as Bank Ledger import's own skip-duplicates box.
+  if(dupN>0) h+='<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3a4254;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="tx-skip-dup" checked onchange="updateTxImportBtn()"> Skip the '+dupN+' row'+(dupN===1?'':'s')+' flagged as possible duplicate'+(dupN===1?'':'s')+'</label>';
+  h+='<button id="tx-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"></button>';
   h+='<div id="tx-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
+  window.updateTxImportBtn=()=>{
+    const btn=document.getElementById('tx-import'); if(!btn) return;
+    const skip=document.getElementById('tx-skip-dup')?.checked;
+    const n=skip?valid.length-dupN:valid.length;
+    btn.textContent='Import '+n+' transaction'+(n===1?'':'s');
+    btn.disabled=n<=0;
+  };
+  updateTxImportBtn();
   const impBtn=document.getElementById('tx-import');
   if(impBtn) impBtn.onclick=async()=>{
     impBtn.disabled=true; impBtn.textContent='Importing…';
     try{
+      const skipDup=document.getElementById('tx-skip-dup')?.checked;
+      const toImport=skipDup?valid.filter(r=>!r.dup):valid;
       // One shared preview/fix-cell table feeds four different destination tables — split by flow
       // and route each group to the exact same insert path its own "One at a time" flow already
       // uses (saveTxOneLoan/saveTxOnePinbuk/saveTxOneOtherReceivable), just batched.
-      const opexRevRows=valid.filter(r=>r.flowKey==='opex'||r.flowKey==='rev');
-      const loanRows=valid.filter(r=>r.flowKey==='loan');
-      const pinbukRows=valid.filter(r=>r.flowKey==='pinbuk');
-      const orecRows=valid.filter(r=>r.flowKey==='orec');
-      const capdepRows=valid.filter(r=>r.flowKey==='capdep');
+      const opexRevRows=toImport.filter(r=>r.flowKey==='opex'||r.flowKey==='rev');
+      const loanRows=toImport.filter(r=>r.flowKey==='loan');
+      const pinbukRows=toImport.filter(r=>r.flowKey==='pinbuk');
+      const orecRows=toImport.filter(r=>r.flowKey==='orec');
+      const capdepRows=toImport.filter(r=>r.flowKey==='capdep');
       let n=0;
 
       if(opexRevRows.length){
@@ -6609,7 +6623,7 @@ function renderTxPreview(){
     }catch(e){
       document.getElementById('tx-import-msg').style.color='#b3261e';
       document.getElementById('tx-import-msg').textContent='Import failed: '+e.message;
-      impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' transaction'+(valid.length===1?'':'s');
+      impBtn.disabled=false; updateTxImportBtn();
     }
   };
 }
