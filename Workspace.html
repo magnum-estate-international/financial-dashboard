@@ -6137,9 +6137,14 @@ function computeTxRow(r){
     } else if(r.flowKey==='loan'){
       const t=String(r.catMatch||r.catRaw||'').trim().toUpperCase();
       r.icType=(t==='AP'||t==='AR')?t:null;
-      r.cp=String(r.vendorMatch||r.vendorRaw||'').trim();
+      // Counterparty is a closed list (16 entities + admin-added names in
+      // intercompany_counterparties) — a name typed in the Excel file that doesn't match one of
+      // those exactly (case-insensitive) is treated as unresolved, same as an unrecognized
+      // category, so it falls back to the fix-cell dropdown instead of silently accepting a
+      // differently-spelled duplicate of an existing counterparty.
+      r.cp=resolveIcCounterparty(r.vendorMatch||r.vendorRaw);
       if(!r.icType) error='Type must be AP or AR (Category column)';
-      else if(!r.cp) error='Counterparty is required (Vendor column)';
+      else if(!r.cp) error='Counterparty not recognized — pick one from the list (Vendor column), or ask an admin to add it';
     } else if(r.flowKey==='pinbuk'){
       const accts=r.entityMatch?BANK_ACCOUNTS.filter(a=>a.entity===r.entityMatch&&a.active):[];
       r.fromAcct=findBankAccountByRef(accts,r.catMatch,r.catRaw);
@@ -6450,7 +6455,7 @@ function txVendorCell(r,i){
   }
   if(r.flowKey==='loan'){
     if(r.cp) return escH(r.cp);
-    return fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,icCounterpartyOptions(),'— pick counterparty —','counterparty');
+    return icCounterpartySelectHtml('tx-fix-vendor-'+i,'','font-size:11px;padding:3px 4px',`fixTxField(${i},'vendor',this.value)`);
   }
   if(r.flowKey==='orec'||r.flowKey==='capdep'){
     if(r.cp) return escH(r.cp);
@@ -7220,20 +7225,61 @@ function clearSearchableSelect(id){
 function vendorSelectHtml(id,current,extraStyle){
   return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search or add vendor…',style:extraStyle||'',allowCreate:'vendor'});
 }
-// Loan Affiliate's counterparty is free text (many counterparties are holding/investment PTs not
-// tracked as entities here), but that also means the exact same PT gets typed inconsistently across
-// entries (e.g. "PT Magnum Estate International" vs "PT Magnum Estate Int'l") — which silently
-// splits what should be one counterparty's balance into two separate rows in the AR/AP summary.
-// Suggesting every tracked entity name plus every counterparty label already used in
-// intercompany_transactions (via the already-loaded IC_TX) nudges toward reusing an existing exact
-// spelling, while allowCreate still lets a genuinely new counterparty be typed freely.
+// Loan Affiliate's counterparty used to be free text, which let the exact same PT get typed
+// inconsistently across entries (e.g. "PT Magnum Estate International" vs "PT Magnum Estate
+// Int'l") — silently splitting what should be one counterparty's balance into two separate rows
+// in the AR/AP summary. Closed to a fixed list instead: the 16 tracked entities plus whatever an
+// admin has explicitly added via intercompany_counterparties (external/holding PTs not tracked as
+// entities here) — no free-text entry for anyone else, so a new spelling can't sneak in.
+let IC_COUNTERPARTIES=[];
+async function refreshIcCounterparties(){
+  try{ IC_COUNTERPARTIES=(await sbFetch('intercompany_counterparties?select=*&order=name')).map(r=>({id:r.id,name:r.name,active:r.is_active!==false})); }
+  catch(e){ IC_COUNTERPARTIES=IC_COUNTERPARTIES||[]; }
+  return IC_COUNTERPARTIES;
+}
 function icCounterpartyOptions(){
   const names=new Set(EIDS.map(eName));
-  IC_TX.forEach(r=>{ if(r.owner) names.add(r.owner); if(r.cp) names.add(r.cp); });
+  (IC_COUNTERPARTIES||[]).filter(c=>c.active).forEach(c=>names.add(c.name));
   return Array.from(names).sort();
 }
-function icCounterpartySelectHtml(id,current,extraStyle){
-  return searchableSelectHtml(id,icCounterpartyOptions(),current||'',{placeholder:'Search or add counterparty…',style:extraStyle||'',allowCreate:'counterparty'});
+// Case-insensitive match against the closed counterparty list — returns the list's own canonical
+// spelling (not whatever case the Excel cell happened to use), or null if it isn't on the list.
+function resolveIcCounterparty(raw){
+  const q=String(raw||'').trim().toLowerCase();
+  if(!q) return null;
+  return icCounterpartyOptions().find(n=>n.toLowerCase()===q)||null;
+}
+// A plain closed <select> (no search box, no free-text creation) — every option is either one of
+// the 16 entities or an admin-approved counterparty. IS_ADMIN also gets a "+ Add" button that
+// inserts a new one (RLS itself enforces admin-only on the insert; the button just isn't offered
+// to anyone else). class="ic-cp-select" tags every rendered instance so a newly-added name can be
+// appended to all of them at once — see promptAddIcCounterparty.
+function icCounterpartySelectHtml(id,current,extraStyle,onchangeCall){
+  const opts=icCounterpartyOptions();
+  const cur=current||'';
+  const onchangeAttr=onchangeCall?` onchange="${onchangeCall}"`:'';
+  const selectHtml=`<select id="${id}" class="ic-cp-select" style="${extraStyle||''}"${onchangeAttr}><option value="">— pick counterparty —</option>`
+    +opts.map(n=>`<option value="${escH(n)}"${n===cur?' selected':''}>${escH(n)}</option>`).join('')
+    +`</select>`;
+  const addBtn=IS_ADMIN?` <button type="button" onclick="promptAddIcCounterparty('${id}')" title="Add a new counterparty (admin only)" style="border:1px solid #e4e7ef;background:#fff;border-radius:6px;padding:3px 7px;font-size:11px;cursor:pointer;vertical-align:middle">+ Add</button>`:'';
+  return selectHtml+addBtn;
+}
+async function promptAddIcCounterparty(selectId){
+  const name=(prompt('New Loan Affiliate counterparty name:')||'').trim();
+  if(!name) return;
+  try{
+    await adminAddBatch('intercompany_counterparties',[{name,created_by:MY_EMAIL}]);
+    await refreshIcCounterparties();
+    // Append to every counterparty dropdown currently on screen (the "One at a time" field and/or
+    // every Loan Affiliate row in a bulk import preview) instead of re-rendering whichever
+    // form/table each one lives in — simpler, and doesn't disturb any other row's in-progress fix.
+    document.querySelectorAll('.ic-cp-select').forEach(sel=>{
+      const opt=document.createElement('option'); opt.value=name; opt.textContent=name;
+      sel.appendChild(opt);
+    });
+    const triggering=document.getElementById(selectId);
+    if(triggering){ triggering.value=name; triggering.dispatchEvent(new Event('change',{bubbles:true})); }
+  }catch(e){ alert('Failed to add counterparty: '+e.message); }
 }
 function categorySelectHtml(id,options,current,extraStyle){
   return searchableSelectHtml(id,options,current||'',{placeholder:'Search or add category…',style:extraStyle||'',allowCreate:'category'});
@@ -8760,6 +8806,7 @@ async function runDashboard(){
     OTHER_RECV=(await sbFetchAll('other_receivables?select=*&order=entity_code,tx_date'))
       .map(mkOrec);
   }catch(e){ OTHER_RECV=[]; }
+  await refreshIcCounterparties();
   // Bank accounts (master list) and their ledger entries (the unified Debit/Kredit recap that
   // routes into Revenue/Expenses/Loan Affiliate and also drives the per-account running balance
   // shown on Cash Position) — kept as two separate fetches since the ledger can grow large.
