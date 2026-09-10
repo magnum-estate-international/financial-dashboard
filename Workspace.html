@@ -472,9 +472,9 @@ a{color:#9a6f0a}
 </details>
 
 <details class="fold" id="secLoanFold">
-  <summary><span><span class="chev">▸</span>&nbsp; Inter-Company &amp; Affiliate Loan Flows</span><span class="hint" id="loanFoldHint">non-operational</span></summary>
+  <summary><span><span class="chev">▸</span>&nbsp; Internal Book Transfers (Pindah Buku)</span><span class="hint" id="loanFoldHint">non-operational</span></summary>
   <div class="fold-body">
-    <div class="pn-sub" style="margin-top:10px;margin-bottom:12px">Cash actually moved during the period (new loans given, receivables disbursed, and loan repayments). These flows are excluded from operating results above.</div>
+    <div class="pn-sub" style="margin-top:10px;margin-bottom:12px">Historical inter-account bookkeeping transfers within the same PT/group — not a loan between two separate entities. For actual inter-company loans, repayments, and each PT's outstanding debt/receivable balance, see the <b>Loan Affiliate</b> card above instead.</div>
     <div class="table-scroll">
       <table>
         <thead><tr><th>From (paid by)</th><th>To (received by)</th><th>Type</th><th class="num">Amount (IDR)</th></tr></thead>
@@ -4253,11 +4253,12 @@ function renderCatTable(a){
 function renderLoans(){
   const tb=document.getElementById('loanTable');
   const ids=scopeIds();
-  // Capital deposit is deliberately excluded here — it's shareholder money in, not an
-  // inter-company loan/receivable, and already has its own dedicated card + detail view
-  // (openDetail('capdep')). Keeping it out of this table is what keeps the two genuinely
-  // separate instead of one being a subset shown twice under two different totals.
-  const list=(LOANS_BY_MONTH[MONTH]||[]).filter(l=>l.ty!=='Capital deposit').filter(l=>{
+  // Only Pindah Buku (internal bookkeeping transfer within the same PT/group) ever lands here now
+  // — New Loan/Repayment history was migrated into intercompany_transactions (the Loan Affiliate
+  // AR/AP ledger) so every PT's outstanding debt/receivable is tracked in one place instead of
+  // split across two tables. Capital deposit stays excluded too — it has its own dedicated card
+  // + detail view (openDetail('capdep')).
+  const list=(LOANS_BY_MONTH[MONTH]||[]).filter(l=>l.ty==='Pindah Buku').filter(l=>{
     // show a flow if either side belongs to an entity in scope (or scope is all)
     if(EF==='all'&&GF==='all') return true;
     const inScope=name=>{
@@ -4272,16 +4273,16 @@ function renderLoans(){
     return inScope(l.f)||inScope(l.t);
   });
   if(!list.length){
-    tb.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">No inter-company loan flows for this scope &amp; month.${MONTH!=='MAY'?' (Apr/Jun cross-entity data currently covers ICG + PT BBU.)':''}</td></tr>`;
+    tb.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">No internal book transfers for this scope &amp; month.</td></tr>`;
     return;
   }
   let h='',tot=0;
   list.forEach(l=>{tot+=l.amt;
     h+=`<tr><td style="font-size:12.5px">${l.f}</td><td style="font-size:12.5px">${l.t}</td>
-      <td><span class="tag ${l.ty==='New loan'?'loan':'rep'}">${l.ty}</span></td>
+      <td><span class="tag rep">${l.ty}</span></td>
       <td class="num">${fmt(l.amt)}</td></tr>`;
   });
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL CASH MOVED (LOANS &amp; RECEIVABLES) — ${MONTHS[MONTH].toUpperCase()}</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr>`;
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL BOOK TRANSFERS — ${MONTHS[MONTH].toUpperCase()}</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr>`;
   tb.innerHTML=h;
 }
 
