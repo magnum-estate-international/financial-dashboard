@@ -4253,7 +4253,11 @@ function renderCatTable(a){
 function renderLoans(){
   const tb=document.getElementById('loanTable');
   const ids=scopeIds();
-  const list=(LOANS_BY_MONTH[MONTH]||[]).filter(l=>{
+  // Capital deposit is deliberately excluded here — it's shareholder money in, not an
+  // inter-company loan/receivable, and already has its own dedicated card + detail view
+  // (openDetail('capdep')). Keeping it out of this table is what keeps the two genuinely
+  // separate instead of one being a subset shown twice under two different totals.
+  const list=(LOANS_BY_MONTH[MONTH]||[]).filter(l=>l.ty!=='Capital deposit').filter(l=>{
     // show a flow if either side belongs to an entity in scope (or scope is all)
     if(EF==='all'&&GF==='all') return true;
     const inScope=name=>{
@@ -4274,10 +4278,10 @@ function renderLoans(){
   let h='',tot=0;
   list.forEach(l=>{tot+=l.amt;
     h+=`<tr><td style="font-size:12.5px">${l.f}</td><td style="font-size:12.5px">${l.t}</td>
-      <td><span class="tag ${l.ty==='Capital deposit'?'cap':l.ty==='New loan'?'loan':'rep'}">${l.ty}</span></td>
+      <td><span class="tag ${l.ty==='New loan'?'loan':'rep'}">${l.ty}</span></td>
       <td class="num">${fmt(l.amt)}</td></tr>`;
   });
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL CASH MOVED (LOANS, RECEIVABLES &amp; CAPITAL) — ${MONTHS[MONTH].toUpperCase()}</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr>`;
+  h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL CASH MOVED (LOANS &amp; RECEIVABLES) — ${MONTHS[MONTH].toUpperCase()}</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr>`;
   tb.innerHTML=h;
 }
 
