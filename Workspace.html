@@ -6072,10 +6072,14 @@ function findDuplicateTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
   // o.amt is stored signed (contra/refund rows negative) while r.amt is always the positive
   // amount as typed/imported — compare on magnitude so a refund row can still be flagged as a
-  // duplicate of another refund row, not silently exempted from the check.
+  // duplicate of another refund row, not silently exempted from the check. Date is included too
+  // (compared as a day_label, e.g. "26 Apr") so a recurring same-amount/same-description line
+  // (a monthly bank fee, say) on a genuinely different date isn't flagged as a duplicate of itself.
+  const rDayLbl=r.date?dayLbl(r.date):r.dayLbl;
   return list.find(o=>o.e===r.entityMatch && o.mo===r.period && o.type===r.flowKey
     && norm(o.k)===norm(r.category) && norm(o.vendor)===norm(r.vendor||r.vendorMatch||'Unknown')
-    && Math.round(Math.abs(o.amt))===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
+    && Math.round(Math.abs(o.amt))===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc)
+    && norm(o.d)===norm(rDayLbl));
 }
 function findCategoryByFlow(name,flowKey){
   if(!name) return null;
@@ -6348,11 +6352,11 @@ async function saveTxOne(){
   const vendor=(document.getElementById('tx1-vendor').value||'').trim();
   if(!category) return void(msg.style.color='#b3261e', msg.textContent='Category is required.');
   const P=periodFromDateG(date);
-  // Same soft duplicate check the Excel importer already runs (matching entity/period/flow/
+  // Same soft duplicate check the Excel importer already runs (matching date/entity/period/flow/
   // category/vendor/amount/description against every transaction already loaded) — this path had
   // no such guard at all, so a Mark Paid transaction (or an earlier manual entry) re-typed here by
   // hand would silently double-count with no warning.
-  const dup=findDuplicateTx(TX,{entityMatch:entity,period:P.code,flowKey:flow,category,vendor,amt,desc});
+  const dup=findDuplicateTx(TX,{entityMatch:entity,period:P.code,flowKey:flow,category,vendor,amt,desc,date});
   if(dup){
     const srcNote=dup.srcLabel?' (source: '+dup.srcLabel+')':'';
     if(!confirm('A very similar transaction already exists — '+dup.d+' · '+(dup.k||'—')+' · '+(dup.vendor||'—')+' · '+fmt(dup.amt)+' · "'+dup.desc+'"'+srcNote+'.\n\nSave this one anyway?')) return;
@@ -6477,7 +6481,7 @@ function txDupCompareRowHtml(i,dup){
     +`<td class="num" style="padding-right:14px">${fmt(Math.abs(dup.amt))}</td>`
     +`<td style="color:var(--muted)">${escH(dup.desc||'—')}</td>`
     +`</tr></table>`
-    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.srcLabel||'—')}${dup.d?' · this row\'s own date is what to compare — matching here is checked on entity/category/vendor/amount/description only, not the date':''}</div>`
+    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.srcLabel||'—')} · matched on date, entity, category, vendor, amount &amp; description — all identical to the row above</div>`
     +`</div></td></tr>`;
 }
 function renderTxPreview(){
@@ -6505,7 +6509,7 @@ function renderTxPreview(){
   h+='</tbody></table></div>';
   const dupN=valid.filter(r=>r.dup).length;
   h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> transaction'+(valid.length===1?'':'s')+' — '+valid.length+' of '+TX_ROWS.length+' row(s) ready'
-    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved transaction (same entity, month, flow, category, vendor, amount &amp; description) — review before importing':'')
+    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved transaction (same date, entity, category, vendor, amount &amp; description) — review before importing':'')
     +(TX_ROWS.length>valid.length?'. Fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
   h+='<button id="tx-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' transaction'+(valid.length===1?'':'s')+'</button>';
   h+='<div id="tx-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
