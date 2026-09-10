@@ -5297,68 +5297,104 @@ async function openTxEdit(id,backCall){
   backCall=decodeURIComponent(backCall);
   const x=TX.find(t=>t.id===id);
   if(!x) return;
-  const kind=x.type==='rev'?'revenue':'opex';
-  const catOpts=await ensureCatsByKind(kind);
+  const [opexCatsRaw,revCatsRaw]=await Promise.all([ensureCatsByKind('opex'),ensureCatsByKind('revenue')]);
   await ensureVendorsG();
   const curVendor=(x.vendor!=null && x.vendor!=='')?x.vendor:null;
+  const curFlow=x.type==='rev'?'rev':'opex';
+  // x.k may be a legacy/unlisted label not in the live category list — keep it selectable (as the
+  // pre-selected option) instead of silently swapping it for the first live category. Only inject
+  // it into the option list for the flow it actually currently belongs to.
+  const opexCats=(opexCatsRaw.includes(x.k)||!x.k||curFlow!=='opex')?opexCatsRaw:[x.k,...opexCatsRaw];
+  const revCats=(revCatsRaw.includes(x.k)||!x.k||curFlow!=='rev')?revCatsRaw:[x.k,...revCatsRaw];
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Edit Transaction</h4>`;
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Amount adjusts this entity's itemized total for ${MONTHS[MONTH]||MONTH} without touching the monthly total shown on the KPI cards — if this is a real correction (not a typo fix), also update the total via the Update Entity Balance box so the two stay reconciled.</div>`
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Flow or Amount here also updates this entity's ${MONTHS[MONTH]||MONTH} headline total (KPI cards) by the same delta — no separate Update Entity Balance step needed.</div>`
+    // Flow can be changed here (e.g. a refund that landed under Revenue by mistake, meant for
+    // Opex) — switching it swaps which category list applies and, on save, moves the amount from
+    // one side of entity_period_totals to the other instead of leaving both sides wrong.
+    +opeField('Flow',`<select id="txe-flow" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px" onchange="onTxEditFlowChange()"><option value="opex"${curFlow==='opex'?' selected':''}>Opex</option><option value="rev"${curFlow==='rev'?' selected':''}>Revenue</option></select>`)
     +opeField('Description',`<input id="txe-desc" value="${escH(x.desc)}" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Vendor',vendorSelectHtml('txe-vendor',curVendor,'margin-bottom:10px'))
-    +opeField('Category',(()=>{
-      // x.k may be a legacy/unlisted label not in the live category list — keep it selectable
-      // (as the pre-selected option) instead of silently swapping it for the first live category.
-      const opts=catOpts.includes(x.k)||!x.k?catOpts:[x.k,...catOpts];
-      return categorySelectHtml('txe-cat',opts,x.k||'');
-    })())
+    +opeField('Category',
+      `<div id="txe-cat-opex-wrap" style="${curFlow==='opex'?'':'display:none'}">${categorySelectHtml('txe-cat-opex',opexCats,curFlow==='opex'?(x.k||''):'')}</div>`
+      +`<div id="txe-cat-rev-wrap" style="${curFlow==='rev'?'':'display:none'}">${categorySelectHtml('txe-cat-rev',revCats,curFlow==='rev'?(x.k||''):'')}</div>`
+    )
     +opeField('Date',`<input id="txe-date" value="${escH(x.d)}" placeholder="e.g. 30 Apr" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +opeField('Amount (IDR)',`<input id="txe-amt" type="number" min="0" step="1" value="${Math.abs(x.amt)}" style="width:100%;padding:8px 10px;box-sizing:border-box">`)
     +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:12px" onclick="saveTxEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
     +`<span id="txe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal('Edit Transaction',h,true);
 }
+function onTxEditFlowChange(){
+  const flow=document.getElementById('txe-flow').value;
+  const opexWrap=document.getElementById('txe-cat-opex-wrap'), revWrap=document.getElementById('txe-cat-rev-wrap');
+  if(opexWrap) opexWrap.style.display=flow==='opex'?'':'none';
+  if(revWrap) revWrap.style.display=flow==='rev'?'':'none';
+}
 async function saveTxEdit(id,backCall){
   backCall=decodeURIComponent(backCall);
   const err=document.getElementById('txe-err'); err.textContent='';
+  const x=TX.find(t=>t.id===id);
+  if(!x) return void(err.textContent='Transaction not found.');
+  const flow=document.getElementById('txe-flow').value;
   const desc=document.getElementById('txe-desc').value.trim();
   const vendor=document.getElementById('txe-vendor').value.trim();
-  const cat=document.getElementById('txe-cat').value.trim();
+  const cat=(document.getElementById(flow==='rev'?'txe-cat-rev':'txe-cat-opex').value||'').trim();
   const dateLabel=document.getElementById('txe-date').value.trim();
   const amtRaw=document.getElementById('txe-amt').value.trim();
   const amtNum=Number(amtRaw);
   if(!desc||!cat||!dateLabel) return void(err.textContent='Description, Category, and Date are required.');
   if(!amtRaw||!isFinite(amtNum)||amtNum<=0) return void(err.textContent='Amount must be a positive number.');
+  // Same refund convention as Update Transaction/Bank Ledger: the *new* flow+category (not the
+  // row's old contra flag) decides the sign going forward — this is exactly what lets moving a
+  // refund from Revenue to Opex (or vice versa) also flip it correctly from a plain amount into
+  // a negative/contra one.
+  const contra=(flow==='opex'&&cat===OPEX_REFUND_CATEGORY)||(flow==='rev'&&cat===REV_REFUND_CATEGORY);
+  const signedAmt=contra?-amtNum:amtNum;
+  const oldFlow=x.type, oldCat=x.k, oldAmt=Math.abs(x.amt), oldSigned=x.amt;
   try{
-    const x=TX.find(t=>t.id===id);
-    // amount_idr is stored signed: contra/refund rows negative, everything else positive —
-    // the row's own x.contra flag (not the raw sign of the edited value) decides the stored sign.
-    const signedAmt = x&&x.contra ? -amtNum : amtNum;
-    const oldCat=x?x.k:null, oldAmt=x?Math.abs(x.amt):0;
     const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({description:desc,vendor:vendor||null,raw_label:cat,day_label:dateLabel,amount_idr:signedAmt})});
+      body:JSON.stringify({flow,description:desc,vendor:vendor||null,raw_label:cat,day_label:dateLabel,amount_idr:signedAmt,contra})});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    // Unlike the old version of this function, Flow and/or Amount changes now also patch
+    // entity_period_totals (additively, same convention as every other write here) — otherwise
+    // moving a row between Opex and Revenue would leave both headline totals wrong, exactly
+    // reproducing the problem this edit is meant to fix.
+    if(oldFlow!==flow || oldSigned!==signedAmt){
+      const cur=await sbFetch('entity_period_totals?entity_code=eq.'+x.e+'&period_code=eq.'+x.mo+'&select=revenue,opex,financing_in,financing_out');
+      const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
+      let revenue=Number(c.revenue||0), opex=Number(c.opex||0);
+      if(oldFlow==='rev') revenue-=oldSigned; else opex-=oldSigned;
+      if(flow==='rev') revenue+=signedAmt; else opex+=signedAmt;
+      const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+        headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify({entity_code:x.e,period_code:x.mo,revenue,opex,
+          financing_in:Number(c.financing_in||0),financing_out:Number(c.financing_out||0)})});
+      if(!ptr.ok) throw new Error('Saved the transaction, but failed to update the headline total: '+((await ptr.text())||('HTTP '+ptr.status)));
+    }
     // May's "By Entity" breakdown reads the line_items category-total table, not transactions —
-    // if we don't move this row's amount between category buckets there too, the breakdown keeps
-    // showing the stale category (or, for the new category, shows nothing at all) while Transaction
-    // Detail already reflects the edit, exactly the mismatch reported against this feature.
-    if(x && x.mo==='MAY') await syncMayLineItemCategory(x.e,x.type,oldCat,cat,oldAmt,amtNum);
-    if(x){ x.desc=desc; x.vendor=vendor||null; x.k=cat; x.d=dateLabel; x.amt=signedAmt; }
+    // if we don't move this row's amount between (flow,category) buckets there too, the breakdown
+    // keeps showing the stale flow/category (or shows nothing for the new one).
+    if(x.mo==='MAY') await syncMayLineItemCategory(x.e,oldFlow,oldCat,oldAmt,flow,cat,amtNum);
+    x.type=flow; x.desc=desc; x.vendor=vendor||null; x.k=cat; x.d=dateLabel; x.amt=signedAmt; x.contra=contra;
+    ENTRY_DIRTY=true;
     eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
 // Keeps the line_items category-total table (source of the May "By Entity" breakdown) in sync
-// when a transaction's category and/or amount is edited or the row is deleted. Only relevant for
-// May — line_items only holds May rows; other months compute the breakdown directly from
-// transactions, so there's no separate aggregate to desync.
-async function syncMayLineItemCategory(entity,type,oldCat,newCat,oldAmt,newAmt){
+// when a transaction's flow, category and/or amount is edited or the row is deleted. Only
+// relevant for May — line_items only holds May rows; other months compute the breakdown directly
+// from transactions, so there's no separate aggregate to desync. oldFlow/newFlow let a row move
+// between the Opex and Revenue buckets (e.g. a refund reclassified to the other side), not just
+// between two categories of the same flow.
+async function syncMayLineItemCategory(entity,oldFlow,oldCat,oldAmt,newFlow,newCat,newAmt){
   const e=ENT[entity]; if(!e) return;
-  const fld=type==='rev'?'rev':'opex';
-  const dbFlow=type==='rev'?'revenue':'opex';
-  const bucket=e[fld];
-  async function setBucket(catName,newVal){
-    const q='line_items?entity_code=eq.'+encodeURIComponent(entity)+'&period_code=eq.MAY&flow=eq.'+dbFlow+'&raw_label=eq.'+encodeURIComponent(catName);
+  const fldOf=fl=>fl==='rev'?'rev':'opex';
+  const dbFlowOf=fl=>fl==='rev'?'revenue':'opex';
+  async function setBucket(fl,catName,newVal){
+    const bucket=e[fldOf(fl)];
+    const q='line_items?entity_code=eq.'+encodeURIComponent(entity)+'&period_code=eq.MAY&flow=eq.'+dbFlowOf(fl)+'&raw_label=eq.'+encodeURIComponent(catName);
     if(newVal<=0.5){
       if(bucket[catName]==null) return;
       delete bucket[catName];
@@ -5373,15 +5409,15 @@ async function syncMayLineItemCategory(entity,type,oldCat,newCat,oldAmt,newAmt){
     } else {
       await authedFetch(SB_URL+'/rest/v1/line_items',{method:'POST',
         headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-        body:JSON.stringify({entity_code:entity,period_code:'MAY',flow:dbFlow,raw_label:catName,category:catName,amount_idr:newVal})});
+        body:JSON.stringify({entity_code:entity,period_code:'MAY',flow:dbFlowOf(fl),raw_label:catName,category:catName,amount_idr:newVal})});
     }
   }
-  if(oldCat===newCat){
+  if(oldFlow===newFlow && oldCat===newCat){
     const delta=newAmt-oldAmt;
-    if(Math.abs(delta)>0.5) await setBucket(oldCat,(bucket[oldCat]||0)+delta);
+    if(Math.abs(delta)>0.5) await setBucket(oldFlow,oldCat,(e[fldOf(oldFlow)][oldCat]||0)+delta);
   } else {
-    if(oldCat!=null && bucket[oldCat]!=null) await setBucket(oldCat,bucket[oldCat]-oldAmt);
-    await setBucket(newCat,(bucket[newCat]||0)+newAmt);
+    if(oldCat!=null && e[fldOf(oldFlow)][oldCat]!=null) await setBucket(oldFlow,oldCat,e[fldOf(oldFlow)][oldCat]-oldAmt);
+    await setBucket(newFlow,newCat,(e[fldOf(newFlow)][newCat]||0)+newAmt);
   }
 }
 // "History" for a raw bank transaction has no payment-ledger equivalent (unlike an invoice) — shows
