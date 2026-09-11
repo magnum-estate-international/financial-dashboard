@@ -6722,14 +6722,17 @@ function renderIcTxPreview(){
     }
   };
 }
-// ── Bank Ledger import preview — the unified Debit/Credit recap. Code routes each row: Revenue/
-// Opex also insert into `transactions` (and patch entity_period_totals) exactly like Import
-// Transactions above; AR/AP also insert into `intercompany_transactions` exactly like Import Loan
-// Affiliate Transactions above; Pinbuk only ever touches bank_ledger_entries. Every row, regardless
-// of Code, gets its own bank_ledger_entries row so the account's running balance stays complete. ──
+// ── Bank Ledger import preview — the unified Debit/Credit recap, and (since Update Transaction's
+// own Excel bulk-import was retired in its favor) the only bulk-import path left. Code routes each
+// row: Revenue/Opex also insert into `transactions` (and patch entity_period_totals) exactly like
+// Update Transaction; AR/AP also insert into `intercompany_transactions`, Counterparty resolved
+// against the same closed list (16 entities + admin-added names); Capital books into `loan_flows`
+// (flow_type='Capital deposit'); Other Receivable books into `other_receivables`; Pinbuk only ever
+// touches bank_ledger_entries. Every row, regardless of Code, gets its own bank_ledger_entries row
+// so the account's running balance stays complete. ──
 let BL_ROWS=[];
-const BL_CODES=['revenue','opex','ar','ap','pinbuk','capital'];
-const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk',capital:'Capital'};
+const BL_CODES=['revenue','opex','ar','ap','pinbuk','capital','orec'];
+const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk',capital:'Capital',orec:'Other Receivable'};
 // Opex rows normally must be Credit (cash out). This one category is the exception: money that
 // comes BACK in for a cost already booked (a vendor refund, an overpayment returned) — entered as
 // Debit like a receipt, but still filed under Opex/this category so it shows in the ledger and
@@ -6756,9 +6759,21 @@ function computeBlRow(r){
   r.debit=debit; r.kredit=kredit;
   const isRefund=r.code==='opex'&&r.catMatch===OPEX_REFUND_CATEGORY;
   const isRevRefund=r.code==='revenue'&&r.catMatch===REV_REFUND_CATEGORY;
+  // Other Receivable's Category is a real pick from the financing category list, same as AR/AP/
+  // Capital (see blCatOpts) — direction (In/Out) is a separate thing, derived straight from which
+  // side of Debit/Credit was filled in, same convention as every other code here (cash in = Debit,
+  // cash out = Credit): In (a refund received) = Debit, Out (paid to the person) = Credit.
+  if(r.code==='orec') r.dir=debit>0?'in':(kredit>0?'out':null);
+  // AR/AP's counterparty is a PT — resolved against the same closed list (16 entities + admin-
+  // added names in intercompany_counterparties) as Import Loan Affiliate Transactions and the
+  // Update Transaction Loan Affiliate flow, so a typo'd or unapproved name doesn't sneak in a
+  // differently-spelled duplicate of an existing counterparty. Other Receivable's counterparty is
+  // an individual, not a PT, so it stays free text.
+  if(r.code==='ar'||r.code==='ap') r.cp=resolveIcCounterparty(r.cpRaw);
+  else if(r.code==='orec') r.cp=String(r.cpRaw||'').trim();
   if(!r.acctMatch) error='Bank Account not recognized';
   else if(!r.date) error='Invalid date';
-  else if(!r.code) error='Code must be Revenue, Opex, AR, AP, Pinbuk or Capital';
+  else if(!r.code) error='Code must be Revenue, Opex, AR, AP, Pinbuk, Capital or Other Receivable';
   else if((debit>0)===(kredit>0)) error='Exactly one of Debit or Credit must be filled';
   else if(isRevRefund&&debit>0) error='"'+REV_REFUND_CATEGORY+'" must be entered as Credit (cash out), not Debit';
   else if(r.code==='revenue'&&kredit>0&&!isRevRefund) error='Revenue must be entered as Debit (cash in), not Credit — unless Category is "'+REV_REFUND_CATEGORY+'"';
@@ -6766,14 +6781,21 @@ function computeBlRow(r){
   else if(r.code==='opex'&&debit>0&&!isRefund) error='Opex must be entered as Credit (cash out), not Debit — unless Category is "'+OPEX_REFUND_CATEGORY+'"';
   else if(r.code==='ar'&&debit>0) error='AR must be entered as Credit (cash out), not Debit';
   else if(r.code==='ap'&&kredit>0) error='AP must be entered as Debit (cash in), not Credit';
+  // Capital is always a shareholder paying money IN, same as Update Transaction's Shareholder
+  // Capital Deposit — never a withdrawal, so unlike AR/AP/Opex/Revenue there's no Credit-side case.
+  else if(r.code==='capital'&&kredit>0) error='Capital deposit must be entered as Debit (cash in), not Credit';
   else if(r.code&&!r.catMatch) error='Category is required';
-  else if((r.code==='ar'||r.code==='ap')&&!r.cp) error='Counterparty is required for AR/AP';
+  else if((r.code==='ar'||r.code==='ap')&&!r.cp) error='Counterparty not recognized — pick one from the list (Counterparty column), or ask an admin to add it';
+  else if(r.code==='orec'&&!r.cp) error='Counterparty is required for Other Receivable';
+  else if(r.code==='capital'&&!(r.vendorMatch||r.vendorRaw)) error='Shareholder name is required for Capital deposit';
   r.error=error;
   r.amt=debit>0?debit:kredit;
   r.contra=isRefund||isRevRefund;
   r.signedAmt=r.contra?-r.amt:r.amt;
   r.category=r.catMatch||r.catRaw||'';
-  r.vendor=r.vendorMatch||r.vendorRaw||'';
+  // Capital's Vendor is a shareholder's name, not one of the opex Vendors list it's matched against
+  // below — free text, same as Update Transaction's Shareholder Capital Deposit field.
+  r.vendor=r.code==='capital'?String(r.vendorRaw||'').trim():(r.vendorMatch||r.vendorRaw||'');
   r.dup=error?null:findDuplicateBl(BANK_LEDGER,r);
 }
 // Cross-checks the optional Balance column against a running balance computed per account (starting
@@ -6802,7 +6824,8 @@ function fixBlField(i,field,value){
   const r=BL_ROWS[i]; if(!r) return;
   if(field==='code') r.code=value||null;
   else if(field==='cat') r.catMatch=value||null;
-  else if(field==='vendor') r.vendorMatch=value||null;
+  else if(field==='vendor'){ r.vendorMatch=value||null; r.vendorRaw=value||''; }
+  else if(field==='cp') r.cpRaw=value||'';
   computeBlRow(r);
   recomputeBlSaldos();
   renderBlPreview();
@@ -6820,7 +6843,7 @@ function findBlCategory(name,code){
 function blCatOpts(code){
   if(code==='revenue') return CATS_BY_KIND_G.revenue||[];
   if(code==='opex') return OPEX_CATS_G||[];
-  if(code==='ar'||code==='ap'||code==='pinbuk'||code==='capital') return CATS_BY_KIND_G.financing||[];
+  if(code==='ar'||code==='ap'||code==='pinbuk'||code==='capital'||code==='orec') return CATS_BY_KIND_G.financing||[];
   return [];
 }
 function blCatCell(r,i){
@@ -6829,8 +6852,19 @@ function blCatCell(r,i){
   return fixPickCellHtml('bl-fix-cat-'+i,`fixBlField(${i},'cat',this.value)`,blCatOpts(r.code),'— pick category —','category');
 }
 function blVendorCell(r,i){
-  if(r.code!=='opex'&&r.code!=='capital') return '—';
+  if(r.code==='capital') return r.vendor?escH(r.vendor):`<input id="bl-fix-vendor-${i}" placeholder="Shareholder name" style="font-size:11px;padding:3px 4px" onchange="fixBlField(${i},'vendor',this.value)">`;
+  if(r.code!=='opex') return '—';
   return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('bl-fix-vendor-'+i,`fixBlField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+}
+// AR/AP's counterparty is a PT, so it gets the same closed-list picker as Update Transaction's Loan
+// Affiliate flow; Other Receivable's is a person, so it stays a plain free-text fix like Vendor.
+function blCpCell(r,i){
+  if(r.code==='ar'||r.code==='ap'){
+    if(r.cp) return escH(r.cp);
+    return icCounterpartySelectHtml('bl-fix-cp-'+i,'','font-size:11px;padding:3px 4px',`fixBlField(${i},'cp',this.value)`);
+  }
+  if(r.code==='orec') return r.cp?escH(r.cp):`<input id="bl-fix-cp-${i}" placeholder="Counterparty (person's name)" style="font-size:11px;padding:3px 4px" onchange="fixBlField(${i},'cp',this.value)">`;
+  return '—';
 }
 function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
@@ -6845,7 +6879,7 @@ function renderBlPreview(){
       +'<td style="font-size:12px">'+blCodeCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+blCatCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+blVendorCell(r,i)+'</td>'
-      +'<td style="font-size:12px">'+((r.code==='ar'||r.code==='ap')?escH(r.cp||'—'):'—')+'</td>'
+      +'<td style="font-size:12px">'+blCpCell(r,i)+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.debit?fmtIDR(r.debit):'')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.kredit?fmtIDR(r.kredit):'')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px;font-weight:700">'+(r.expectedSaldo!=null?fmtIDR(r.expectedSaldo):'—')+'</td>'
@@ -6884,7 +6918,7 @@ function renderBlPreview(){
         debit:r.debit,kredit:r.kredit,description:r.desc||null,
         category:r.category||null,
         vendor:(r.code==='opex'||r.code==='capital')?r.vendor:null,
-        counterparty_label:(r.code==='ar'||r.code==='ap')?r.cp:null,
+        counterparty_label:(r.code==='ar'||r.code==='ap'||r.code==='orec')?r.cp:null,
         source_label:'Excel import',created_by:MY_EMAIL}));
       const ledgerResp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',
         headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(ledgerRows)});
@@ -6950,28 +6984,29 @@ function renderBlPreview(){
         const freshIc=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
         IC_TX=freshIc.map(mkIcTx);
       }
-      // 4) Capital rows (shareholder deposits/withdrawals) patch entity_period_totals.financing_in/
-      // financing_out additively — same convention as step 2 — so they show up in the Financing
-      // In/Out KPI without needing a counterparty PT the way AR/AP do.
+      // 4) Capital rows book straight into loan_flows (flow_type='Capital deposit') — same table
+      // and same "deposit only, no Financing In/Out" convention as Update Transaction's Shareholder
+      // Capital Deposit flow (see saveTxOneCapDep) — NOT entity_period_totals.financing_in, which
+      // this session's cleanup zeroed out for good since it had no itemized backing.
       const capital=toImport.filter(r=>r.code==='capital');
       if(capital.length){
-        const touchedCap={};
-        capital.forEach(r=>{ const per=periodFromDateG(r.date).code; (touchedCap[r.acctMatch.entity]=touchedCap[r.acctMatch.entity]||new Set()).add(per); });
-        for(const ent of Object.keys(touchedCap)){
-          for(const per of touchedCap[ent]){
-            const added=capital.filter(r=>r.acctMatch.entity===ent && periodFromDateG(r.date).code===per);
-            const inc={financing_in:0,financing_out:0};
-            added.forEach(r=>{ if(r.debit>0) inc.financing_in+=r.debit; else inc.financing_out+=r.kredit; });
-            const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
-            const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
-            const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
-              headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-              body:JSON.stringify({entity_code:ent,period_code:per,
-                revenue:Number(c.revenue||0), opex:Number(c.opex||0),
-                financing_in:Number(c.financing_in||0)+inc.financing_in, financing_out:Number(c.financing_out||0)+inc.financing_out})});
-            if(!ptr.ok) throw new Error('Saved the ledger entries, but failed to update '+ent+' '+per+"'s financing total: "+((await ptr.text())||('HTTP '+ptr.status)));
-          }
-        }
+        const loanRows=capital.map(r=>({period_code:periodFromDateG(r.date).code,from_label:r.vendor,
+          to_label:eName(r.acctMatch.entity),flow_type:'Capital deposit',amount_idr:r.amt,
+          from_group:null,to_group:ENT[r.acctMatch.entity].grp,description:r.desc||null,source_label:'Bank Ledger import'}));
+        await adminAddBatch('loan_flows',loanRows);
+        await refreshLoanFlows();
+      }
+      // 5) Other Receivable rows book straight into other_receivables — same table as Update
+      // Transaction's Other Receivable flow, never entity_period_totals (it's its own card).
+      const orec=toImport.filter(r=>r.code==='orec');
+      if(orec.length){
+        const orecRows=orec.map(r=>({entity_code:r.acctMatch.entity,period_code:periodFromDateG(r.date).code,
+          day_label:dayLbl(r.date),tx_date:r.date,counterparty:r.cp,direction:r.dir,
+          amount_idr:r.amt,description:r.desc||null,source_label:'Bank Ledger import',created_by:MY_EMAIL}));
+        const orecResp=await authedFetch(SB_URL+'/rest/v1/other_receivables',{method:'POST',
+          headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(orecRows)});
+        if(!orecResp.ok) throw new Error((await orecResp.text())||('HTTP '+orecResp.status));
+        (await orecResp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
       }
       BL_ROWS=[];
       document.getElementById('bl-import-msg').style.color='#2b7a4b';
@@ -10047,18 +10082,14 @@ async function renderEntryBody(){
   }
   // ── The bulk-import / one-time-setup sections below are used less often than the four above,
   // so they sit further down the panel. ──
-  // ── Update Transaction — single-entry input (Revenue or Opex) alongside the existing
-  // Excel-template bulk import/export, mirroring the "One at a time"/"Import from Excel" tab
-  // pattern already used by Outstanding Liability and Fixed Cost. The bulk path is unchanged;
-  // the single-entry path (saveTxOne) reuses the exact same transactions-insert +
-  // entity_period_totals additive-patch logic as the bulk importer's save handler. ──
+  // ── Update Transaction — single-entry input only. Bulk Excel import used to live here too, but
+  // it's been retired in favor of Import Bank Ledger below (which additionally keeps each bank
+  // account's running balance correct, and shares one duplicate-check with everything else entered
+  // there) — this is now just the quick one-off manual entry, same save handler (saveTxOne) as
+  // before. ──
   h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Update Transaction</summary>'
     +'<div style="padding:12px 2px 0">'
-    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single transaction directly, or import many at once via Excel — Opex, Revenue, Loan Affiliate, Pinbuk, Other Receivable, and Shareholder Capital Deposit are all supported here. New rows are added to the consolidated numbers immediately.</div>'
-    +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-    +'<button id="tx-tab-one" type="button" style="border:0;border-radius:999px;background:#d9a92c;color:#2a1c02;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">One at a time</button>'
-    +'<button id="tx-tab-bulk" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">Import from Excel</button>'
-    +'</div>'
+    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single transaction directly — Opex, Revenue, Loan Affiliate, Pinbuk, Other Receivable, and Shareholder Capital Deposit are all supported here. New rows are added to the consolidated numbers immediately. For many transactions at once, use <b>Import Bank Ledger</b> further down instead.</div>'
     +'<div id="tx-single">'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-ent" style="'+inp+'" onchange="onTx1FlowChange()">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
@@ -10120,17 +10151,6 @@ async function renderEntryBody(){
     +'<button id="tx1-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save transaction</button>'
     +'<div id="tx1-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
     +'</div>'
-    +'<div id="tx-bulk" style="display:none">'
-    +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-    +'<button id="tx-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
-    +'<label for="tx-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
-    +'<input id="tx-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
-    +'<select id="tx-export-ent" style="'+inp+';width:auto;margin-left:auto;padding:7px 10px"><option value="all">All entities</option>'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<button id="tx-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
-    +'</div>'
-    +'<span id="tx-filename" style="font-size:12px;color:#3a4254"></span>'
-    +'<div id="tx-preview" style="margin-top:12px"></div>'
-    +'</div>'
     +'</div></details>';
   // ── Import Inter-Company Transactions — itemized AP/AR ledger between PTs in the wider group
   // (owner PT, counterparty, AP/AR, date, description, amount). Not entity/month scoped like the
@@ -10183,7 +10203,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate; <b>Capital</b> (shareholder deposit/withdrawal) also feeds Financing In/Out; <b>Pinbuk</b> (transfer between the group\'s own accounts) only affects this account\'s balance and appears nowhere else. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate (Counterparty must be one of the 16 PTs, or ask an admin to add a new one); <b>Capital</b> (always a shareholder deposit, entered as Debit) also feeds the Shareholder Capital Deposit card; <b>Other Receivable</b> also feeds the Other Receivable card (Debit = In/refund received, Credit = Out/paid to the person); <b>Pinbuk</b> (transfer between the group\'s own accounts) only affects this account\'s balance and appears nowhere else. This is now the only way to bulk-import transactions — Update Transaction\'s Excel import has been retired in its favor; use its "One at a time" tab for a quick single manual entry instead. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
       +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first.</div>')
       +'<div style="margin-bottom:12px">'
       +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pick an account —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabelFull(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
@@ -10592,14 +10612,18 @@ async function renderEntryBody(){
       try{
         await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue'),ensureCatsByKind('financing')]);
         const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[], finCatsTpl=CATS_BY_KIND_G.financing||[];
-        const cpSuggestions=[...new Set([...EIDS.map(id=>ENT[id].name),...IC_TX.map(t=>t.cp)])].filter(Boolean).sort();
+        // AR/AP's Counterparty is now the same closed list Update Transaction's Loan Affiliate uses
+        // (16 entities + admin-added names) — offered here as the dropdown's suggestion list too,
+        // even though the sheet itself can't enforce it (see the fix-cell in the preview instead).
+        await refreshIcCounterparties();
+        const cpSuggestions=icCounterpartyOptions();
         const acctLbl=bankAccountLabel(acct);
         await downloadValidatedTemplate('bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'.xlsx','Bank Ledger',
-          ['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty (PT)','Document Link'],
+          ['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty','Document Link'],
           [acctLbl,'2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
           [{col:'C',values:Object.values(BL_CODE_LBL)},{col:'H',values:opexCatsTpl.concat(revCatsTpl).concat(finCatsTpl)},
            {col:'I',values:VENDORS_G||[]},{col:'J',values:cpSuggestions}],
-          null,
+          'Code = Revenue/Opex: Category from that list, Vendor as usual.  Code = AR/AP/Capital/Other Receivable: Category is any financing category (for the ledger\'s own record — pick whichever fits), plus: AR/AP needs Counterparty = the other PT (one of the 16 tracked entities, or ask an admin to add a new name); Capital needs Vendor = shareholder\'s name and is always Debit; Other Receivable needs Counterparty = the person\'s name, direction follows Debit=In/Credit=Out.  Code = Pinbuk: Category is auto-set, Vendor/Counterparty are unused.',
           [{col:'A',value:acctLbl}]);
       } finally { blTplBtn.disabled=false; }
     };
@@ -10616,7 +10640,7 @@ async function renderEntryBody(){
         const acctLbl=bankAccountLabel(acct);
         const entries=BANK_LEDGER.filter(r=>r.acctId===acct.id).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')||a.id-b.id);
         let running=acct.opening;
-        const rows=[['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty (PT)','Document Link']];
+        const rows=[['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty','Document Link']];
         entries.forEach(r=>{
           running+=r.debit-r.kredit;
           rows.push([acctLbl,r.date,BL_CODE_LBL[r.code]||r.code,r.desc,r.debit||'',r.kredit||'',running,r.category||'',r.vendor||'',r.cp||'','']);
@@ -10671,9 +10695,9 @@ async function renderEntryBody(){
         const catMatch=code==='pinbuk'?'Pinbuk':findBlCategory(catRaw,code);
         const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
         const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
-        const cp=kCp!=null?String(r[kCp]||'').trim():'';
+        const cpRaw=kCp!=null?String(r[kCp]||'').trim():'';
         const docLink=kDocLink!=null?String(r[kDocLink]||'').trim():'';
-        const row={date,acctMatch:acct,code,desc,debitRaw,kreditRaw,saldoRaw,catRaw,catMatch,vendorRaw,vendorMatch,cp,docLink};
+        const row={date,acctMatch:acct,code,desc,debitRaw,kreditRaw,saldoRaw,catRaw,catMatch,vendorRaw,vendorMatch,cpRaw,docLink};
         computeBlRow(row);
         return row;
       });
