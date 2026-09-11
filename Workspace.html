@@ -6787,6 +6787,32 @@ function findDuplicateBl(list,r){
     && Math.round(o.debit||0)===Math.round(r.debit||0) && Math.round(o.kredit||0)===Math.round(r.kredit||0)
     && norm(o.desc)===norm(r.desc));
 }
+// Inline duplicate-check, same pattern as Update Transaction's TX_DUP_OPEN/txDupCompareRowHtml — a
+// flagged row's status becomes a toggle button instead of forcing a trip elsewhere in the dashboard
+// to see what it supposedly matches, so it can be confirmed (and left flagged, to skip on import) or
+// dismissed as a false positive (unchecking it row-by-row isn't offered here — that's what editing
+// the file and re-uploading is for; this is purely a "is this really the same thing?" check).
+let BL_DUP_OPEN=new Set();
+function toggleBlDupCheck(i){
+  if(BL_DUP_OPEN.has(i)) BL_DUP_OPEN.delete(i); else BL_DUP_OPEN.add(i);
+  renderBlPreview();
+}
+function blDupCompareRowHtml(i,dup){
+  const cpOrVendor=dup.vendor||dup.cp||'—';
+  return `<tr style="background:#fffaf0"><td></td><td colspan="10" style="padding:8px 12px 12px;font-size:12px">`
+    +`<div style="border:1px solid #f0cb87;border-radius:8px;padding:8px 10px;background:#fff">`
+    +`<div style="font-weight:700;color:#8a5a1e;margin-bottom:6px">Already saved as:</div>`
+    +`<table style="width:100%"><tr>`
+    +`<td style="color:var(--muted);padding-right:14px;white-space:nowrap">${escH(dup.date||'—')}</td>`
+    +`<td style="padding-right:14px">${escH(BL_CODE_LBL[dup.code]||dup.code||'—')}</td>`
+    +`<td style="padding-right:14px;color:var(--muted)">${escH(dup.category||'—')}</td>`
+    +`<td style="padding-right:14px;color:var(--muted)">${escH(cpOrVendor)}</td>`
+    +`<td class="num" style="padding-right:14px">${fmt(dup.debit||dup.kredit||0)}</td>`
+    +`<td style="color:var(--muted)">${escH(dup.desc||'—')}</td>`
+    +`</tr></table>`
+    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.source||'—')} · matched on account, date, code, amount &amp; description — all identical to the row above</div>`
+    +`</div></td></tr>`;
+}
 function computeBlRow(r){
   let error=null;
   const debit=Number(r.debitRaw)||0, kredit=Number(r.kreditRaw)||0;
@@ -6909,7 +6935,9 @@ function renderBlPreview(){
   let h=skippedNote+'<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Code</th><th>Category</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Credit</th><th class="num" style="text-align:right">Balance</th><th>Doc?</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
-    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':'OK');
+    const open=BL_DUP_OPEN.has(i);
+    const status=r.error?escH(r.error)
+      :(r.dup?`<button type="button" onclick="toggleBlDupCheck(${i})" style="border:1px solid #f0cb87;background:#fff8ec;color:#8a5a1e;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">⚠ Possible duplicate — ${open?'hide':'check'}</button>`:'OK');
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
       +'<td style="font-size:12px">'+blCodeCell(r,i)+'</td>'
@@ -6921,6 +6949,7 @@ function renderBlPreview(){
       +'<td class="num" style="text-align:right;font-size:12px;font-weight:700">'+(r.expectedSaldo!=null?fmtIDR(r.expectedSaldo):'—')+'</td>'
       +'<td style="font-size:12px;text-align:center">'+(r.docLink?'📎':'—')+'</td>'
       +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
+    if(r.dup && open) h+=blDupCompareRowHtml(i,r.dup);
   });
   h+='</tbody></table></div>';
   const dupN=valid.filter(r=>r.dup).length;
@@ -7044,7 +7073,7 @@ function renderBlPreview(){
         if(!orecResp.ok) throw new Error((await orecResp.text())||('HTTP '+orecResp.status));
         (await orecResp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
       }
-      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0;
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set();
       document.getElementById('bl-import-msg').style.color='#2b7a4b';
       document.getElementById('bl-import-msg').textContent='✓ Added '+toImport.length+' ledger entr'+(toImport.length===1?'y':'ies')
         +(docOk?', '+docOk+' document'+(docOk===1?'':'s')+' attached':'')
@@ -10544,7 +10573,7 @@ async function renderEntryBody(){
       if(blExpBtn) blExpBtn.disabled=!has;
       if(blFileInp) blFileInp.disabled=!has;
       if(blFileLabel){ blFileLabel.style.background=has?'#f5e8c8':'#e4e7ef'; blFileLabel.style.color=has?'#9a6f0a':'#9aa1b1'; blFileLabel.style.cursor=has?'pointer':'not-allowed'; }
-      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; renderBlPreview();
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); renderBlPreview();
       document.getElementById('bl-filename').textContent='';
     };
     if(blAcctSel) blAcctSel.onchange=setBlAcctEnabled;
@@ -10623,7 +10652,7 @@ async function renderEntryBody(){
       const rows=aoa.slice(headerRowIdx+1)
         .filter(r=>r.some(c=>String(c).trim()!==''))
         .map(r=>{ const o={}; headerArr.forEach((h,i)=>{ if(h!=='') o[h]=r[i]!=null?r[i]:''; }); return o; });
-      if(!rows.length){ BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; renderBlPreview(); return; }
+      if(!rows.length){ BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); renderBlPreview(); return; }
       const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
       const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
       const kDate=col(['date','tanggal']),
@@ -10639,6 +10668,7 @@ async function renderEntryBody(){
         kVendorOld=kVendorCp==null?col(['vendor']):null,
         kCpOld=kVendorCp==null?col(['counterparty (pt)','counterparty']):null,
         kDocLink=col(['link dokumen','dokumen','document link','link']);
+      BL_DUP_OPEN=new Set();
       BL_ROWS_ALL=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
         const date=kDate!=null?parseFlexDate(r[kDate]):null;
         const codeRaw=kCode!=null?String(r[kCode]||'').trim().toLowerCase():'';
