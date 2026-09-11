@@ -6015,7 +6015,7 @@ function opdCatCell(r,i){
   return r.catMatch?escH(r.catMatch):fixPickCellHtml('opd-fix-cat-'+i,`fixOpdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —','category');
 }
 function opdVendorCell(r,i){
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('opd-fix-vendor-'+i,`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('opd-fix-vendor-'+i,`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
 }
 function renderOpdPreview(){
   const el=document.getElementById('opd-preview'); if(!el) return;
@@ -6152,6 +6152,7 @@ function computeTxRow(r){
       r.category=r.catMatch||r.catRaw||'';
       r.vendor=r.vendorMatch||r.vendorRaw||'Unknown';
       if(!r.category) error='Category not recognized — pick one, or add it via Manage Categories first';
+      else if(r.vendorRaw&&!r.vendorMatch) error='Vendor not recognized — pick one, or add it via Manage Vendors first';
     } else if(r.flowKey==='loan'){
       const t=String(r.catMatch||r.catRaw||'').trim().toUpperCase();
       r.icType=(t==='AP'||t==='AR')?t:null;
@@ -6469,7 +6470,7 @@ function txVendorCell(r,i){
   if(!r.flowKey) return '';
   if(r.flowKey==='opex'||r.flowKey==='rev'){
     if(r.vendor && r.vendor!=='Unknown') return escH(r.vendor);
-    return fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+    return fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
   }
   if(r.flowKey==='loan'){
     if(r.cp) return escH(r.cp);
@@ -6788,6 +6789,7 @@ function computeBlRow(r){
   else if((r.code==='ar'||r.code==='ap')&&!r.cp) error='Counterparty not recognized — pick one from the list (Counterparty column), or ask an admin to add it';
   else if(r.code==='orec'&&!r.cp) error='Counterparty is required for Other Receivable';
   else if(r.code==='capital'&&!(r.vendorMatch||r.vendorRaw)) error='Shareholder name is required for Capital deposit';
+  else if(r.code==='opex'&&r.vendorRaw&&!r.vendorMatch) error='Vendor not recognized — pick one, or add it via Manage Vendors first';
   r.error=error;
   r.amt=debit>0?debit:kredit;
   r.contra=isRefund||isRevRefund;
@@ -6854,7 +6856,7 @@ function blCatCell(r,i){
 function blVendorCell(r,i){
   if(r.code==='capital') return r.vendor?escH(r.vendor):`<input id="bl-fix-vendor-${i}" placeholder="Shareholder name" style="font-size:11px;padding:3px 4px" onchange="fixBlField(${i},'vendor',this.value)">`;
   if(r.code!=='opex') return '—';
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('bl-fix-vendor-'+i,`fixBlField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('bl-fix-vendor-'+i,`fixBlField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
 }
 // AR/AP's counterparty is a PT, so it gets the same closed-list picker as Update Transaction's Loan
 // Affiliate flow; Other Receivable's is a person, so it stays a plain free-text fix like Vendor.
@@ -7116,7 +7118,7 @@ function fcdCatCell(r,i){
 }
 function fcdVendorCell(r,i){
   if(!r.vendorRaw) return '—';
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('fcd-fix-vendor-'+i,`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('fcd-fix-vendor-'+i,`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
 }
 function renderFcdPreview(){
   const el=document.getElementById('fcd-preview'); if(!el) return;
@@ -7246,9 +7248,10 @@ function searchableSelectBlur(id){
   else { const cur=norm.find(o=>o.value===hidden.value); q.value=cur?cur.label:(hidden.value||''); }
 }
 // "+ Add new…" row inside any searchable picker with allowCreate set — registers the typed name
-// via the same cascade-safe path Manage Vendors/Manage Categories use, instead of a separate
-// prompt(). New categories are created as ungrouped opex categories; assign a parent group
-// afterwards via Manage Categories if needed.
+// via the same cascade-safe path Manage Categories uses, instead of a separate prompt(). New
+// categories are created as ungrouped opex categories; assign a parent group afterwards via Manage
+// Categories if needed. Vendor no longer offers this — see vendorSelectHtml/fixPickCellHtml, a
+// vendor name must already exist in Manage Vendors (admin-only) so spelling can't drift.
 async function searchableCreate(id){
   const list=document.getElementById(id+'-list');
   const createType=list&&list.dataset.createType;
@@ -7257,11 +7260,7 @@ async function searchableCreate(id){
   if(!createType) return;
   if(!name){ if(q) q.focus(); return; } // clicked the generic "+ Add new…" row before typing a name — just focus the box
   try{
-    if(createType==='vendor'){
-      await addVendor(name);
-      await ensureVendorsG();
-      window.SS_OPTIONS[id]=ssNorm(VENDORS_G);
-    } else if(createType==='category'){
+    if(createType==='category'){
       await addCategory(name,'opex',null);
       await ensureOpexCatsG();
       window.SS_OPTIONS[id]=ssNorm(OPEX_CATS_G);
@@ -7275,8 +7274,10 @@ function clearSearchableSelect(id){
   const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
   if(q) q.value=''; if(hidden) hidden.value='';
 }
+// Closed list only — a vendor name must already exist in Manage Vendors (admin-only) so spelling
+// never drifts into a new, differently-spelled duplicate of an existing vendor.
 function vendorSelectHtml(id,current,extraStyle){
-  return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search or add vendor…',style:extraStyle||'',allowCreate:'vendor'});
+  return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search vendor…',style:extraStyle||''});
 }
 // Loan Affiliate's counterparty used to be free text, which let the exact same PT get typed
 // inconsistently across entries (e.g. "PT Magnum Estate International" vs "PT Magnum Estate
