@@ -10642,11 +10642,11 @@ async function renderEntryBody(){
         const cpSuggestions=icCounterpartyOptions();
         const acctLbl=bankAccountLabel(acct);
         await downloadValidatedTemplate('bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'.xlsx','Bank Ledger',
-          ['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty','Document Link'],
-          [acctLbl,'2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','','https://drive.google.com/file/d/…'],
+          ['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor / Counterparty','Document Link'],
+          [acctLbl,'2026-07-01',BL_CODE_LBL.opex,'Sample transaction','',1000000,9000000,opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','https://drive.google.com/file/d/…'],
           [{col:'C',values:Object.values(BL_CODE_LBL)},{col:'H',values:opexCatsTpl.concat(revCatsTpl).concat(finCatsTpl)},
-           {col:'I',values:VENDORS_G||[]},{col:'J',values:cpSuggestions}],
-          'Code = Revenue/Opex: Category from that list, Vendor as usual.  Code = AR/AP/Capital/Other Receivable: Category is any financing category (for the ledger\'s own record — pick whichever fits), plus: AR/AP needs Counterparty = the other PT (one of the 16 tracked entities, or ask an admin to add a new name); Capital needs Vendor = shareholder\'s name and is always Debit; Other Receivable needs Counterparty = the person\'s name, direction follows Debit=In/Credit=Out.  Code = Pinbuk: Category is auto-set, Vendor/Counterparty are unused.',
+           {col:'I',values:(VENDORS_G||[]).concat(cpSuggestions)}],
+          'One column doing double duty depending on Code: Revenue/Opex/Capital use it as Vendor (Capital = shareholder\'s name); AR/AP/Other Receivable use it as Counterparty (AR/AP = one of the 16 tracked PTs, or ask an admin to add a new name; Other Receivable = the person\'s name).  Category: Revenue/Opex from that list as usual; AR/AP/Capital/Other Receivable can be any financing category (for the ledger\'s own record — pick whichever fits).  Pinbuk: Category is auto-set, this column is unused.',
           [{col:'A',value:acctLbl}]);
       } finally { blTplBtn.disabled=false; }
     };
@@ -10663,14 +10663,14 @@ async function renderEntryBody(){
         const acctLbl=bankAccountLabel(acct);
         const entries=BANK_LEDGER.filter(r=>r.acctId===acct.id).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')||a.id-b.id);
         let running=acct.opening;
-        const rows=[['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor','Counterparty','Document Link']];
+        const rows=[['Bank Account','Date','Code','Description','Debit','Credit','Balance','Category','Vendor / Counterparty','Document Link']];
         entries.forEach(r=>{
           running+=r.debit-r.kredit;
-          rows.push([acctLbl,r.date,BL_CODE_LBL[r.code]||r.code,r.desc,r.debit||'',r.kredit||'',running,r.category||'',r.vendor||'',r.cp||'','']);
+          rows.push([acctLbl,r.date,BL_CODE_LBL[r.code]||r.code,r.desc,r.debit||'',r.kredit||'',running,r.category||'',r.vendor||r.cp||'','']);
         });
         const wb=XLSX.utils.book_new();
         const ws=XLSX.utils.aoa_to_sheet(rows);
-        ws['!cols']=[{wch:26},{wch:12},{wch:10},{wch:40},{wch:14},{wch:14},{wch:14},{wch:22},{wch:20},{wch:24},{wch:40}];
+        ws['!cols']=[{wch:26},{wch:12},{wch:10},{wch:40},{wch:14},{wch:14},{wch:14},{wch:22},{wch:24},{wch:40}];
         XLSX.utils.book_append_sheet(wb,ws,'Bank Ledger');
         XLSX.writeFile(wb,'bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'_export_'+new Date().toISOString().slice(0,10)+'.xlsx');
       } finally { blExpBtn.disabled=false; }
@@ -10701,7 +10701,15 @@ async function renderEntryBody(){
       const kDate=col(['date','tanggal']),
         kCode=col(['kode','code']), kDesc=col(['keterangan','description']),
         kDebit=col(['debit']), kKredit=col(['kredit','credit']), kSaldo=col(['saldo','balance']),
-        kCat=col(['kategori','category']), kVendor=col(['vendor']), kCp=col(['counterparty (pt)','counterparty']),
+        kCat=col(['kategori','category']),
+        // One merged column now does double duty as Vendor (Revenue/Opex/Capital) or Counterparty
+        // (AR/AP/Other Receivable) — computeBlRow already reads whichever of vendorRaw/cpRaw applies
+        // per Code, so both are simply filled from the same raw cell. A template downloaded before
+        // this merge still had them as two separate columns — fall back to reading (and combining)
+        // those if the merged header isn't present, so an older download keeps working.
+        kVendorCp=col(['vendor / counterparty','vendor/counterparty','counterparty / vendor']),
+        kVendorOld=kVendorCp==null?col(['vendor']):null,
+        kCpOld=kVendorCp==null?col(['counterparty (pt)','counterparty']):null,
         kDocLink=col(['link dokumen','dokumen','document link','link']);
       BL_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
         const date=kDate!=null?parseFlexDate(r[kDate]):null;
@@ -10716,9 +10724,12 @@ async function renderEntryBody(){
         // historical statements/imports never had a "Pinbuk" category to put there, so requiring
         // one here would reject every Pinbuk row in an otherwise-valid file.
         const catMatch=code==='pinbuk'?'Pinbuk':findBlCategory(catRaw,code);
-        const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'';
+        const mergedRaw=kVendorCp!=null?String(r[kVendorCp]||'').trim():'';
+        const oldVendorRaw=kVendorOld!=null?String(r[kVendorOld]||'').trim():'';
+        const oldCpRaw=kCpOld!=null?String(r[kCpOld]||'').trim():'';
+        const vendorRaw=mergedRaw||oldVendorRaw;
         const vendorMatch=(VENDORS_G||[]).find(v=>v.toLowerCase()===vendorRaw.toLowerCase())||null;
-        const cpRaw=kCp!=null?String(r[kCp]||'').trim():'';
+        const cpRaw=mergedRaw||oldCpRaw;
         const docLink=kDocLink!=null?String(r[kDocLink]||'').trim():'';
         const row={date,acctMatch:acct,code,desc,debitRaw,kreditRaw,saldoRaw,catRaw,catMatch,vendorRaw,vendorMatch,cpRaw,docLink};
         computeBlRow(row);
