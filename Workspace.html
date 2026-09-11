@@ -6655,9 +6655,10 @@ function renderTxPreview(){
     }
   };
 }
-// ── Inter-Company Transactions import preview — Owner/Counterparty are free text (many
-// counterparties are holding PTs outside this dashboard's tracked entities), so unlike Transactions
-// there's no entity-matching fix-cell step, just Type/Amount validation. ──
+// ── Inter-Company Transactions import preview — Owner is always one of this dashboard's 16
+// entities; Counterparty is resolved against the same closed list (16 entities + admin-added names
+// in intercompany_counterparties) as Update Transaction's Loan Affiliate flow and Import Bank
+// Ledger's AR/AP, so a typo'd or unapproved name doesn't sneak in a differently-spelled duplicate. ──
 let IC_TX_ROWS=[];
 function findDuplicateIcTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
@@ -6671,12 +6672,30 @@ function findDuplicateOrec(list,r){
 }
 function computeIcTxRow(r){
   let error=null;
-  if(!r.owner) error='Owner (PT) is required';
-  else if(!r.cp) error='Counterparty is required';
+  const ownerId=findEntityByNameG(r.ownerRaw);
+  r.owner=ownerId?eName(ownerId):null;
+  r.cp=resolveIcCounterparty(r.cpRaw);
+  if(!r.owner) error='Owner not recognized — pick one of the 16 PTs';
+  else if(!r.cp) error='Counterparty not recognized — pick one from the list, or ask an admin to add it';
   else if(!r.type) error='Type must be AP or AR';
   else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
   r.error=error;
   r.dup=error?null:findDuplicateIcTx(IC_TX,r);
+}
+function fixIcTxField(i,field,value){
+  const r=IC_TX_ROWS[i]; if(!r) return;
+  if(field==='owner') r.ownerRaw=value||'';
+  else if(field==='cp') r.cpRaw=value||'';
+  computeIcTxRow(r);
+  renderIcTxPreview();
+}
+function icTxOwnerCell(r,i){
+  if(r.owner) return escH(r.owner);
+  return `<select id="ictx-fix-owner-${i}" style="font-size:11px;padding:3px 4px" onchange="fixIcTxField(${i},'owner',this.value)"><option value="">— pick PT —</option>${EIDS.map(id=>`<option value="${escH(eName(id))}">${escH(eName(id))}</option>`).join('')}</select>`;
+}
+function icTxCpCell(r,i){
+  if(r.cp) return escH(r.cp);
+  return icCounterpartySelectHtml('ictx-fix-cp-'+i,'','font-size:11px;padding:3px 4px',`fixIcTxField(${i},'cp',this.value)`);
 }
 function renderIcTxPreview(){
   const el=document.getElementById('ictx-preview'); if(!el) return;
@@ -6687,8 +6706,8 @@ function renderIcTxPreview(){
     const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
     const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':'OK');
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
-      +'<td style="font-size:12px">'+escH(r.owner||'—')+'</td>'
-      +'<td style="font-size:12px">'+escH(r.cp||'—')+'</td>'
+      +'<td style="font-size:12px">'+icTxOwnerCell(r,i)+'</td>'
+      +'<td style="font-size:12px">'+icTxCpCell(r,i)+'</td>'
       +'<td style="font-size:12px">'+(r.type||'—')+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
       +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
@@ -10161,7 +10180,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Import Loan Affiliate Transactions</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per AR/AP transaction (Owner PT, Counterparty, Type, Date, Description, Amount), then upload. Owner and Counterparty are free text — many counterparties are holding/investment PTs not tracked as entities in this dashboard.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per AR/AP transaction (Owner PT, Counterparty, Type, Date, Description, Amount), then upload. Owner must be one of the 16 PTs tracked in this dashboard; Counterparty must be one of those same 16, or a name an admin has added for a holding/investment PT not tracked here as its own entity.</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="ictx-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
       +'<label for="ictx-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
@@ -10439,10 +10458,13 @@ async function renderEntryBody(){
   if(ictxTplBtn) ictxTplBtn.onclick=async()=>{
     ictxTplBtn.disabled=true;
     try{
+      await refreshIcCounterparties();
+      const cpOpts=icCounterpartyOptions();
       await downloadValidatedTemplate('loan_affiliate_transactions_template.xlsx','Loan Affiliate',
         ['Owner (PT)','Counterparty','Type','Date','Description','Amount'],
-        [eName(EIDS[0]),'Sample Counterparty PT','AP','2026-07-01','Sample loan affiliate transaction',1000000],
-        [{col:'C',values:['AP','AR']}]);
+        [eName(EIDS[0]),cpOpts.find(n=>n!==eName(EIDS[0]))||cpOpts[0],'AP','2026-07-01','Sample loan affiliate transaction',1000000],
+        [{col:'A',values:EIDS.map(eName)},{col:'B',values:cpOpts},{col:'C',values:['AP','AR']}],
+        'Owner must be one of the 16 PTs tracked in this dashboard. Counterparty must be one of those same 16, or a name an admin has added (the "+ Add" button next to the Counterparty picker in Update Transaction or Import Bank Ledger).');
     } finally { ictxTplBtn.disabled=false; }
   };
   const ictxExpBtn=document.getElementById('ictx-export');
@@ -10471,14 +10493,14 @@ async function renderEntryBody(){
     const kOwner=col(['owner (pt)','owner','pt (owner)','pt']), kCp=col(['counterparty','counterparty label']),
       kType=col(['type']), kDate=col(['date']), kDesc=col(['description']), kAmt=col(['amount','amount (idr)','amount idr']);
     IC_TX_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
-      const owner=kOwner!=null?String(r[kOwner]||'').trim():'';
-      const cp=kCp!=null?String(r[kCp]||'').trim():'';
+      const ownerRaw=kOwner!=null?String(r[kOwner]||'').trim():'';
+      const cpRaw=kCp!=null?String(r[kCp]||'').trim():'';
       const typeRaw=kType!=null?String(r[kType]||'').trim().toUpperCase():'';
       const type=typeRaw==='AP'||typeRaw==='AR'?typeRaw:(/^AP/.test(typeRaw)?'AP':(/^AR/.test(typeRaw)?'AR':null));
       const date=kDate!=null?parseFlexDate(r[kDate]):null;
       const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
       const amt=kAmt!=null?Number(r[kAmt]):NaN;
-      const row={owner,cp,type,date,desc,amt};
+      const row={ownerRaw,cpRaw,type,date,desc,amt};
       computeIcTxRow(row);
       return row;
     });
