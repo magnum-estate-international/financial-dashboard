@@ -6751,6 +6751,28 @@ function renderIcTxPreview(){
 // touches bank_ledger_entries. Every row, regardless of Code, gets its own bank_ledger_entries row
 // so the account's running balance stays complete. ──
 let BL_ROWS=[];
+// The full, unfiltered parse of the most recently uploaded file — kept separately from BL_ROWS (the
+// date-filtered view actually shown/imported) so adjusting "Only import rows dated ... through ..."
+// after the file's already loaded just re-filters this in memory, instead of forcing a re-upload.
+let BL_ROWS_ALL=[];
+// Count of rows the date filter left out of BL_ROWS on the most recent filter/upload — surfaced as a
+// note in renderBlPreview so a trimmed-down preview doesn't read as "the rest of the file failed to
+// parse".
+let BL_SKIPPED_OUT_OF_RANGE=0;
+function applyBlDateFilter(){
+  const fromDate=(document.getElementById('bl-from')||{}).value||null;
+  const toDate=(document.getElementById('bl-to')||{}).value||null;
+  if(!fromDate&&!toDate){ BL_ROWS=BL_ROWS_ALL; BL_SKIPPED_OUT_OF_RANGE=0; return; }
+  // A row with no valid date isn't excluded by this — it still surfaces as its own "Invalid date"
+  // error instead of silently vanishing into the skipped count.
+  BL_ROWS=BL_ROWS_ALL.filter(row=>{
+    if(!row.date) return true;
+    if(fromDate&&row.date<fromDate) return false;
+    if(toDate&&row.date>toDate) return false;
+    return true;
+  });
+  BL_SKIPPED_OUT_OF_RANGE=BL_ROWS_ALL.length-BL_ROWS.length;
+}
 const BL_CODES=['revenue','opex','ar','ap','pinbuk','capital','orec'];
 const BL_CODE_LBL={revenue:'Revenue',opex:'Opex',ar:'AR',ap:'AP',pinbuk:'Pinbuk',capital:'Capital',orec:'Other Receivable'};
 // Opex rows normally must be Credit (cash out). This one category is the exception: money that
@@ -6889,9 +6911,10 @@ function blCpCell(r,i){
 }
 function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
-  if(!BL_ROWS.length){ el.innerHTML=''; return; }
+  const skippedNote=BL_SKIPPED_OUT_OF_RANGE?'<div style="font-size:12.5px;background:#eef2f7;border:1px solid #d7dae3;color:#3a4254;border-radius:10px;padding:10px 12px;margin-bottom:10px">'+BL_SKIPPED_OUT_OF_RANGE+' row'+(BL_SKIPPED_OUT_OF_RANGE===1?'':'s')+' outside the selected date range '+(BL_ROWS.length?'left out of this preview':'— nothing in this file falls inside it')+'.</div>':'';
+  if(!BL_ROWS.length){ el.innerHTML=skippedNote; return; }
   const valid=BL_ROWS.filter(r=>!r.error);
-  let h='<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Code</th><th>Category</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Credit</th><th class="num" style="text-align:right">Balance</th><th>Doc?</th><th>Status</th></tr></thead><tbody>';
+  let h=skippedNote+'<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Code</th><th>Category</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Credit</th><th class="num" style="text-align:right">Balance</th><th>Doc?</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
     const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
     const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':'OK');
@@ -7029,7 +7052,7 @@ function renderBlPreview(){
         if(!orecResp.ok) throw new Error((await orecResp.text())||('HTTP '+orecResp.status));
         (await orecResp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
       }
-      BL_ROWS=[];
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0;
       document.getElementById('bl-import-msg').style.color='#2b7a4b';
       document.getElementById('bl-import-msg').textContent='✓ Added '+toImport.length+' ledger entr'+(toImport.length===1?'y':'ies')
         +(docOk?', '+docOk+' document'+(docOk===1?'':'s')+' attached':'')
@@ -10228,6 +10251,19 @@ async function renderEntryBody(){
       +'<div style="margin-bottom:12px">'
       +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pick an account —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabelFull(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
       +'</div>'
+      // Optional period filter — a file often covers more than what's being imported right now (e.g.
+      // "Export current data" plus new rows tacked on for just one month, or a bank book spanning
+      // several months when only one has been reconciled so far). Rows outside the range are simply
+      // left out of the preview, same way Replace Period Import's cutoff date works, rather than
+      // forcing the file itself to be trimmed first. A row with no valid date isn't excluded by this —
+      // it still surfaces as its own "Invalid date" error.
+      +'<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+      +'<label for="bl-from" style="font-size:12px;color:#3a4254">Only import rows dated</label>'
+      +'<input id="bl-from" type="date" aria-label="From date" style="'+inp+';width:auto">'
+      +'<label for="bl-to" style="font-size:12px;color:#3a4254">through</label>'
+      +'<input id="bl-to" type="date" aria-label="Through date" style="'+inp+';width:auto">'
+      +'<span style="font-size:11px;color:var(--muted)">(leave both blank to import the whole file)</span>'
+      +'</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
       +'<button id="bl-template" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
       +'<button id="bl-export" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Export current data (.xlsx)</button>'
@@ -10625,7 +10661,7 @@ async function renderEntryBody(){
       if(blExpBtn) blExpBtn.disabled=!has;
       if(blFileInp) blFileInp.disabled=!has;
       if(blFileLabel){ blFileLabel.style.background=has?'#f5e8c8':'#e4e7ef'; blFileLabel.style.color=has?'#9a6f0a':'#9aa1b1'; blFileLabel.style.cursor=has?'pointer':'not-allowed'; }
-      BL_ROWS=[]; renderBlPreview();
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; renderBlPreview();
       document.getElementById('bl-filename').textContent='';
     };
     if(blAcctSel) blAcctSel.onchange=setBlAcctEnabled;
@@ -10695,7 +10731,7 @@ async function renderEntryBody(){
       const rows=aoa.slice(headerRowIdx+1)
         .filter(r=>r.some(c=>String(c).trim()!==''))
         .map(r=>{ const o={}; headerArr.forEach((h,i)=>{ if(h!=='') o[h]=r[i]!=null?r[i]:''; }); return o; });
-      if(!rows.length){ BL_ROWS=[]; renderBlPreview(); return; }
+      if(!rows.length){ BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; renderBlPreview(); return; }
       const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
       const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
       const kDate=col(['date','tanggal']),
@@ -10711,7 +10747,7 @@ async function renderEntryBody(){
         kVendorOld=kVendorCp==null?col(['vendor']):null,
         kCpOld=kVendorCp==null?col(['counterparty (pt)','counterparty']):null,
         kDocLink=col(['link dokumen','dokumen','document link','link']);
-      BL_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
+      BL_ROWS_ALL=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
         const date=kDate!=null?parseFlexDate(r[kDate]):null;
         const codeRaw=kCode!=null?String(r[kCode]||'').trim().toLowerCase():'';
         const code=BL_CODES.includes(codeRaw)?codeRaw:null;
@@ -10735,9 +10771,16 @@ async function renderEntryBody(){
         computeBlRow(row);
         return row;
       });
+      applyBlDateFilter();
       recomputeBlSaldos();
       renderBlPreview();
     };
+    // Changing the date range after a file's already loaded re-filters BL_ROWS_ALL in place instead
+    // of requiring a re-upload.
+    const blFromInp=document.getElementById('bl-from'), blToInp=document.getElementById('bl-to');
+    const onBlDateChange=()=>{ if(!BL_ROWS_ALL.length) return; applyBlDateFilter(); recomputeBlSaldos(); renderBlPreview(); };
+    if(blFromInp) blFromInp.onchange=onBlDateChange;
+    if(blToInp) blToInp.onchange=onBlDateChange;
     setBlAcctEnabled();
   }
   const opdSend=document.getElementById('opd-send');
