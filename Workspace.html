@@ -6430,6 +6430,12 @@ const OPEX_REFUND_CATEGORY='Refund / Reimbursement Received';
 // reversal of Revenue that was never really earned. Entered as Credit (cash out) instead of
 // Revenue's normal Debit, netted off Revenue via the same negative-amount + contra convention.
 const REV_REFUND_CATEGORY='Deposit Refund Paid';
+// Mirror image on AR/AP: a NEW loan (Category "Loan Affiliate") moves cash the normal way — AR
+// (we lent money out) is Credit, AP (we borrowed money in) is Debit. A "Repayment Loan" row flips
+// that: paying DOWN an AR (they're repaying us) brings cash IN (Debit), paying down an AP (we're
+// repaying them) sends cash OUT (Credit) — same category icRowAmt() already treats as netting the
+// balance the other way, so the cash side now has to agree with it too.
+const REPAYMENT_LOAN_CATEGORY='Repayment Loan';
 // Same tuple-matching convention as findDuplicateTx/findDuplicateIcTx — flags (doesn't block) a row
 // that looks identical to one already saved for this account, so re-uploading the same file (or an
 // overlapping date range) twice doesn't silently double every balance.
@@ -6471,6 +6477,8 @@ function computeBlRow(r){
   r.debit=debit; r.kredit=kredit;
   const isRefund=r.code==='opex'&&r.catMatch===OPEX_REFUND_CATEGORY;
   const isRevRefund=r.code==='revenue'&&r.catMatch===REV_REFUND_CATEGORY;
+  const isArRepay=r.code==='ar'&&r.catMatch===REPAYMENT_LOAN_CATEGORY;
+  const isApRepay=r.code==='ap'&&r.catMatch===REPAYMENT_LOAN_CATEGORY;
   // Other Receivable's Category is a real pick from the financing category list, same as AR/AP/
   // Capital (see blCatOpts) — direction (In/Out) is a separate thing, derived straight from which
   // side of Debit/Credit was filled in, same convention as every other code here (cash in = Debit,
@@ -6491,8 +6499,10 @@ function computeBlRow(r){
   else if(r.code==='revenue'&&kredit>0&&!isRevRefund) error='Revenue must be entered as Debit (cash in), not Credit — unless Category is "'+REV_REFUND_CATEGORY+'"';
   else if(isRefund&&kredit>0) error='"'+OPEX_REFUND_CATEGORY+'" must be entered as Debit (cash in), not Credit';
   else if(r.code==='opex'&&debit>0&&!isRefund) error='Opex must be entered as Credit (cash out), not Debit — unless Category is "'+OPEX_REFUND_CATEGORY+'"';
-  else if(r.code==='ar'&&debit>0) error='AR must be entered as Credit (cash out), not Debit';
-  else if(r.code==='ap'&&kredit>0) error='AP must be entered as Debit (cash in), not Credit';
+  else if(r.code==='ar'&&!isArRepay&&debit>0) error='AR must be entered as Credit (cash out), not Debit — unless Category is "'+REPAYMENT_LOAN_CATEGORY+'"';
+  else if(isArRepay&&kredit>0) error='"'+REPAYMENT_LOAN_CATEGORY+'" on AR must be entered as Debit (cash in), not Credit';
+  else if(r.code==='ap'&&!isApRepay&&kredit>0) error='AP must be entered as Debit (cash in), not Credit — unless Category is "'+REPAYMENT_LOAN_CATEGORY+'"';
+  else if(isApRepay&&debit>0) error='"'+REPAYMENT_LOAN_CATEGORY+'" on AP must be entered as Credit (cash out), not Debit';
   // Capital is always a shareholder paying money IN, same as Update Transaction's Shareholder
   // Capital Deposit — never a withdrawal, so unlike AR/AP/Opex/Revenue there's no Credit-side case.
   else if(r.code==='capital'&&kredit>0) error='Capital deposit must be entered as Debit (cash in), not Credit';
