@@ -3303,14 +3303,22 @@ async function saveIcTxEdit(id,encOwner){
 function renderKpiFin(a){
   const hint=c=>`<span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:${c}">Details ›</span>`;
   const kf=document.getElementById('kpiFin');
-  kf.innerHTML=a.capDep>0?`<div class="pcard clickable" onclick="openDetail('capdep')">
+  const hasCapDep=a.capDep>0;
+  kf.innerHTML=hasCapDep?`<div class="pcard clickable" onclick="openDetail('capdep')">
       ${hint('var(--sand)')}
       <div class="lab">Shareholder Capital Deposit</div>
       <div class="big" style="color:#8a5a1e">${fmt(a.capDep)}</div>
       <div class="meta">Stanislav Sadovnikov &amp; Igor Maksimov</div>
     </div>`:'';
-  const ko=document.getElementById('kpiOrec'); if(ko) ko.innerHTML=otherReceivableCard();
-  const shown=1+(a.capDep>0?1:0)+(otherReceivablesInScope().length?1:0);
+  // A CSS grid still allocates a track for an empty (but present) child, so with 3 fixed slots
+  // here (kpiIntercompany/kpiFin/kpiOrec) an unused middle card would otherwise leave a visible
+  // gap and push the next real card onto its own row instead of sitting beside the first —
+  // hiding it entirely lets grid auto-placement flow the remaining cards together.
+  kf.hidden=!hasCapDep;
+  const ko=document.getElementById('kpiOrec');
+  const hasOrec=otherReceivablesInScope().length>0;
+  if(ko){ ko.innerHTML=hasOrec?otherReceivableCard():''; ko.hidden=!hasOrec; }
+  const shown=1+(hasCapDep?1:0)+(hasOrec?1:0);
   const row=document.getElementById('kpiFinRow'); if(row) row.className=shown===3?'kpi3':(shown===2?'kpi2':'kpi1');
 }
 // ─── Other Receivable — money advanced to/refunded by an individual (shareholder or other related
