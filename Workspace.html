@@ -790,9 +790,6 @@ function eff(id){
 }
 // is an entity in scope AND has data for the active month
 function hasMonth(id){return eff(id)!==null;}
-// list of entity ids that carry data for the active month (any scope)
-function monthIds(){return EIDS.filter(id=>hasMonth(id));}
-
 // ─── LOAN & NON-OPERATIONAL FLOWS (cash moved per month) ─────────────────────
 let LOANS_MAY=[
   {f:'PT SUP (Hospitality)',t:'PT Samahita Umalas Prasada (pindah buku)',ty:'Pindah Buku',amt:120000000},
@@ -3448,9 +3445,6 @@ function paymentPlansInScope(){
   const ids=new Set(scopeIds());
   return DPP.filter(p=>ids.has(p.e));
 }
-function paymentPlansPending(){
-  return paymentPlansInScope().filter(p=>p.status==='pending');
-}
 function paymentPlanCard(){
   const scoped=paymentPlansInScope();
   const pend=scoped.filter(p=>p.status==='pending');
@@ -6012,7 +6006,6 @@ function isoFromDayLabel(d){
   if(mi<0) return '';
   return '2026-'+String(mi+1).padStart(2,'0')+'-'+String(parts[0]).padStart(2,'0');
 }
-let TX_ROWS=[];
 function findDuplicateTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
   // o.amt is stored signed (contra/refund rows negative) while r.amt is always the positive
@@ -6026,19 +6019,6 @@ function findDuplicateTx(list,r){
     && Math.round(Math.abs(o.amt))===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc)
     && norm(o.d)===norm(rDayLbl));
 }
-function findCategoryByFlow(name,flowKey){
-  if(!name) return null;
-  const n=String(name).trim().toLowerCase();
-  const list=(flowKey==='rev'?(CATS_BY_KIND_G.revenue||[]):(OPEX_CATS_G||[]));
-  const hit=list.find(c=>c.toLowerCase()===n);
-  if(hit) return hit;
-  if(flowKey==='opex'){
-    const syn=CAT_SYNONYMS[n];
-    if(syn && (OPEX_CATS_G||[]).includes(syn)) return syn;
-  }
-  return null;
-}
-const FLOW_LABEL={opex:'Opex',rev:'Revenue',loan:'Loan Affiliate',pinbuk:'Pinbuk',orec:'Other Receivable',capdep:'Shareholder Capital Deposit'};
 // Re-fetches loan_flows and rebuilds every LOANS_BY_MONTH[period] bucket already known to the page
 // (Q2 recomputed as their sum) — called after a Loan Affiliate Summary insert (Shareholder Capital
 // Deposit, via Update Transaction) so the card/summary reflect it without a full page reload.
@@ -6052,91 +6032,6 @@ async function refreshLoanFlows(){
 function findDuplicateCapDep(period,cp,entityName,amt){
   const norm=v=>String(v||'').trim().toLowerCase();
   return (LOANS_BY_MONTH[period]||[]).find(l=>l.ty==='Capital deposit' && norm(l.f)===norm(cp) && norm(l.t)===norm(entityName) && Math.round(l.amt)===Math.round(amt||0));
-}
-// Bank account lookup for Pinbuk rows: r.catMatch/r.vendorMatch hold a bank_account id (string) once
-// fixed via the inline picker; r.catRaw/r.vendorRaw hold whatever label text came from the Excel file
-// (matched against that entity's own account list, same free-text-label convention as Vendor/Category).
-function findBankAccountByRef(accts,matchVal,rawVal){
-  if(matchVal){ const id=Number(matchVal); return accts.find(a=>a.id===id)||null; }
-  const q=String(rawVal||'').trim().toLowerCase(); if(!q) return null;
-  return accts.find(a=>bankAccountLabel(a).toLowerCase()===q) || accts.find(a=>(a.label||'').toLowerCase()===q) || null;
-}
-// The bulk Excel importer shares one flat column layout (Category, Vendor) across all 5 flows —
-// Opex/Revenue use them as-is; Loan Affiliate repurposes them as Type (AP/AR) + Counterparty;
-// Pinbuk as From Account + To Account; Other Receivable as Direction (In/Out) + Counterparty. This
-// avoids a different template per flow, mirroring how Bank Ledger import already repurposes its
-// own Category column for the refund special-cases.
-function computeTxRow(r){
-  let error=null;
-  if(!r.entityMatch) error='Entity not recognized';
-  else if(!r.date) error='Invalid date';
-  else if(!r.flowKey) error='Flow must be Opex, Revenue, Loan Affiliate, Pinbuk, Other Receivable, or Shareholder Capital Deposit';
-  else if(!r.desc) error='Missing description';
-  else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
-  r.category=''; r.vendor=''; r.icType=null; r.cp=''; r.dir=null; r.fromAcct=null; r.toAcct=null;
-  if(!error){
-    if(r.flowKey==='opex'||r.flowKey==='rev'){
-      r.category=r.catMatch||r.catRaw||'';
-      r.vendor=r.vendorMatch||r.vendorRaw||'Unknown';
-      if(!r.category) error='Category not recognized — pick one, or add it via Manage Categories first';
-      else if(r.vendorRaw&&!r.vendorMatch) error='Vendor not recognized — pick one, or add it via Manage Vendors first';
-    } else if(r.flowKey==='loan'){
-      const t=String(r.catMatch||r.catRaw||'').trim().toUpperCase();
-      r.icType=(t==='AP'||t==='AR')?t:null;
-      // Counterparty is a closed list (16 entities + admin-added names in
-      // intercompany_counterparties) — a name typed in the Excel file that doesn't match one of
-      // those exactly (case-insensitive) is treated as unresolved, same as an unrecognized
-      // category, so it falls back to the fix-cell dropdown instead of silently accepting a
-      // differently-spelled duplicate of an existing counterparty.
-      r.cp=resolveIcCounterparty(r.vendorMatch||r.vendorRaw);
-      if(!r.icType) error='Type must be AP or AR (Category column)';
-      else if(!r.cp) error='Counterparty not recognized — pick one from the list (Vendor column), or ask an admin to add it';
-    } else if(r.flowKey==='pinbuk'){
-      const accts=r.entityMatch?BANK_ACCOUNTS.filter(a=>a.entity===r.entityMatch&&a.active):[];
-      r.fromAcct=findBankAccountByRef(accts,r.catMatch,r.catRaw);
-      r.toAcct=findBankAccountByRef(accts,r.vendorMatch,r.vendorRaw);
-      if(!r.fromAcct) error='From Account not recognized for this entity (Category column)';
-      else if(!r.toAcct) error='To Account not recognized for this entity (Vendor column)';
-      else if(r.fromAcct.id===r.toAcct.id) error='From and To must be different accounts';
-    } else if(r.flowKey==='orec'){
-      const d=String(r.catMatch||r.catRaw||'').trim().toLowerCase();
-      r.dir=(d==='in'||d==='out')?d:null;
-      r.cp=String(r.vendorMatch||r.vendorRaw||'').trim();
-      if(!r.dir) error='Direction must be In or Out (Category column)';
-      else if(!r.cp) error='Counterparty is required (Vendor column)';
-    } else if(r.flowKey==='capdep'){
-      // Shareholder Capital Deposit is always money IN from a shareholder into this PT — no
-      // Type/Direction needed, just who. Category column is unused for this flow.
-      r.cp=String(r.vendorMatch||r.vendorRaw||'').trim();
-      if(!r.cp) error='Shareholder name is required (Vendor column)';
-    }
-  }
-  r.error=error;
-  r.period=null; r.periodLabel=null; r.dup=null; r.contra=false; r.signedAmt=r.amt;
-  if(!error){
-    if(r.flowKey==='opex'||r.flowKey==='rev'){
-      const P=periodFromDateG(r.date);
-      r.period=P.code; r.periodLabel=P.label;
-      // A refund/reimbursement uses the same two special categories as the Bank Ledger importer
-      // (see OPEX_REFUND_CATEGORY/REV_REFUND_CATEGORY below): money coming back for a cost already
-      // booked stays filed under Opex (so it still shows in Opex detail) but nets OFF the Opex
-      // total; money paid back out for revenue already booked stays filed under Revenue but nets it
-      // off — never the other flow, so it doesn't inflate whichever side it's entered under.
-      r.contra=(r.flowKey==='opex'&&r.category===OPEX_REFUND_CATEGORY)||(r.flowKey==='rev'&&r.category===REV_REFUND_CATEGORY);
-      r.signedAmt=r.contra?-(r.amt||0):r.amt;
-      r.dup=findDuplicateTx(TX,r);
-    } else if(r.flowKey==='loan'){
-      r.dup=findDuplicateIcTx(IC_TX,{owner:eName(r.entityMatch),cp:r.cp,type:r.icType,date:r.date,amt:r.amt,desc:r.desc});
-    } else if(r.flowKey==='pinbuk'){
-      r.dup=findDuplicateBl(BANK_LEDGER,{acctMatch:r.fromAcct,date:r.date,code:'pinbuk',debit:0,kredit:r.amt,desc:r.desc});
-    } else if(r.flowKey==='orec'){
-      r.dup=findDuplicateOrec(OTHER_RECV,{e:r.entityMatch,cp:r.cp,dir:r.dir,date:r.date,amt:r.amt,desc:r.desc});
-    } else if(r.flowKey==='capdep'){
-      const P=periodFromDateG(r.date);
-      r.period=P.code; r.periodLabel=P.label;
-      r.dup=findDuplicateCapDep(P.code,r.cp,eName(r.entityMatch),r.amt);
-    }
-  }
 }
 // ── Input Transaction — single-entry save, the only way this section works now (its old bulk
 // Excel mode was retired in favor of Import Bank Ledger). Insert one transactions row, then patch
@@ -6340,247 +6235,6 @@ async function saveTxOne(){
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
 }
-function fixTxField(i,field,value){
-  const r=TX_ROWS[i]; if(!r) return;
-  if(field==='entity') r.entityMatch=value||null;
-  else if(field==='flow'){
-    r.flowKey=value||null;
-    // Only clear the fix-cell OVERRIDE (catMatch/vendorMatch) — a value explicitly picked under the
-    // old flow (e.g. an Opex category) is meaningless once the flow changes. The raw Excel text
-    // (catRaw/vendorRaw) is left alone and re-evaluated under the new flow's own rules, since it's
-    // flow-agnostic source data (e.g. a Category cell that already said "AP" still resolves
-    // correctly if the flow is fixed to Loan Affiliate).
-    r.catMatch=null; r.vendorMatch=null;
-  }
-  else if(field==='cat') r.catMatch=value||null;
-  else if(field==='vendor') r.vendorMatch=value||null;
-  computeTxRow(r);
-  renderTxPreview();
-}
-function txEntityCell(r,i){
-  return r.entityMatch?escH(ENT[r.entityMatch].name):entityPickCellHtml('tx-fix-ent-'+i,`fixTxField(${i},'entity',this.value)`);
-}
-function txFlowCell(r,i){
-  if(r.flowKey) return FLOW_LABEL[r.flowKey]||r.flowKey;
-  return `<select id="tx-fix-flow-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'flow',this.value)"><option value="">— pick —</option><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option><option value="capdep">Shareholder Capital Deposit</option></select>`;
-}
-// Category/Vendor cells are flow-aware: Opex/Revenue keep the usual category/vendor pickers;
-// Loan Affiliate repurposes them as Type (AP/AR) + Counterparty (free text); Pinbuk as From/To bank
-// account (scoped to the row's own entity); Other Receivable as Direction (In/Out) + Counterparty;
-// Shareholder Capital Deposit only needs Counterparty (Category is unused for this flow).
-function txCatCell(r,i){
-  if(!r.flowKey) return '<span style="color:var(--muted);font-size:11px">— pick Flow —</span>';
-  if(r.flowKey==='opex'||r.flowKey==='rev'){
-    if(r.category) return escH(r.category);
-    const opts=r.flowKey==='rev'?(CATS_BY_KIND_G.revenue||[]):(OPEX_CATS_G||[]);
-    return fixPickCellHtml('tx-fix-cat-'+i,`fixTxField(${i},'cat',this.value)`,opts,'— pick category —','category');
-  }
-  if(r.flowKey==='loan'){
-    if(r.icType) return r.icType;
-    return `<select id="tx-fix-cat-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'cat',this.value)"><option value="">— Type —</option><option value="AP">AP</option><option value="AR">AR</option></select>`;
-  }
-  if(r.flowKey==='pinbuk'){
-    if(r.fromAcct) return escH(bankAccountLabel(r.fromAcct));
-    if(!r.entityMatch) return '<span style="color:var(--muted);font-size:11px">— pick Entity —</span>';
-    const accts=BANK_ACCOUNTS.filter(a=>a.entity===r.entityMatch&&a.active);
-    return `<select id="tx-fix-cat-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'cat',this.value)"><option value="">— From account —</option>`+accts.map(a=>`<option value="${a.id}">${escH(bankAccountLabel(a))}</option>`).join('')+`</select>`;
-  }
-  if(r.flowKey==='orec'){
-    if(r.dir) return r.dir==='out'?'Out':'In';
-    return `<select id="tx-fix-cat-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'cat',this.value)"><option value="">— In/Out —</option><option value="out">Out</option><option value="in">In</option></select>`;
-  }
-  if(r.flowKey==='capdep') return '<span style="color:var(--muted);font-size:11px">— not used —</span>';
-  return '';
-}
-function txVendorCell(r,i){
-  if(!r.flowKey) return '';
-  if(r.flowKey==='opex'||r.flowKey==='rev'){
-    if(r.vendor && r.vendor!=='Unknown') return escH(r.vendor);
-    return fixPickCellHtml('tx-fix-vendor-'+i,`fixTxField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
-  }
-  if(r.flowKey==='loan'){
-    if(r.cp) return escH(r.cp);
-    return icCounterpartySelectHtml('tx-fix-vendor-'+i,'','font-size:11px;padding:3px 4px',`fixTxField(${i},'vendor',this.value)`);
-  }
-  if(r.flowKey==='orec'||r.flowKey==='capdep'){
-    if(r.cp) return escH(r.cp);
-    return `<input id="tx-fix-vendor-${i}" placeholder="${r.flowKey==='capdep'?'Shareholder name':'Counterparty'}" style="font-size:11px;padding:3px 4px;width:140px" onchange="fixTxField(${i},'vendor',this.value)">`;
-  }
-  if(r.flowKey==='pinbuk'){
-    if(r.toAcct) return escH(bankAccountLabel(r.toAcct));
-    if(!r.entityMatch) return '';
-    const accts=BANK_ACCOUNTS.filter(a=>a.entity===r.entityMatch&&a.active);
-    return `<select id="tx-fix-vendor-${i}" style="font-size:11px;padding:3px 4px" onchange="fixTxField(${i},'vendor',this.value)"><option value="">— To account —</option>`+accts.map(a=>`<option value="${a.id}">${escH(bankAccountLabel(a))}</option>`).join('')+`</select>`;
-  }
-  return '';
-}
-// Rows currently expanded to show their matched existing transaction inline, so the user can judge
-// "is this really the same transaction?" (findDuplicateTx doesn't compare dates at all, so the
-// existing row's actual date is often the one piece of evidence that settles it) without leaving
-// the import screen to go search for it elsewhere.
-let TX_DUP_OPEN=new Set();
-function toggleTxDupCheck(i){
-  if(TX_DUP_OPEN.has(i)) TX_DUP_OPEN.delete(i); else TX_DUP_OPEN.add(i);
-  renderTxPreview();
-}
-function txDupCompareRowHtml(i,dup){
-  return `<tr style="background:#fffaf0"><td></td><td colspan="8" style="padding:8px 12px 12px;font-size:12px">`
-    +`<div style="border:1px solid #f0cb87;border-radius:8px;padding:8px 10px;background:#fff">`
-    +`<div style="font-weight:700;color:#8a5a1e;margin-bottom:6px">Already saved as:</div>`
-    +`<table style="width:100%"><tr>`
-    +`<td style="color:var(--muted);padding-right:14px;white-space:nowrap">${escH(dup.d||'—')}</td>`
-    +`<td style="padding-right:14px">${escH(ENT[dup.e]?ENT[dup.e].name:(dup.e||'—'))}</td>`
-    +`<td style="padding-right:14px;color:var(--muted)">${escH(dup.k||'—')}</td>`
-    +`<td style="padding-right:14px;color:var(--muted)">${escH(dup.vendor||'—')}</td>`
-    +`<td class="num" style="padding-right:14px">${fmt(Math.abs(dup.amt))}</td>`
-    +`<td style="color:var(--muted)">${escH(dup.desc||'—')}</td>`
-    +`</tr></table>`
-    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.srcLabel||'—')} · matched on date, entity, category, vendor, amount &amp; description — all identical to the row above</div>`
-    +`</div></td></tr>`;
-}
-function renderTxPreview(){
-  const el=document.getElementById('tx-preview'); if(!el) return;
-  if(!TX_ROWS.length){ el.innerHTML=''; return; }
-  const valid=TX_ROWS.filter(r=>!r.error);
-  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Date</th><th>Entity</th><th>Flow</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
-  TX_ROWS.forEach((r,i)=>{
-    const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
-    const open=TX_DUP_OPEN.has(i);
-    const status=r.error?escH(r.error):(r.dup
-      ?`<button type="button" onclick="toggleTxDupCheck(${i})" style="border:0;background:none;cursor:pointer;padding:0;font:inherit;color:#8a5a1e;font-weight:700;text-decoration:underline;text-decoration-style:dotted">⚠ Possible duplicate — ${open?'hide':'check'}</button>`
-      :(r.contra?'OK · nets off as refund':'OK'));
-    h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
-      +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
-      +'<td style="font-size:12px">'+txEntityCell(r,i)+'</td>'
-      +'<td style="font-size:12px">'+txFlowCell(r,i)+'</td>'
-      +'<td style="font-size:12px">'+txCatCell(r,i)+'</td>'
-      +'<td style="font-size:12px">'+txVendorCell(r,i)+'</td>'
-      +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
-      +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
-      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
-    if(r.dup && open) h+=txDupCompareRowHtml(i,r.dup);
-  });
-  h+='</tbody></table></div>';
-  const dupN=valid.filter(r=>r.dup).length;
-  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> transaction'+(valid.length===1?'':'s')+' — '+valid.length+' of '+TX_ROWS.length+' row(s) ready'
-    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved transaction (same date, entity, category, vendor, amount &amp; description) — review before importing':'')
-    +(TX_ROWS.length>valid.length?'. Fix the flagged rows above (pick from the dropdown) and they\'ll be included automatically':'')+'.</div>';
-  // Checked a duplicate against the existing record (via the "check" toggle above) and confirmed
-  // it's the same transaction? Tick this instead of editing the source file — it drops exactly
-  // those rows from this import, same convention as Bank Ledger import's own skip-duplicates box.
-  if(dupN>0) h+='<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3a4254;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="tx-skip-dup" checked onchange="updateTxImportBtn()"> Skip the '+dupN+' row'+(dupN===1?'':'s')+' flagged as possible duplicate'+(dupN===1?'':'s')+'</label>';
-  h+='<button id="tx-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"></button>';
-  h+='<div id="tx-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
-  el.innerHTML=h;
-  window.updateTxImportBtn=()=>{
-    const btn=document.getElementById('tx-import'); if(!btn) return;
-    const skip=document.getElementById('tx-skip-dup')?.checked;
-    const n=skip?valid.length-dupN:valid.length;
-    btn.textContent='Import '+n+' transaction'+(n===1?'':'s');
-    btn.disabled=n<=0;
-  };
-  updateTxImportBtn();
-  const impBtn=document.getElementById('tx-import');
-  if(impBtn) impBtn.onclick=async()=>{
-    impBtn.disabled=true; impBtn.textContent='Importing…';
-    try{
-      const skipDup=document.getElementById('tx-skip-dup')?.checked;
-      const toImport=skipDup?valid.filter(r=>!r.dup):valid;
-      // One shared preview/fix-cell table feeds four different destination tables — split by flow
-      // and route each group to the exact same insert path its own "One at a time" flow already
-      // uses (saveTxOneLoan/saveTxOnePinbuk/saveTxOneOtherReceivable), just batched.
-      const opexRevRows=toImport.filter(r=>r.flowKey==='opex'||r.flowKey==='rev');
-      const loanRows=toImport.filter(r=>r.flowKey==='loan');
-      const pinbukRows=toImport.filter(r=>r.flowKey==='pinbuk');
-      const orecRows=toImport.filter(r=>r.flowKey==='orec');
-      const capdepRows=toImport.filter(r=>r.flowKey==='capdep');
-      let n=0;
-
-      if(opexRevRows.length){
-        const baseOrd=Math.floor(Date.now()/1000);
-        const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
-        const txRows=opexRevRows.map((r,i)=>({
-          source:'TX_MULTI',ord:baseOrd+i,period_code:r.period,flow:r.flowKey,
-          entity_code:r.entityMatch,day_label:dayLbl(r.date),
-          description:String(r.desc||'').slice(0,200),raw_label:r.category,
-          source_label:'Excel import',upload_batch:batchId,amount_idr:r.signedAmt,contra:r.contra}));
-        await adminAddBatch('transactions',txRows);
-        n+=txRows.length;
-        // keep entity_period_totals in sync — ADD the new amount on top of whatever total already
-        // exists (never recompute the headline from scratch), since a headline can legitimately be
-        // larger than the sum of itemized detail (un-itemised bank-recap gap) and blindly overwriting
-        // it with sum(detail) would silently erase that gap. A refund row's signedAmt is negative,
-        // so it naturally nets OFF whichever side (Opex or Revenue) it's filed under.
-        const touched={};
-        opexRevRows.forEach(r=>{ (touched[r.entityMatch]=touched[r.entityMatch]||new Set()).add(r.period); });
-        for(const ent of Object.keys(touched)){
-          for(const per of touched[ent]){
-            const added=opexRevRows.filter(r=>r.entityMatch===ent && r.period===per);
-            const inc={revenue:0,opex:0};
-            added.forEach(r=>{ inc[r.flowKey==='rev'?'revenue':'opex']+=r.signedAmt; });
-            const cur=await sbFetch('entity_period_totals?entity_code=eq.'+ent+'&period_code=eq.'+per+'&select=revenue,opex,financing_in,financing_out');
-            const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
-            const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
-              headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-              body:JSON.stringify({entity_code:ent,period_code:per,
-                revenue:Number(c.revenue||0)+inc.revenue, opex:Number(c.opex||0)+inc.opex,
-                financing_in:Number(c.financing_in||0), financing_out:Number(c.financing_out||0)})});
-            // Silent failure here (RLS reject, network error) previously left the itemized
-            // transaction rows saved but the headline KPI total stale/under-counted with no
-            // indication anything was wrong — surface it instead so a failed batch is visibly
-            // incomplete.
-            if(!ptr.ok) throw new Error('Saved the transactions, but failed to update '+ent+' '+per+"'s headline total: "+((await ptr.text())||('HTTP '+ptr.status)));
-          }
-        }
-      }
-
-      if(loanRows.length){
-        const rows=loanRows.map(r=>({owner_label:eName(r.entityMatch),counterparty_label:r.cp,type:r.icType,tx_date:r.date,description:r.desc||null,amount_idr:r.amt,source_label:'Excel import'}));
-        await adminAddBatch('intercompany_transactions',rows);
-        const fresh=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
-        IC_TX=fresh.map(mkIcTx);
-        n+=rows.length;
-      }
-
-      if(pinbukRows.length){
-        const rows=pinbukRows.flatMap(r=>[
-          {bank_account_id:r.fromAcct.id,entity_code:r.entityMatch,tx_date:r.date,code:'pinbuk',category:'Pinbuk',debit:0,kredit:r.amt,description:r.desc||null,source_label:'Excel import'},
-          {bank_account_id:r.toAcct.id,entity_code:r.entityMatch,tx_date:r.date,code:'pinbuk',category:'Pinbuk',debit:r.amt,kredit:0,description:r.desc||null,source_label:'Excel import'}
-        ]);
-        const resp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(rows)});
-        if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
-        (await resp.json()).forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
-        n+=pinbukRows.length;
-      }
-
-      if(orecRows.length){
-        const rows=orecRows.map(r=>({entity_code:r.entityMatch,period_code:periodFromDateG(r.date).code,day_label:dayLbl(r.date),tx_date:r.date,counterparty:r.cp,direction:r.dir,amount_idr:r.amt,description:r.desc||null,source_label:'Excel import'}));
-        const resp=await authedFetch(SB_URL+'/rest/v1/other_receivables',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(rows)});
-        if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
-        (await resp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
-        n+=orecRows.length;
-      }
-
-      if(capdepRows.length){
-        const rows=capdepRows.map(r=>({period_code:r.period,from_label:r.cp,to_label:eName(r.entityMatch),flow_type:'Capital deposit',amount_idr:r.amt,from_group:null,to_group:ENT[r.entityMatch].grp,description:r.desc||null,source_label:'Excel import'}));
-        await adminAddBatch('loan_flows',rows);
-        await refreshLoanFlows();
-        n+=rows.length;
-      }
-
-      TX_ROWS=[]; TX_DUP_OPEN=new Set();
-      document.getElementById('tx-import-msg').style.color='#2b7a4b';
-      document.getElementById('tx-import-msg').textContent='✓ Added '+n+' new transaction'+(n===1?'':'s')+' — the page refreshes when you close this panel.';
-      impBtn.textContent='Imported ✓';
-      ENTRY_DIRTY=true;
-      renderKpiCash(agg());
-    }catch(e){
-      document.getElementById('tx-import-msg').style.color='#b3261e';
-      document.getElementById('tx-import-msg').textContent='Import failed: '+e.message;
-      impBtn.disabled=false; updateTxImportBtn();
-    }
-  };
-}
 // ── findDuplicateIcTx/findDuplicateOrec — shared duplicate-check helpers used by Input
 // Transaction's single-entry Loan Affiliate/Other Receivable saves and by Import Bank Ledger's
 // AR/AP rows. ──
@@ -6648,8 +6302,8 @@ function findDuplicateBl(list,r){
     && Math.round(o.debit||0)===Math.round(r.debit||0) && Math.round(o.kredit||0)===Math.round(r.kredit||0)
     && norm(o.desc)===norm(r.desc));
 }
-// Inline duplicate-check, same pattern as Update Transaction's TX_DUP_OPEN/txDupCompareRowHtml — a
-// flagged row's status becomes a toggle button instead of forcing a trip elsewhere in the dashboard
+// Inline duplicate-check — a flagged row's status becomes a toggle button instead of forcing a
+// trip elsewhere in the dashboard
 // to see what it supposedly matches, so it can be confirmed (and left flagged, to skip on import) or
 // dismissed as a false positive (unchecking it row-by-row isn't offered here — that's what editing
 // the file and re-uploading is for; this is purely a "is this really the same thing?" check).
@@ -8983,7 +8637,7 @@ async function adminDel(path){
    across transactions/line_items/category_aliases since raw_label has no FK to categories.name.
    Lives inline inside the "Update data" panel (see renderEntryBody's "🏷 Manage Categories"
    details block), not its own modal. ── */
-function invalidateCategoryCaches(){ OPEX_CATS_G=null; Object.keys(CATS_BY_KIND_G).forEach(k=>delete CATS_BY_KIND_G[k]); CAT_MAP=null; refreshOpexGroupMap(); }
+function invalidateCategoryCaches(){ OPEX_CATS_G=null; Object.keys(CATS_BY_KIND_G).forEach(k=>delete CATS_BY_KIND_G[k]); refreshOpexGroupMap(); }
 async function renameCategory(oldName,newName){
   newName=(newName||'').trim();
   if(!newName || newName===oldName) return;
@@ -9396,91 +9050,6 @@ async function rpcReview(id,decision,note){
 }
 /* ── Supporting documents (rekap bank, rekening koran, voucher payments) ── */
 const DT_LBL={rekap_bank:'Bank recap',rekening_koran:'Bank statement',voucher:'Payment voucher',other:'Document'};
-/* ── Bank-book auto-read: parse uploaded xlsx/csv statements into dashboard figures.
-   Sheet format (same as the recap pipeline): a header row containing DATE + DEBIT
-   (+ REMARK/DESCRIPTION, CATEGORIES, CREDIT); DEBIT = money in, CREDIT = money out. ── */
-const FIN_RX=/loan|pinjam|repay|capital|modal|deposit|shareholder|invest|pindah\s*buku|inter\s*-?\s*compan|antar\s*(bank|rekening)|top\s*up|setor|tarik\s*tunai/i;
-/* Money moved between the company's OWN accounts (self-transfer) — excluded entirely, not revenue/opex/financing.
-   Deliberately narrow: bare "PB" also appears in legitimate payments (e.g. "PB KE KREDITUR ... SALARY"),
-   Indonesian banking shorthand for any bank-transfer instruction, not just self-transfers. Only exclude when
-   the description itself signals a same-account/self move ("in to out", "intertransfer"). */
-const EXCLUDE_RX=/\bin\s*to\s*out\b|\bout\s*to\s*in\b|\bintertransfer\b|inter[\s-]*account\s*transfer/i;
-/* Money received back for an expense already booked (e.g. "Refund Payment for ...") — reduces the expense
-   category it came from, instead of counting as new revenue. */
-const REFUND_RX=/\brefund\b|\bpengembalian\b/i;
-/* Shareholder movements: money IN from Stan/Igor = capital deposit; money OUT to them = a receivable owed
-   back to the company. Both are financing, not revenue/opex. */
-const STAN_RX=/\bstan(islav)?\b/i, IGOR_RX=/\bigor\b/i;
-const STAN_IGOR_RX=new RegExp(STAN_RX.source+'|'+IGOR_RX.source,'i');
-function shareholderName(desc){
-  if(STAN_RX.test(desc)) return 'Stanislav Sadovnikov (shareholder)';
-  if(IGOR_RX.test(desc)) return 'Igor Maksimov (shareholder)';
-  return 'Shareholder (Stan & Igor)';
-}
-/* Transfers between two of our own PTs (different legal entity, same corporate family) are financing —
-   built dynamically from the entities list so it stays correct as PTs are added/renamed. */
-let ENTITY_NAME_RX=null, ENTITY_NAMES_LOADED=false;
-async function loadEntityNameRx(){
-  if(ENTITY_NAMES_LOADED) return;
-  ENTITY_NAMES_LOADED=true;
-  try{
-    const ents=await sbFetch('entities?select=code,name,short_name');
-    const toks=[]; const GAP='[\\s\\u2010-\\u2015-]+';
-    ents.forEach(e=>{ [e.name,e.short_name].forEach(n=>{
-      let t=String(n||'').replace(/^PT\s+/i,'').replace(/\([^)]*\)/g,'').trim();
-      if(t.length<5) return;
-      // tolerate punctuation/spacing bank statements won't replicate: any run of
-      // whitespace and/or dash-like chars (em-dash, hyphen) matches as one gap
-      t=t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/[\s‐-―-]+/g,GAP);
-      if(t) toks.push(t);
-    }); });
-    if(toks.length) ENTITY_NAME_RX=new RegExp('\\b('+toks.join('|')+')\\b','i');
-  }catch(e){}
-}
-function otherEntityMentioned(desc, myEntityName){
-  if(!ENTITY_NAME_RX) return false;
-  const m=desc.match(ENTITY_NAME_RX);
-  return !!(m && (!myEntityName || myEntityName.toLowerCase().indexOf(m[0].toLowerCase())<0));
-}
-/* Outflows merely NAMING Stan/Igor are common for ordinary business expenses they paid/collected on the
-   company's behalf ("Worker salary advance via Mr. Igor", "Reimbursement ... (Igor Maksimov)", "Marketing
-   – payment via Mr. Stan", BOD tax withholding) — these must stay as normal opex, not become a shareholder
-   receivable. Only outflows that explicitly say so (Other Receivable / personal use / shareholder) qualify;
-   inflows are the safer signal (money physically coming FROM them) and don't need this extra confirmation. */
-const SHAREHOLDER_OUT_CONFIRM_RX=/\bother\s+receivable\b|\bpersonal\s+use\b|\bshareholder\b/i;
-/* Deterministic financing sub-category for a row (Stan/Igor, inter-company); returns null if neither applies
-   so the row falls back to today's plain "Financing" bucket (or, for an unconfirmed Stan/Igor outflow, to
-   normal opex categorisation). No AI call needed — both checks are exact. */
-function financingCanon(desc, dir, myEntityName){
-  if(STAN_IGOR_RX.test(desc)){
-    if(dir==='in') return 'Shareholder Capital Deposit (Stan & Igor)';
-    return SHAREHOLDER_OUT_CONFIRM_RX.test(desc) ? 'Shareholder Other Receivable (Stan & Igor)' : null;
-  }
-  if(otherEntityMentioned(desc, myEntityName)) return 'Inter-company Transfer';
-  return null;
-}
-function xlsDate(v){
-  if(v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
-  if(typeof v==='number' && v>20000 && v<60000) return xlsDate(new Date(Math.round((v-25569)*86400000)));
-  if(typeof v==='string'){
-    const s=v.trim();
-    let m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    if(m) return m[3]+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[1]).padStart(2,'0');
-    m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if(m) return m[0];
-  }
-  return null;
-}
-function xlsNum(v){
-  if(v==null||v==='') return 0;
-  if(typeof v==='number') return v;
-  let t=String(v).replace(/[^\d.,-]/g,''); if(!t) return 0;
-  const ld=t.lastIndexOf('.'), lc=t.lastIndexOf(',');
-  if(ld>=0&&lc>=0){ t=(lc>ld)?t.replace(/\./g,'').replace(',','.'):t.replace(/,/g,''); }
-  else if(lc>=0){ t=(t.length-lc-1===3)?t.replace(/,/g,''):t.replace(',','.'); }
-  else if(ld>=0 && t.length-ld-1===3 && t.indexOf('.')!==ld){ t=t.replace(/\./g,''); }
-  return parseFloat(t)||0;
-}
 const MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function dayLbl(iso){ return iso.slice(8,10)+' '+MON3[parseInt(iso.slice(5,7),10)-1]; }
 // ── Template downloads with in-cell dropdowns (Entity/Category/Vendor/Frequency) — built with
@@ -9530,44 +9099,6 @@ async function downloadValidatedTemplate(filename,sheetName,headers,sampleRow,co
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-}
-/* ── Per-transaction categorisation: file category → alias map → AI classify ── */
-let CAT_MAP=null;
-async function loadCatMap(){
-  if(CAT_MAP) return CAT_MAP;
-  const [cats,aliases]=await Promise.all([
-    sbFetch('categories?select=name,kind&limit=200'),
-    sbFetch('category_aliases?select=raw_label,category&limit=1000')
-  ]);
-  const m={alias:{},rev:new Set(),opex:new Set()};
-  cats.forEach(c=>{ if(c.kind==='revenue')m.rev.add(c.name); else if(c.kind==='opex')m.opex.add(c.name); m.alias[c.name.toLowerCase()]=c.name; });
-  aliases.forEach(a2=>{ const k=String(a2.raw_label||'').toLowerCase().trim(); if(k) m.alias[k]=a2.category; });
-  CAT_MAP=m; return m;
-}
-/* A refund of a prior expense picks its category from the OPEX list (it reduces an expense
-   bucket), even though the money is flowing in — same as the amount-sign handling in parseBankFiles. */
-const catSideOf=(m,r)=>(r.dir==='in'&&!r.refund)?m.rev:m.opex;
-async function categorizeRows(rows){
-  const m=await loadCatMap();
-  const pending=[];
-  rows.forEach((r,i)=>{
-    if(r.fin||r.canon) return;
-    const want=catSideOf(m,r);
-    const c1=m.alias[String(r.cat||'').toLowerCase().trim()];
-    if(c1&&want.has(c1)){ r.canon=c1; return; }
-    const c2=m.alias[String(r.desc||'').toLowerCase().trim()];
-    if(c2&&want.has(c2)){ r.canon=c2; return; }
-    pending.push(i);
-  });
-  if(pending.length){
-    try{
-      const items=pending.map(i=>({i:i,description:String(rows[i].desc||'').slice(0,140),direction:(rows[i].dir==='in'&&!rows[i].refund)?'in':'out'}));
-      const r=await authedFetch(SB_URL+'/functions/v1/ai-extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'classify',items:items})});
-      const d=await r.json().catch(()=>({}));
-      if(r.ok)(d.categories||[]).forEach(c=>{ const row=rows[c.i]; if(row&&!row.fin){ const want=catSideOf(m,row); if(want.has(c.category)) row.canon=c.category; } });
-    }catch(e){}
-  }
-  rows.forEach(r=>{ if(!r.fin&&!r.canon) r.canon=(r.dir==='in'&&!r.refund)?'Other Guest Services & Income':'Other Operating Expense'; });
 }
 const subDocUrl=path=>SB_URL+'/storage/v1/object/submission-docs/'+path.split('/').map(encodeURIComponent).join('/');
 async function openSubDoc(path){
@@ -9940,120 +9471,11 @@ async function renderEntryBody(){
   h+='<div id="en-lmsg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>';
   body.innerHTML=h;
   const setMsg=(id,t,ok)=>{const m=document.getElementById(id); if(m){m.style.color=ok?'#2b7a4b':'#b3261e'; m.textContent=t;}};
-  // ── Input Transaction: single-entry save wiring (tab-toggle vars below are dead — the bulk-Excel
-  // tab/pane they toggled no longer exist in the DOM, so these just no-op) ──
+  // ── Input Transaction: single-entry save wiring ──
   {
-    const tabOne=document.getElementById('tx-tab-one'), tabBulk=document.getElementById('tx-tab-bulk');
-    const paneOne=document.getElementById('tx-single'), paneBulk=document.getElementById('tx-bulk');
-    const setTab=t=>{
-      const one=t==='one';
-      if(paneOne) paneOne.style.display=one?'':'none';
-      if(paneBulk) paneBulk.style.display=one?'none':'';
-      if(tabOne){ tabOne.style.background=one?'#d9a92c':'#fff'; tabOne.style.color=one?'#2a1c02':'#3a4254'; tabOne.style.border=one?'0':'1px solid #e4e7ef'; }
-      if(tabBulk){ tabBulk.style.background=one?'#fff':'#d9a92c'; tabBulk.style.color=one?'#3a4254':'#2a1c02'; tabBulk.style.border=one?'1px solid #e4e7ef':'0'; }
-    };
-    if(tabOne) tabOne.onclick=()=>setTab('one');
-    if(tabBulk) tabBulk.onclick=()=>setTab('bulk');
     const tx1Btn=document.getElementById('tx1-send');
     if(tx1Btn) tx1Btn.onclick=saveTxOne;
   }
-  const txExpBtn=document.getElementById('tx-export');
-  if(txExpBtn) txExpBtn.onclick=async()=>{
-    txExpBtn.disabled=true;
-    const origLabel=txExpBtn.innerHTML;
-    try{
-      const entSel=document.getElementById('tx-export-ent').value;
-      const MON_ORDER={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
-      const list=TX.filter(t=>(entSel==='all'||t.e===entSel)).sort((a,b)=>{
-        if(a.e!==b.e) return a.e<b.e?-1:1;
-        if(a.mo!==b.mo) return (MON_ORDER[a.mo]||99)-(MON_ORDER[b.mo]||99);
-        return (a.d||'')<(b.d||'')?-1:1;
-      });
-      // Uploaded documents are sitting in a private bucket, so a plain storage path is useless to
-      // paste into a browser — resolve each one to a signed URL up front (7-day expiry, long enough
-      // to actually use the export before it goes stale; re-exporting refreshes them) so "pull the
-      // documents from the export" means an actual clickable link, not a dead reference.
-      const withDocs=list.filter(t=>Array.isArray(t.attachments)&&t.attachments.length);
-      if(withDocs.length) txExpBtn.innerHTML='Signing '+withDocs.length+' document link'+(withDocs.length===1?'':'s')+'…';
-      const linkByTxId={};
-      await Promise.all(withDocs.map(async t=>{
-        try{ linkByTxId[t.id]=await signDocUrl('transaction-docs',t.attachments[0].path,604800); }catch(e){ linkByTxId[t.id]=''; }
-      }));
-      const FLBL={opex:'Opex',rev:'Revenue',fin_in:'Financing In',fin_out:'Financing Out'};
-      const rows=[['Date','Entity','Flow','Category','Vendor','Description','Amount','Document Link']];
-      list.forEach(t=>{
-        rows.push([isoFromDayLabel(t.d)||t.d,eName(t.e),FLBL[t.type]||t.type,t.k,t.vendor||'',t.desc,t.amt,linkByTxId[t.id]||'']);
-      });
-      const wb=XLSX.utils.book_new();
-      const ws=XLSX.utils.aoa_to_sheet(rows);
-      // explicit column widths — the default is narrow enough that 9-10 digit IDR amounts render as
-      // "###" (looks like a blank/missing Amount column at a glance) until the user manually widens it
-      ws['!cols']=[{wch:12},{wch:32},{wch:10},{wch:22},{wch:20},{wch:50},{wch:16},{wch:60}];
-      XLSX.utils.book_append_sheet(wb,ws,'Transactions');
-      const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
-      XLSX.writeFile(wb,'transactions_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
-    } finally { txExpBtn.disabled=false; txExpBtn.innerHTML=origLabel; }
-  };
-  const txTplBtn=document.getElementById('tx-template');
-  if(txTplBtn) txTplBtn.onclick=async()=>{
-    txTplBtn.disabled=true;
-    try{
-      await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
-      const opexCatsTpl=OPEX_CATS_G||[], revCatsTpl=CATS_BY_KIND_G.revenue||[];
-      // One flat sheet covers all 5 flows — Category/Vendor are repurposed per Flow (see
-      // computeTxRow): Loan Affiliate uses them as Type (AP/AR) + Counterparty; Pinbuk as the
-      // From/To bank account's exact label (per that row's Entity); Other Receivable as
-      // Direction (In/Out) + Counterparty. The dropdown lists below are the union of every flow's
-      // valid values, so whichever Flow a row uses, its Category/Vendor cell still offers a pick.
-      await downloadValidatedTemplate('transactions_template.xlsx','Transactions',
-        ['Date','Entity','Flow','Category','Vendor','Description','Amount'],
-        ['2026-07-01',eName(EIDS[0]),'Opex',opexCatsTpl[0]||'Other Operating Expense','Sample Vendor','Sample transaction description',1000000],
-        [{col:'B',values:EIDS.map(eName)},{col:'C',values:['Opex','Revenue','Loan Affiliate','Pinbuk','Other Receivable','Shareholder Capital Deposit']},
-         {col:'D',values:opexCatsTpl.concat(revCatsTpl,['AP','AR','In','Out'])},{col:'E',values:VENDORS_G||[]}],
-        'Flow = Opex/Revenue: Category/Vendor as usual.  Flow = Loan Affiliate: Category = AP or AR, Vendor = Counterparty PT.  Flow = Pinbuk: Category = From account label, Vendor = To account label (exact match to that entity\'s own bank accounts).  Flow = Other Receivable: Category = In or Out, Vendor = Counterparty person\'s name.  Flow = Shareholder Capital Deposit: Category is unused, Vendor = Shareholder\'s name.');
-    } finally { txTplBtn.disabled=false; }
-  };
-  const txFileInp=document.getElementById('tx-file');
-  if(txFileInp) txFileInp.onchange=async()=>{
-    const f=txFileInp.files[0]; if(!f) return;
-    document.getElementById('tx-filename').textContent=f.name;
-    await Promise.all([ensureVendorsG(),ensureOpexCatsG(),ensureCatsByKind('revenue')]);
-    let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
-      document.getElementById('tx-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
-    }
-    const sheet=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
-    TX_DUP_OPEN=new Set();
-    if(!rows.length){ TX_ROWS=[]; renderTxPreview(); return; }
-    const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
-    const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
-    const kDate=col(['date']), kEnt=col(['entity','pt']), kFlow=col(['flow','type']), kCat=col(['category','cost category']),
-      kVendor=col(['vendor','vendor name']), kDesc=col(['description','transaction description']), kAmt=col(['amount','amount (idr)','amount idr']);
-    TX_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
-      const date=kDate!=null?parseFlexDate(r[kDate]):null;
-      const entityRaw=kEnt!=null?r[kEnt]:'', entityMatch=findEntityByNameG(entityRaw);
-      const flowRaw=kFlow!=null?String(r[kFlow]||'').trim().toLowerCase():'';
-      // Category/Vendor columns are repurposed per flow (see computeTxRow) — only run the
-      // category/vendor master-list lookups for Opex/Revenue, where those columns actually hold a
-      // category/vendor; for the other flows catRaw/vendorRaw are left for computeTxRow to
-      // interpret as Type+Counterparty, From/To account, or Direction+Counterparty.
-      const flowKey=/^rev/.test(flowRaw)?'rev'
-        :/^opex|^expense/.test(flowRaw)?'opex'
-        :/^loan|^intercompany|^inter-company|^inter company/.test(flowRaw)?'loan'
-        :/^pinbuk/.test(flowRaw)?'pinbuk'
-        :/^other receivable|^receivable|^orec/.test(flowRaw)?'orec'
-        :/^shareholder|^capital|^capdep/.test(flowRaw)?'capdep'
-        :null;
-      const catRaw=kCat!=null?r[kCat]:'', catMatch=(flowKey==='opex'||flowKey==='rev')?findCategoryByFlow(catRaw,flowKey):null;
-      const vendorRaw=kVendor!=null?String(r[kVendor]||'').trim():'', vendorMatch=(flowKey==='opex'||flowKey==='rev')?findVendor(vendorRaw):null;
-      const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
-      const amt=kAmt!=null?Number(r[kAmt]):NaN;
-      const row={date,entityRaw,entityMatch,flowRaw,flowKey,catRaw,catMatch,vendorRaw,vendorMatch,desc,amt};
-      computeTxRow(row);
-      return row;
-    });
-    renderTxPreview();
-  };
   // ── Manage Bank Accounts wiring ──
   renderBankAccList();
   const bankaccBtn=document.getElementById('bankacc-send');
