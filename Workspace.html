@@ -3186,7 +3186,7 @@ function openIntercompany(){
   let h=`<div class="pn-sub" style="margin-bottom:8px">Itemized inter-company receivables (AR) and payables (AP) between PTs in the wider group — built up via Excel import (Update Data). Not affected by the entity/month filters above. AP = this PT owes the counterparty; AR = the counterparty owes this PT. Only PTs tracked in this dashboard are shown.</div>`;
   h+=icStatCards(totAP,totAR);
   if(!IC_TX.length){
-    h+=`<p style="color:var(--muted);font-size:12.5px">No loan affiliate transactions imported yet — add them via <b>Update Data → Import Loan Affiliate Transactions</b>.</p>`;
+    h+=`<p style="color:var(--muted);font-size:12.5px">No loan affiliate transactions imported yet — add them via <b>Update Data → Input Transaction</b> or <b>Import Bank Ledger</b>.</p>`;
     showModal('Loan Affiliate',h,true);
     return;
   }
@@ -3382,7 +3382,7 @@ function openOtherReceivable(){
     </div>
   </div>`;
   if(!groups.length){
-    h+=`<p style="color:var(--muted);font-size:12.5px">No Other Receivable transactions yet — add one via <b>Update Data → Add a Transaction</b>.</p>`;
+    h+=`<p style="color:var(--muted);font-size:12.5px">No Other Receivable transactions yet — add one via <b>Update Data → Input Transaction</b>.</p>`;
     showModal('Other Receivable',h,true);
     return;
   }
@@ -5055,8 +5055,8 @@ function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
 // table. Edit is only offered for genuine transaction rows (x.id set); residual "not itemized"
 // summary rows have no underlying database row to edit. Amount edits change the itemized sum
 // for that entity/month without touching entity_period_totals (the separately-entered monthly
-// total KPIs read from) — openTxEdit warns about this so a real correction also gets reflected
-// via Update Entity Balance if needed.
+// total KPIs read from) — openTxEdit warns about this so a real correction also considers the
+// entity's headline total, not just the itemized row.
 // Best-effort vendor extraction: most descriptions in this dataset end with the vendor/payee
 // name in parentheses (e.g. "Payment X (Vendor Name)") — used as a fallback for rows that
 // predate the transactions.vendor column, or were never given an explicit vendor value.
@@ -5323,7 +5323,7 @@ async function openTxEdit(id,backCall){
   const revCats=(revCatsRaw.includes(x.k)||!x.k||curFlow!=='rev')?revCatsRaw:[x.k,...revCatsRaw];
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 8px">Edit Transaction</h4>`;
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Flow or Amount here also updates this entity's ${MONTHS[MONTH]||MONTH} headline total (KPI cards) by the same delta — no separate Update Entity Balance step needed.</div>`
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${pill(x.e)} · changing Flow or Amount here also updates this entity's ${MONTHS[MONTH]||MONTH} headline total (KPI cards) by the same delta.</div>`
     // Flow can be changed here (e.g. a refund that landed under Revenue by mistake, meant for
     // Opex) — switching it swaps which category list applies and, on save, moves the amount from
     // one side of entity_period_totals to the other instead of leaving both sides wrong.
@@ -5460,7 +5460,7 @@ async function openTxHistory(id,backCall){
 }
 async function deleteTxRow(id,backCall){
   backCall=decodeURIComponent(backCall);
-  if(!confirm('Delete this transaction? This removes it from the itemized detail but does NOT change the monthly total shown on the dashboard — correct the total too via Update Entity Balance if this is a real deletion, not just a typo fix. This cannot be undone.')) return;
+  if(!confirm('Delete this transaction? This removes it from the itemized detail but does NOT change the monthly total shown on the dashboard. This cannot be undone.')) return;
   try{
     const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'DELETE'});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
@@ -6203,7 +6203,7 @@ function computeTxRow(r){
     }
   }
 }
-// ── Add a Transaction — single-entry save, the only way this section works now (its old bulk
+// ── Input Transaction — single-entry save, the only way this section works now (its old bulk
 // Excel mode was retired in favor of Import Bank Ledger). Insert one transactions row, then patch
 // entity_period_totals additively for that entity+period — never recompute the headline from
 // scratch, since it can legitimately run ahead of itemized detail. ──
@@ -6646,11 +6646,9 @@ function renderTxPreview(){
     }
   };
 }
-// ── Inter-Company Transactions import preview — Owner is always one of this dashboard's 16
-// entities; Counterparty is resolved against the same closed list (16 entities + admin-added names
-// in intercompany_counterparties) as Update Transaction's Loan Affiliate flow and Import Bank
-// Ledger's AR/AP, so a typo'd or unapproved name doesn't sneak in a differently-spelled duplicate. ──
-let IC_TX_ROWS=[];
+// ── findDuplicateIcTx/findDuplicateOrec — shared duplicate-check helpers used by Input
+// Transaction's single-entry Loan Affiliate/Other Receivable saves and by Import Bank Ledger's
+// AR/AP rows. ──
 function findDuplicateIcTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
   return list.find(o=>norm(o.owner)===norm(r.owner) && norm(o.cp)===norm(r.cp) && o.type===r.type
@@ -6660,78 +6658,6 @@ function findDuplicateOrec(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
   return list.find(o=>o.e===r.e && norm(o.cp)===norm(r.cp) && o.dir===r.dir
     && (o.date||'')===(r.date||'') && Math.round(o.amt)===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
-}
-function computeIcTxRow(r){
-  let error=null;
-  const ownerId=findEntityByNameG(r.ownerRaw);
-  r.owner=ownerId?eName(ownerId):null;
-  r.cp=resolveIcCounterparty(r.cpRaw);
-  if(!r.owner) error='Owner not recognized — pick one of the 16 PTs';
-  else if(!r.cp) error='Counterparty not recognized — pick one from the list, or ask an admin to add it';
-  else if(!r.type) error='Type must be AP or AR';
-  else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
-  r.error=error;
-  r.dup=error?null:findDuplicateIcTx(IC_TX,r);
-}
-function fixIcTxField(i,field,value){
-  const r=IC_TX_ROWS[i]; if(!r) return;
-  if(field==='owner') r.ownerRaw=value||'';
-  else if(field==='cp') r.cpRaw=value||'';
-  computeIcTxRow(r);
-  renderIcTxPreview();
-}
-function icTxOwnerCell(r,i){
-  if(r.owner) return escH(r.owner);
-  return `<select id="ictx-fix-owner-${i}" style="font-size:11px;padding:3px 4px" onchange="fixIcTxField(${i},'owner',this.value)"><option value="">— pick PT —</option>${EIDS.map(id=>`<option value="${escH(eName(id))}">${escH(eName(id))}</option>`).join('')}</select>`;
-}
-function icTxCpCell(r,i){
-  if(r.cp) return escH(r.cp);
-  return icCounterpartySelectHtml('ictx-fix-cp-'+i,'','font-size:11px;padding:3px 4px',`fixIcTxField(${i},'cp',this.value)`);
-}
-function renderIcTxPreview(){
-  const el=document.getElementById('ictx-preview'); if(!el) return;
-  if(!IC_TX_ROWS.length){ el.innerHTML=''; return; }
-  const valid=IC_TX_ROWS.filter(r=>!r.error);
-  let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Owner (PT)</th><th>Counterparty</th><th>Type</th><th>Date</th><th>Description</th><th class="num" style="text-align:right">Amount</th><th>Status</th></tr></thead><tbody>';
-  IC_TX_ROWS.forEach((r,i)=>{
-    const rowBg=r.error?'#fbe9e7':(r.dup?'#fff4e0':'');
-    const status=r.error?escH(r.error):(r.dup?'⚠ Possible duplicate':'OK');
-    h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
-      +'<td style="font-size:12px">'+icTxOwnerCell(r,i)+'</td>'
-      +'<td style="font-size:12px">'+icTxCpCell(r,i)+'</td>'
-      +'<td style="font-size:12px">'+(r.type||'—')+'</td>'
-      +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
-      +'<td style="font-size:12px">'+escH(r.desc||'—')+'</td>'
-      +'<td class="num" style="text-align:right;font-size:12px">'+(r.amt?fmtIDR(r.amt):'—')+'</td>'
-      +'<td style="font-size:11px;color:'+(r.error?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
-  });
-  h+='</tbody></table></div>';
-  const dupN=valid.filter(r=>r.dup).length;
-  h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> transaction'+(valid.length===1?'':'s')+' — '+valid.length+' of '+IC_TX_ROWS.length+' row(s) ready'
-    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved transaction (same owner, counterparty, type, date, amount &amp; description) — review before importing':'')
-    +(IC_TX_ROWS.length>valid.length?'. Fix the flagged rows in the file and re-upload.':'')+'.</div>';
-  h+='<button id="ictx-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' transaction'+(valid.length===1?'':'s')+'</button>';
-  h+='<div id="ictx-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
-  el.innerHTML=h;
-  const impBtn=document.getElementById('ictx-import');
-  if(impBtn) impBtn.onclick=async()=>{
-    impBtn.disabled=true; impBtn.textContent='Importing…';
-    try{
-      const rows=valid.map(r=>({owner_label:r.owner,counterparty_label:r.cp,type:r.type,tx_date:r.date,description:r.desc||null,amount_idr:r.amt,source_label:'Excel import'}));
-      if(rows.length) await adminAddBatch('intercompany_transactions',rows);
-      const fresh=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
-      IC_TX=fresh.map(mkIcTx);
-      IC_TX_ROWS=[];
-      document.getElementById('ictx-import-msg').style.color='#2b7a4b';
-      document.getElementById('ictx-import-msg').textContent='✓ Added '+rows.length+' new transaction'+(rows.length===1?'':'s')+'.';
-      impBtn.textContent='Imported ✓';
-      renderKpiCash(agg());
-    }catch(e){
-      document.getElementById('ictx-import-msg').style.color='#b3261e';
-      document.getElementById('ictx-import-msg').textContent='Import failed: '+e.message;
-      impBtn.disabled=false; impBtn.textContent='Import '+valid.length+' transaction'+(valid.length===1?'':'s');
-    }
-  };
 }
 // ── Bank Ledger import preview — the unified Debit/Credit recap, and (since Update Transaction's
 // own Excel bulk-import was retired in its favor) the only bulk-import path left. Code routes each
@@ -9722,157 +9648,6 @@ function attChips(s){
   return '<div style="margin-top:5px">'+a.map(x=>
     '<button class="att" data-p="'+escH(x.path)+'" title="'+escH(x.name)+'" style="border:1px solid #e8d9b0;background:#faf3e2;color:#9a6f0a;border-radius:12px;padding:2.5px 10px;font-size:11px;font-weight:600;cursor:pointer;margin:2px 4px 0 0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">📎 '+escH(DT_LBL[x.doc_type]||'Doc')+' · '+escH(x.name)+'</button>').join('')+'</div>';
 }
-/* ── Replace Period Import (admin) ──────────────────────────────────────────
-   Standalone sheet parser for a raw bank-recap file, scoped to a single File and without dedup —
-   this tool always replaces the whole entity+period, so there's nothing to dedup against. Reuses
-   the same header-detection and classification helpers (xlsDate/xlsNum/financingCanon/FIN_RX/
-   REFUND_RX/EXCLUDE_RX) shared with the Excel-template Import Transactions flow, so a file
-   classifies identically whichever import path it goes through. */
-async function rpiParseSheet(file, myEntityName){
-  await loadEntityNameRx();
-  const rows=[];
-  let wb; try{ wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){ throw new Error('Could not read file: '+e.message); }
-  wb.SheetNames.forEach(sn=>{
-    if(/^(sheet1$|categories$|_|jr_|microsoft)/i.test(sn.trim())) return;
-    let raw; try{ raw=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true}); }catch(e){ return; }
-    let hdr=-1; const cols={};
-    for(let i=0;i<Math.min(raw.length,10);i++){
-      const vals=(raw[i]||[]).map(c=>String(c==null?'':c).trim().toUpperCase());
-      if(vals.indexOf('DATE')>=0 && vals.indexOf('DEBIT')>=0){
-        hdr=i;
-        vals.forEach((v,j)=>{
-          if(v==='DATE')cols.date=j;
-          else if(v==='REMARK'||v==='DESCRIPTION')cols.desc=j;
-          else if(v==='CATEGORIES')cols.cat=j;
-          else if(v==='DEBIT')cols.debit=j;
-          else if(v==='CREDIT'||v==='KREDIT')cols.credit=j;
-        });
-        break;
-      }
-    }
-    if(hdr<0||cols.date==null) return;
-    for(let i=hdr+1;i<raw.length;i++){
-      const row=raw[i]||[];
-      const dt=xlsDate(row[cols.date]);
-      const desc=String(cols.desc!=null&&row[cols.desc]!=null?row[cols.desc]:'').trim();
-      if(!dt||!desc) continue;
-      if(/^opening balance/i.test(desc)) continue;
-      const inn=Math.round(xlsNum(cols.debit!=null?row[cols.debit]:0));
-      const outv=Math.round(xlsNum(cols.credit!=null?row[cols.credit]:0));
-      if(!inn && !outv) continue;
-      const catRaw=String(cols.cat!=null&&row[cols.cat]!=null?row[cols.cat]:'').trim();
-      const tag=catRaw+' '+desc;
-      if(EXCLUDE_RX.test(tag)) continue;
-      const genericFin=FIN_RX.test(tag);
-      if(inn){
-        const canonIn=financingCanon(tag,'in',myEntityName);
-        const fin=genericFin||!!canonIn;
-        const refund=!fin && REFUND_RX.test(tag);
-        rows.push({date:dt,desc:desc,amt:inn,dir:'in',fin:fin,refund:refund,cat:catRaw,canon:fin?canonIn:null,shName:canonIn==='Shareholder Capital Deposit (Stan & Igor)'?shareholderName(desc):null});
-      }
-      if(outv){
-        const canonOut=financingCanon(tag,'out',myEntityName);
-        const fin=genericFin||!!canonOut;
-        rows.push({date:dt,desc:desc,amt:outv,dir:'out',fin:fin,cat:catRaw,canon:fin?canonOut:null});
-      }
-    }
-  });
-  return rows;
-}
-function rpiFlowKey(r){ return r.fin?(r.dir==='in'?'fin_in':'fin_out'):((r.dir==='in'&&!r.refund)?'rev':'opex'); }
-let RPI_ROWS=null;
-function wireReplacePeriodImport(){
-  const entSel=document.getElementById('rpi-ent'), perSel=document.getElementById('rpi-per'),
-    cutoffInp=document.getElementById('rpi-cutoff'), fileInp=document.getElementById('rpi-file'),
-    fnameSpan=document.getElementById('rpi-filename'), previewBtn=document.getElementById('rpi-preview-btn'),
-    previewBox=document.getElementById('rpi-preview');
-  if(!entSel) return;
-  let rpiFile=null;
-  const reset=()=>{ previewBox.innerHTML=''; RPI_ROWS=null; };
-  fileInp.onchange=()=>{ rpiFile=fileInp.files[0]||null; fnameSpan.textContent=rpiFile?rpiFile.name:''; previewBtn.disabled=!rpiFile; reset(); };
-  entSel.onchange=reset; perSel.onchange=reset; cutoffInp.onchange=reset;
-  previewBtn.onclick=async()=>{
-    if(!rpiFile) return;
-    const entity=entSel.value, period=perSel.value, cutoff=cutoffInp.value;
-    if(!cutoff){ previewBox.innerHTML='<p style="color:#b3261e;font-size:12.5px">Set a cutoff date first — data through what date should this import cover?</p>'; return; }
-    previewBtn.disabled=true; previewBtn.textContent='Reading file…';
-    try{
-      const myEntityName=(ENT[entity]&&ENT[entity].name)||'';
-      let parsed=await rpiParseSheet(rpiFile,myEntityName);
-      const before=parsed.length;
-      parsed=parsed.filter(r=>r.date<=cutoff);
-      const excludedByCutoff=before-parsed.length;
-      await categorizeRows(parsed);
-      RPI_ROWS=parsed;
-      const existing=await sbFetch('transactions?entity_code=eq.'+entity+'&period_code=eq.'+period+'&select=id,day_label,description,raw_label,amount_idr,flow');
-      // multiset match on flow+amount, for display only — classifies rows as added/removed/
-      // unchanged so the reviewer isn't staring at 100 "removed" + 100 "added" rows that are
-      // actually the same data. The commit step below always deletes+reinserts everything
-      // regardless of this classification, so a false "unchanged" match can't hide a real change.
-      const pool={};
-      existing.forEach(t=>{const k=t.flow+'|'+Math.round(t.amount_idr); (pool[k]=pool[k]||[]).push(t);});
-      const added=[], unchanged=[];
-      parsed.forEach(r=>{
-        const k=rpiFlowKey(r)+'|'+Math.round(r.amt);
-        const arr=pool[k];
-        if(arr&&arr.length){ unchanged.push(r); arr.pop(); }
-        else added.push(r);
-      });
-      const removed=Object.values(pool).flat();
-      const fmt2=n=>Math.round(n).toLocaleString('id-ID');
-      const rowHtml=(d,desc,amt)=>'<tr><td style="font-size:11.5px;color:#667085;white-space:nowrap;padding:4px 8px 4px 0">'+escH(d)+'</td><td style="font-size:12px;padding:4px 8px">'+escH(desc)+'</td><td style="text-align:right;font-size:12px;font-family:ui-monospace,monospace;padding:4px 0">'+fmt2(amt)+'</td></tr>';
-      let ph='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:12px"><b>This will delete all '+existing.length+' existing transaction'+(existing.length===1?'':'s')+'</b> for '+escH(myEntityName)+' in this period, and insert '+parsed.length+' row'+(parsed.length===1?'':'s')+' from the file'+(excludedByCutoff?' ('+excludedByCutoff+' row'+(excludedByCutoff===1?'':'s')+' excluded — dated after the cutoff)':'')+'.</div>'
-        +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px">'
-        +'<div>🟢 <b>'+added.length+'</b> added</div><div>🔴 <b>'+removed.length+'</b> removed</div><div>⚪ <b>'+unchanged.length+'</b> unchanged (matched by amount)</div>'
-        +'</div>';
-      if(added.length) ph+='<div style="font-weight:700;font-size:12.5px;margin:10px 0 4px">Added ('+added.length+')</div><div style="max-height:220px;overflow:auto"><table style="width:100%;border-collapse:collapse"><tbody>'+added.map(r=>rowHtml(dayLbl(r.date),r.desc,r.amt)).join('')+'</tbody></table></div>';
-      if(removed.length) ph+='<div style="font-weight:700;font-size:12.5px;margin:10px 0 4px">Removed ('+removed.length+')</div><div style="max-height:220px;overflow:auto"><table style="width:100%;border-collapse:collapse"><tbody>'+removed.map(t=>rowHtml(t.day_label,t.description,t.amount_idr)).join('')+'</tbody></table></div>';
-      ph+='<button id="rpi-confirm-btn" type="button" style="margin-top:14px;border:0;border-radius:12px;background:#c0392b;color:#fff;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Confirm &amp; Replace</button>'
-        +'<div id="rpi-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
-      previewBox.innerHTML=ph;
-      document.getElementById('rpi-confirm-btn').onclick=()=>rpiConfirm(entity,period,myEntityName);
-    }catch(e){ previewBox.innerHTML='<p style="color:#b3261e;font-size:12.5px">'+escH(e.message)+'</p>'; }
-    previewBtn.disabled=false; previewBtn.textContent='Preview changes';
-  };
-}
-async function rpiConfirm(entity,period,myEntityName){
-  const btn=document.getElementById('rpi-confirm-btn'), msg=document.getElementById('rpi-msg');
-  if(!RPI_ROWS) return;
-  btn.disabled=true; btn.textContent='Replacing…';
-  try{
-    await adminDel('transactions?entity_code=eq.'+entity+'&period_code=eq.'+period);
-    const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
-    const baseOrd=Math.floor(Date.now()/1000);
-    const txRows=RPI_ROWS.map((r,i)=>({
-      source:'TX_MULTI',ord:baseOrd+i,period_code:period,flow:rpiFlowKey(r),
-      entity_code:entity,day_label:dayLbl(r.date),
-      description:String(r.desc||'').slice(0,200),raw_label:(r.canon||'Replace period import'),
-      source_label:'Replace period import',upload_batch:batchId,amount_idr:(r.refund?-r.amt:r.amt),contra:false}));
-    if(txRows.length) await adminAddBatch('transactions',txRows);
-    // recompute this entity+period's headline totals to exactly match the freshly inserted detail —
-    // a full replace, unlike Import Transactions' additive top-up of the existing headline
-    const sums={revenue:0,opex:0,financing_in:0,financing_out:0};
-    const FLN={rev:'revenue',opex:'opex',fin_in:'financing_in',fin_out:'financing_out'};
-    RPI_ROWS.forEach(r=>{
-      if(r.canon==='Shareholder Capital Deposit (Stan & Igor)') return; // tracked via loan_flows only
-      FLN[rpiFlowKey(r)] && (sums[FLN[rpiFlowKey(r)]]+=(r.refund?-r.amt:r.amt));
-    });
-    const rt=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-      body:JSON.stringify({entity_code:entity,period_code:period,revenue:sums.revenue,opex:sums.opex,financing_in:sums.financing_in,financing_out:sums.financing_out})});
-    if(!rt.ok) throw new Error((await rt.text())||('HTTP '+rt.status));
-    // shareholder capital deposits also feed the dedicated card via loan_flows (not entity_period_totals) —
-    // same convention as the bank-book flow; full-replace this entity+period's deposits too
-    await adminDel('loan_flows?period_code=eq.'+period+'&flow_type=eq.Capital deposit&to_label=eq.'+encodeURIComponent(myEntityName));
-    const loanRows=RPI_ROWS.filter(r=>r.dir==='in'&&r.canon==='Shareholder Capital Deposit (Stan & Igor)').map(r=>({
-      period_code:period, from_label:r.shName||'Shareholder (Stan & Igor)', to_label:myEntityName,
-      flow_type:'Capital deposit', amount_idr:r.amt, from_group:null, to_group:(ENT[entity]&&ENT[entity].grp)||null}));
-    if(loanRows.length) await adminAdd('loan_flows',loanRows);
-    ENTRY_DIRTY=true;
-    msg.style.color='#2b7a4b';
-    msg.innerHTML='✅ Replaced — '+txRows.length+' transactions saved. The page refreshes when you close this panel.';
-    btn.textContent='Replaced ✓';
-  }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed: '+e.message; btn.disabled=false; btn.textContent='Confirm & Replace'; }
-}
 async function openEntryPanel(){
   const old=document.getElementById('mag-entry'); if(old) old.remove();
   const wrap=document.createElement('div'); wrap.id='mag-entry';
@@ -9921,11 +9696,14 @@ async function renderEntryBody(){
       h+='</tbody></table></div>';
     }
   }
-  // ── The sections below are grouped under four labeled headers (same .divlabel component the
-  // main dashboard uses for "Financial Overview" etc.) instead of one long undifferentiated list:
-  // Daily Entries (day-to-day, used most), Bulk Import, Bank Accounts & Reconciliation, and
-  // Reference Data (admin-only setup). Order within each group is otherwise unchanged. ──
-  h+='<div class="divlabel">'+ICON.edit(26)+'Daily Entries</div>';
+  // ── The sections below are grouped under three labeled headers (same .divlabel component the
+  // main dashboard uses for "Financial Overview" etc.): Cash & Liability (day-to-day balance/
+  // liability entries), Record Transaction (the two ways a real transaction gets entered), and
+  // Manage Database (reference-data setup, mostly admin-only). Import Loan Affiliate Transactions,
+  // Replace Period Import, and Update Entity Balance were dropped from this panel entirely (see the
+  // commit that removed them) — Import Bank Ledger's AR/AP code covers Loan Affiliate now, and the
+  // other two were rarely-used admin tools not worth a slot here. ──
+  h+='<div class="divlabel">'+ICON.edit(26)+'Cash &amp; Liability</div>';
   const inp='padding:10px 12px;border:1px solid #e4e7ef;border-radius:12px;font-size:13px;box-sizing:border-box';
   // ── Update Cash Position — Daily (Manual) — a plain per-PT "what's in the bank right now"
   // number, written straight to entity_cash_position, no bank account setup required. This is now
@@ -9933,7 +9711,7 @@ async function renderEntryBody(){
   // Ledger / bank_ledger_entries at all (the per-account "Update Cash Position" correction feature,
   // which used to reconcile the gap by logging an "Adjustment" bank_ledger_entries row, has been
   // removed — see cashPositionFor()). ──
-  h+='<details open style="margin:4px 0 22px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.dollar()+'Update Cash Position</summary>'
+  h+='<details open style="margin:4px 0 22px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.dollar()+'Cash Position</summary>'
     +'<div style="padding:12px 2px 0">'
     +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Type in a PT\'s current cash balance. Update it daily to keep the Cash Position card accurate — it\'s independent from bank accounts/Import Bank Ledger, so nothing there needs to match this number.</div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
@@ -9951,7 +9729,7 @@ async function renderEntryBody(){
   // Reaching Approved does NOT create a transaction — the actual payment is still recorded
   // separately, later, via Import Transactions/Bank Ledger. ──
   {
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.check()+'Add a Daily Payment Plan</summary>'
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.check()+'Daily Payment Plan</summary>'
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Propose a payment for management to approve from the dashboard — needs '+DPP_REQUIRED_APPROVALS+' approvals to become Approved (under Rp'+fmt(DPP_FAST_TRACK_LIMIT)+', Diana + Marleen approving is enough on its own), and any single rejection cancels it. This only tracks the plan/approval status; the actual payment is still recorded separately once it happens.</div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
@@ -9973,7 +9751,7 @@ async function renderEntryBody(){
   // ── Outstanding payables (unpaid invoices) — separate from the monthly figures above ──
   {
     const opexCats=cats.filter(c=>c.kind==='opex');
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Add an Outstanding Liability</summary>'
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Outstanding Liability</summary>'
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks unpaid invoices per PT — separate from the monthly figures above. Mark it paid once the payment shows up in a bank statement (recorded normally via the file upload above).</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
@@ -10014,7 +9792,7 @@ async function renderEntryBody(){
   // both the monthly figures above and the unpaid-invoice tracker above ──
   {
     const opexCatsFc=cats.filter(c=>c.kind==='opex');
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Add a Fixed Cost</summary>'
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Fixed Cost</summary>'
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Tracks recurring monthly costs per PT (payroll, taxes, professional fees, utilities, insurance, etc.) as a management estimate — separate from itemized transactions and not tied to a specific month.</div>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
@@ -10045,85 +9823,11 @@ async function renderEntryBody(){
       +'</div>'
       +'</div></details>';
   }
-  // ── The bulk-import / one-time-setup sections below are used less often than the four above,
-  // so they sit further down the panel. ──
-  // ── Add a Transaction (formerly "Update Transaction") — single-entry input only. Bulk Excel
-  // import used to live here too, but it's been retired in favor of Import Bank Ledger below (which
-  // additionally keeps each bank account's running balance correct, and shares one duplicate-check
-  // with everything else entered there) — this is now just the quick one-off manual entry, same
-  // save handler (saveTxOne) as before. Renamed to match the "Add a ..." naming of its neighbors
-  // (Add a Daily Payment Plan, Add an Outstanding Liability, Add a Fixed Cost). ──
-  h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Add a Transaction</summary>'
-    +'<div style="padding:12px 2px 0">'
-    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single transaction directly — Opex, Revenue, Loan Affiliate, Pinbuk, Other Receivable, and Shareholder Capital Deposit are all supported here. New rows are added to the consolidated numbers immediately. For many transactions at once, use <b>Import Bank Ledger</b> further down instead.</div>'
-    +'<div id="tx-single">'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-    +'<select id="tx1-ent" style="'+inp+'" onchange="onTx1FlowChange()">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option><option value="capdep">Shareholder Capital Deposit</option></select>'
-    +'<input id="tx1-date" type="date" aria-label="Date" style="'+inp+'">'
-    +'<input id="tx1-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
-    +'</div>'
-    +'<div id="tx1-opexrev-fields">'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-    +'<div id="tx1-cat-opex-wrap">'+categorySelectHtml('tx1-cat-opex',OPEX_CATS_G||[],'',inp)+'</div>'
-    +'<div id="tx1-cat-rev-wrap" style="display:none">'+categorySelectHtml('tx1-cat-rev',CATS_BY_KIND_G.revenue||[],'',inp)+'</div>'
-    +vendorSelectHtml('tx1-vendor','',inp)
-    +'</div>'
-    // Refund/reimbursement: money coming back in for a cost already booked stays Opex, category
-    // "Refund / Reimbursement Received" — nets OFF Opex instead of adding to it. Money paid back
-    // out for revenue already booked stays Revenue, category "Deposit Refund Paid" — nets OFF
-    // Revenue. Same convention as Bank Ledger import, just surfaced here too.
-    +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Refunding money already recorded? Pick category <b>"Refund / Reimbursement Received"</b> under Opex if cash is coming back in, or <b>"Deposit Refund Paid"</b> under Revenue if cash is going back out — either nets off the total instead of adding to it.</div>'
-    +'</div>'
-    // Loan Affiliate books straight into intercompany_transactions (the same table the Loan
-    // Affiliate card and Bank Ledger's AR/AP rows already feed) — it has no category/vendor,
-    // just who owes whom: this entity is the Owner, Counterparty is free text since the other
-    // side is often a holding/investment PT not tracked as its own entity in this dashboard.
-    +'<div id="tx1-loan-fields" style="display:none">'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-    +'<select id="tx1-ic-type" style="'+inp+'"><option value="AP">AP — this PT owes the counterparty</option><option value="AR">AR — the counterparty owes this PT</option></select>'
-    +icCounterpartySelectHtml('tx1-ic-cp','',inp)
-    +'</div>'
-    +'</div>'
-    // Pinbuk (transfer between two accounts of the same PT) needs a specific From/To bank account,
-    // not a category/vendor — filled in by fillTx1PinbukAccts() once this entity has accounts loaded.
-    +'<div id="tx1-pinbuk-fields" style="display:none">'
-    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records a transfer between two of this entity\'s own bank accounts — not income or expense, but still recorded so both accounts\' balances stay correct. Not included in any card total; view it later via Manage Bank Accounts → View ledger.</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-    +'<select id="tx1-pinbuk-from" style="'+inp+'"></select>'
-    +'<select id="tx1-pinbuk-to" style="'+inp+'"></select>'
-    +'</div>'
-    +'</div>'
-    // Other Receivable — money advanced to or refunded by an individual (shareholder or other
-    // related party), not a PT — Counterparty is free text, same reasoning as Loan Affiliate.
-    +'<div id="tx1-orec-fields" style="display:none">'
-    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records money paid to or refunded by an individual (e.g. a shareholder) — separate from Loan Affiliate (between PTs) and Capital Deposit. Not included in any headline financing total; view it later via the Other Receivable card.</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-    +'<input id="tx1-orec-cp" placeholder="Counterparty (person\'s name)" style="'+inp+'">'
-    +'<select id="tx1-orec-dir" style="'+inp+'"><option value="out">Out — paid to this person</option><option value="in">In — refund from this person</option></select>'
-    +'</div>'
-    +'</div>'
-    // Shareholder Capital Deposit — always money IN from a shareholder, booked into loan_flows
-    // (flow_type='Capital deposit'), the same table the Shareholder Capital Deposit card and Loan
-    // Affiliate Summary already read — a different table from "Loan Affiliate" above despite the
-    // similar name. Just who, no Type/Direction to pick.
-    +'<div id="tx1-capdep-fields" style="display:none">'
-    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records capital injected by a shareholder into this PT — tracked on its own \"Shareholder Capital Deposit\" card, separate from Loan Affiliate and Other Receivable. Not included in any Opex/Revenue/Financing total.</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
-    +'<input id="tx1-capdep-cp" placeholder="Shareholder name" style="'+inp+'">'
-    +'</div>'
-    +'</div>'
-    +'<input id="tx1-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
-    +'<button id="tx1-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save transaction</button>'
-    +'<div id="tx1-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
-    +'</div>'
-    +'</div></details>';
-  // ── Bulk Import group: Import Bank Ledger (the primary path), Import Loan Affiliate
-  // Transactions, and Replace Period Import — reordered here (source order used to be Import Loan
-  // Affiliate, Manage Bank Accounts, Import Bank Ledger, Update Entity Balance, Replace Period
-  // Import) so all three bulk-import tools sit together under one label, ahead of the account-setup
-  // group below. ──
-  h+='<div class="divlabel">'+ICON.download(26)+'Bulk Import</div>';
+  // ── Record Transaction group: Import Bank Ledger (bulk, the primary path) then Input
+  // Transaction (single-entry). Import Loan Affiliate Transactions and Replace Period Import used
+  // to sit in this area too — both removed from this panel; Import Bank Ledger's AR/AP code covers
+  // Loan Affiliate, and Replace Period Import was a rarely-used admin tool not worth a slot here. ──
+  h+='<div class="divlabel">'+ICON.download(26)+'Record Transaction</div>';
   // ── Import Bank Ledger — the unified Debit/Kredit recap per bank account. Each row is tagged
   // with a Kode (Revenue/Opex/AR/AP/Pinbuk) that routes it into the right existing box — Revenue/
   // Opex rows also land in `transactions` exactly like the Import Transactions box above, AR/AP rows
@@ -10133,7 +9837,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate (Counterparty must be one of the 16 PTs, or ask an admin to add a new one); <b>Capital</b> (always a shareholder deposit, entered as Debit) also feeds the Shareholder Capital Deposit card; <b>Other Receivable</b> also feeds the Other Receivable card (Debit = In/refund received, Credit = Out/paid to the person); <b>Financing</b> (a loan whose lender is neither one of the 16 PTs nor a shareholder, e.g. a vehicle-backed loan — Debit when received, Credit for each repayment) and <b>Pinbuk</b> (transfer between the group\'s own accounts) only affect this account\'s balance and appear nowhere else. This is now the only way to bulk-import transactions — the old bulk-Excel mode under <b>Add a Transaction</b> has been retired in its favor; that section is now just for a quick single manual entry. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate (Counterparty must be one of the 16 PTs, or ask an admin to add a new one); <b>Capital</b> (always a shareholder deposit, entered as Debit) also feeds the Shareholder Capital Deposit card; <b>Other Receivable</b> also feeds the Other Receivable card (Debit = In/refund received, Credit = Out/paid to the person); <b>Financing</b> (a loan whose lender is neither one of the 16 PTs nor a shareholder, e.g. a vehicle-backed loan — Debit when received, Credit for each repayment) and <b>Pinbuk</b> (transfer between the group\'s own accounts) only affect this account\'s balance and appear nowhere else. This is now the only way to bulk-import transactions — single transactions can be added instead via <b>Input Transaction</b> above. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
       +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first.</div>')
       +'<div style="margin-bottom:12px">'
       +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pick an account —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabelFull(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
@@ -10162,51 +9866,62 @@ async function renderEntryBody(){
       +'<div id="bl-preview" style="margin-top:12px"></div>'
       +'</div></details>';
   }
-  // ── Import Inter-Company Transactions — itemized AP/AR ledger between PTs in the wider group
-  // (owner PT, counterparty, AP/AR, date, description, amount). Not entity/month scoped like the
-  // rest of this panel — Owner/Counterparty are free text (many counterparties are holding PTs
-  // outside this dashboard's 16 tracked entities), so there's no entity-matching step here, just
-  // Type/Amount validation. Same download-template → upload → preview → confirm convention. ──
-  {
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.briefcase()+'Import Loan Affiliate</summary>'
-      +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Download the template, fill in one row per AR/AP transaction (Owner PT, Counterparty, Type, Date, Description, Amount), then upload. Owner must be one of the 16 PTs tracked in this dashboard; Counterparty must be one of those same 16, or a name an admin has added for a holding/investment PT not tracked here as its own entity.</div>'
-      +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-      +'<button id="ictx-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
-      +'<label for="ictx-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;background:#f5e8c8;color:#9a6f0a;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
-      +'<input id="ictx-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
-      +'<button id="ictx-export" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-left:auto">'+ICON.download()+'Export current data (.xlsx)</button>'
-      +'</div>'
-      +'<span id="ictx-filename" style="font-size:12px;color:#3a4254"></span>'
-      +'<div id="ictx-preview" style="margin-top:12px"></div>'
-      +'</div></details>';
-  }
-  // ── Replace Period Import (admin) — wholesale replace of a single entity's transactions for a
-  // single period, instead of the bank-book flow's "append + heuristic dedup" (which is what let a
-  // re-uploaded file insert the same row twice — see the June duplicate-payment incident). Deletes
-  // every existing transaction for that entity+period and inserts the freshly parsed file in one
-  // atomic step, so a re-upload can never produce a duplicate — and a "data through" cutoff date
-  // keeps a file that runs past the intended period from silently extending it (the second incident
-  // that same day: mei/ssvd/kso ended up with data past the shared 22-Jun cutoff other entities used).
-  if(IS_ADMIN){
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.refresh()+'Replace Period Import</summary>'
-      +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">For fixing/re-importing one PT\'s transactions for one period. Deletes <b>every</b> existing transaction for that PT+period and replaces them with the uploaded file — no partial dedup guesswork, so a re-upload can never create duplicates. Set a cutoff date so the file can\'t silently extend the period past what you intend. <b>Not available for May</b> — May\'s headline figures come from a separate entry, not this table.</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
-      +'<select id="rpi-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<select id="rpi-per" style="'+inp+'">'+pers.filter(p=>p.code!=='MAY').map(p=>'<option value="'+p.code+'">'+escH(p.label)+'</option>').join('')+'</select>'
-      +'<input id="rpi-cutoff" type="date" aria-label="Data through this date" style="'+inp+'">'
-      +'</div>'
-      +'<div style="font-size:11.5px;color:#667085;margin-bottom:10px">Rows dated after the cutoff are excluded from the import (shown in the preview).</div>'
-      +'<div><label for="rpi-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose bank file (.xlsx/.xls/.csv)</label>'
-      +'<input id="rpi-file" type="file" accept=".xlsx,.xls,.csv" style="display:none">'
-      +'<span id="rpi-filename" style="font-size:12px;color:#3a4254;margin-left:8px"></span></div>'
-      +'<div style="margin-top:10px"><button id="rpi-preview-btn" type="button" disabled style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer">Preview changes</button></div>'
-      +'<div id="rpi-preview" style="margin-top:14px"></div>'
-      +'</div></details>';
-  }
-  // ── Bank Accounts & Reconciliation group: Manage Bank Accounts, then Update Entity Balance. ──
-  h+='<div class="divlabel">'+ICON.bank(26)+'Bank Accounts &amp; Reconciliation</div>';
+  // ── Input Transaction — single-entry input only, second in the Record Transaction group. Opex,
+  // Revenue, Loan Affiliate, Pinbuk, Other Receivable, and Shareholder Capital Deposit are all
+  // supported here via the same save handler (saveTxOne) as before; for many transactions at once,
+  // Import Bank Ledger above is the way. ──
+  h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Input Transaction</summary>'
+    +'<div style="padding:12px 2px 0">'
+    +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single transaction directly — Opex, Revenue, Loan Affiliate, Pinbuk, Other Receivable, and Shareholder Capital Deposit are all supported here. New rows are added to the consolidated numbers immediately. For many transactions at once, use <b>Import Bank Ledger</b> above instead.</div>'
+    +'<div id="tx-single">'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<select id="tx1-ent" style="'+inp+'" onchange="onTx1FlowChange()">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
+    +'<select id="tx1-flow" style="'+inp+'" onchange="onTx1FlowChange()"><option value="opex">Opex</option><option value="rev">Revenue</option><option value="loan">Loan Affiliate</option><option value="pinbuk">Pinbuk</option><option value="orec">Other Receivable</option><option value="capdep">Shareholder Capital Deposit</option></select>'
+    +'<input id="tx1-date" type="date" aria-label="Date" style="'+inp+'">'
+    +'<input id="tx1-amt" inputmode="numeric" placeholder="Amount (IDR)" style="'+inp+'">'
+    +'</div>'
+    +'<div id="tx1-opexrev-fields">'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<div id="tx1-cat-opex-wrap">'+categorySelectHtml('tx1-cat-opex',OPEX_CATS_G||[],'',inp)+'</div>'
+    +'<div id="tx1-cat-rev-wrap" style="display:none">'+categorySelectHtml('tx1-cat-rev',CATS_BY_KIND_G.revenue||[],'',inp)+'</div>'
+    +vendorSelectHtml('tx1-vendor','',inp)
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Refunding money already recorded? Pick category <b>"Refund / Reimbursement Received"</b> under Opex if cash is coming back in, or <b>"Deposit Refund Paid"</b> under Revenue if cash is going back out — either nets off the total instead of adding to it.</div>'
+    +'</div>'
+    +'<div id="tx1-loan-fields" style="display:none">'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<select id="tx1-ic-type" style="'+inp+'"><option value="AP">AP — this PT owes the counterparty</option><option value="AR">AR — the counterparty owes this PT</option></select>'
+    +icCounterpartySelectHtml('tx1-ic-cp','',inp)
+    +'</div>'
+    +'</div>'
+    +'<div id="tx1-pinbuk-fields" style="display:none">'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records a transfer between two of this entity\'s own bank accounts — not income or expense, but still recorded so both accounts\' balances stay correct. Not included in any card total; view it later via Manage Bank Accounts → View ledger.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<select id="tx1-pinbuk-from" style="'+inp+'"></select>'
+    +'<select id="tx1-pinbuk-to" style="'+inp+'"></select>'
+    +'</div>'
+    +'</div>'
+    +'<div id="tx1-orec-fields" style="display:none">'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records money paid to or refunded by an individual (e.g. a shareholder) — separate from Loan Affiliate (between PTs) and Capital Deposit. Not included in any headline financing total; view it later via the Other Receivable card.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<input id="tx1-orec-cp" placeholder="Counterparty (person\'s name)" style="'+inp+'">'
+    +'<select id="tx1-orec-dir" style="'+inp+'"><option value="out">Out — paid to this person</option><option value="in">In — refund from this person</option></select>'
+    +'</div>'
+    +'</div>'
+    +'<div id="tx1-capdep-fields" style="display:none">'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records capital injected by a shareholder into this PT — tracked on its own \"Shareholder Capital Deposit\" card, separate from Loan Affiliate and Other Receivable. Not included in any Opex/Revenue/Financing total.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
+    +'<input id="tx1-capdep-cp" placeholder="Shareholder name" style="'+inp+'">'
+    +'</div>'
+    +'</div>'
+    +'<input id="tx1-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
+    +'<button id="tx1-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save transaction</button>'
+    +'<div id="tx1-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+    +'</div>'
+    +'</div></details>';
+  // ── Manage Database group: Manage Bank Accounts (not admin-only, so this group and its divlabel
+  // are unconditional), then Manage Categories, Manage Vendors, Manage Approvers (all admin-only). ──
+  h+='<div class="divlabel">'+ICON.shield(26)+'Manage Database</div>';
   // ── Manage Bank Accounts — master list of real bank accounts per PT (bank, account no, label,
   // usage REK IN/REK OUT/MIX, opening balance/date). Must exist before "Import Bank Ledger" above
   // can resolve a row's account, since the ledger references bank_account_id, not a free-text bank
@@ -10230,30 +9945,10 @@ async function renderEntryBody(){
       +'<div id="bankacc-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div></details>';
   }
-  // ── Update Entity Balance — a dedicated box for logging opening/closing bank balance per PT
-  // per period, decoupled from the file-upload flow above (previously this was only reachable by
-  // expanding "Advanced" inside the main entry form). Feeds the Balance Reconciliation section. ──
-  {
-    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.bank()+'Update Entity Balance</summary>'
-      +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Log the opening and/or closing bank balance for one PT and period — used by Balance Reconciliation to check the report against the actual bank balance. Leave a field blank to keep its current saved value.</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">'
-      +'<select id="ebal-ent" style="'+inp+'">'+EIDS.map(id=>'<option value="'+id+'">'+escH(eName(id))+'</option>').join('')+'</select>'
-      +'<select id="ebal-per" style="'+inp+'">'+pers.map(p=>'<option value="'+escH(p.code)+'">'+escH(p.label)+'</option>').join('')+'</select>'
-      +'<input id="ebal-open" inputmode="numeric" placeholder="Opening balance (IDR)" style="'+inp+'">'
-      +'<input id="ebal-close" inputmode="numeric" placeholder="Closing balance (IDR)" style="'+inp+'">'
-      +'</div>'
-      +'<button id="ebal-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save balance</button>'
-      +'<div id="ebal-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
-      +'</div></details>';
-  }
-  // ── Reference Data group (admin-only setup: categories/vendors/approvers) — the divlabel is
-  // gated the same as its contents so a non-admin never sees an empty group header. ──
-  if(IS_ADMIN) h+='<div class="divlabel">'+ICON.shield(26)+'Reference Data (Admin)</div>';
   // ── Manage Categories (admin) — add/rename/delete rows in `categories`, cascading a rename
   // across transactions/line_items/category_aliases since raw_label has no FK to categories.name.
   if(IS_ADMIN){
-    h+='<details style="margin:4px 0 22px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.doc()+'Manage Categories</summary>'
+    h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.doc()+'Manage Categories</summary>'
       +'<div style="padding:12px 2px 0">'
       +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add, rename, or delete the categories used across transactions, line items, and the bulk importer. Renaming updates every existing record; deleting only removes the category from future use — it does not touch past transactions.</div>'
       +'<div id="cats-body">Loading…</div>'
@@ -10310,7 +10005,7 @@ async function renderEntryBody(){
   h+='<div id="en-lmsg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>';
   body.innerHTML=h;
   const setMsg=(id,t,ok)=>{const m=document.getElementById(id); if(m){m.style.color=ok?'#2b7a4b':'#b3261e'; m.textContent=t;}};
-  // ── Add a Transaction: single-entry save wiring (tab-toggle vars below are dead — the bulk-Excel
+  // ── Input Transaction: single-entry save wiring (tab-toggle vars below are dead — the bulk-Excel
   // tab/pane they toggled no longer exist in the DOM, so these just no-op) ──
   {
     const tabOne=document.getElementById('tx-tab-one'), tabBulk=document.getElementById('tx-tab-bulk');
@@ -10423,59 +10118,6 @@ async function renderEntryBody(){
       return row;
     });
     renderTxPreview();
-  };
-  // ── Import Inter-Company Transactions wiring ──
-  const ictxTplBtn=document.getElementById('ictx-template');
-  if(ictxTplBtn) ictxTplBtn.onclick=async()=>{
-    ictxTplBtn.disabled=true;
-    try{
-      await refreshIcCounterparties();
-      const cpOpts=icCounterpartyOptions();
-      await downloadValidatedTemplate('loan_affiliate_transactions_template.xlsx','Loan Affiliate',
-        ['Owner (PT)','Counterparty','Type','Date','Description','Amount'],
-        [eName(EIDS[0]),cpOpts.find(n=>n!==eName(EIDS[0]))||cpOpts[0],'AP','2026-07-01','Sample loan affiliate transaction',1000000],
-        [{col:'A',values:EIDS.map(eName)},{col:'B',values:cpOpts},{col:'C',values:['AP','AR']}],
-        'Owner must be one of the 16 PTs tracked in this dashboard. Counterparty must be one of those same 16, or a name an admin has added (the "+ Add" button next to the Counterparty picker in Add a Transaction or Import Bank Ledger).');
-    } finally { ictxTplBtn.disabled=false; }
-  };
-  const ictxExpBtn=document.getElementById('ictx-export');
-  if(ictxExpBtn) ictxExpBtn.onclick=()=>{
-    const rows=[['Owner (PT)','Counterparty','Type','Date','Description','Amount']];
-    IC_TX.slice().sort((a,b)=>{ if(a.owner!==b.owner) return a.owner<b.owner?-1:1; return (a.date||'')<(b.date||'')?-1:1; })
-      .forEach(r=>{ rows.push([r.owner,r.cp,r.type,r.date||'',r.desc||'',r.amt]); });
-    const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols']=[{wch:32},{wch:32},{wch:8},{wch:12},{wch:50},{wch:16}];
-    XLSX.utils.book_append_sheet(wb,ws,'Loan Affiliate');
-    XLSX.writeFile(wb,'loan_affiliate_transactions_export_'+new Date().toISOString().slice(0,10)+'.xlsx');
-  };
-  const ictxFileInp=document.getElementById('ictx-file');
-  if(ictxFileInp) ictxFileInp.onchange=async()=>{
-    const f=ictxFileInp.files[0]; if(!f) return;
-    document.getElementById('ictx-filename').textContent=f.name;
-    let wb; try{ wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); }catch(e){
-      document.getElementById('ictx-preview').innerHTML='<div style="color:#b3261e;font-size:12.5px">Could not read this file: '+escH(e.message)+'</div>'; return;
-    }
-    const sheet=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
-    if(!rows.length){ IC_TX_ROWS=[]; renderIcTxPreview(); return; }
-    const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
-    const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
-    const kOwner=col(['owner (pt)','owner','pt (owner)','pt']), kCp=col(['counterparty','counterparty label']),
-      kType=col(['type']), kDate=col(['date']), kDesc=col(['description']), kAmt=col(['amount','amount (idr)','amount idr']);
-    IC_TX_ROWS=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
-      const ownerRaw=kOwner!=null?String(r[kOwner]||'').trim():'';
-      const cpRaw=kCp!=null?String(r[kCp]||'').trim():'';
-      const typeRaw=kType!=null?String(r[kType]||'').trim().toUpperCase():'';
-      const type=typeRaw==='AP'||typeRaw==='AR'?typeRaw:(/^AP/.test(typeRaw)?'AP':(/^AR/.test(typeRaw)?'AR':null));
-      const date=kDate!=null?parseFlexDate(r[kDate]):null;
-      const desc=kDesc!=null?String(r[kDesc]||'').trim():'';
-      const amt=kAmt!=null?Number(r[kAmt]):NaN;
-      const row={ownerRaw,cpRaw,type,date,desc,amt};
-      computeIcTxRow(row);
-      return row;
-    });
-    renderIcTxPreview();
   };
   // ── Manage Bank Accounts wiring ──
   renderBankAccList();
@@ -10989,41 +10631,6 @@ async function renderEntryBody(){
       renderFcdPreview();
     };
   }
-  // ── Wire the "Update Entity Balance" box ──
-  {
-    const balEnt=document.getElementById('ebal-ent'), balPer=document.getElementById('ebal-per'),
-      balOpen=document.getElementById('ebal-open'), balClose=document.getElementById('ebal-close'),
-      balBtn=document.getElementById('ebal-send'), balMsg=document.getElementById('ebal-msg');
-    const prefillBal=()=>{
-      if(!balEnt||!balPer) return;
-      const b=(BAL[balEnt.value]&&BAL[balEnt.value][balPer.value])||{};
-      balOpen.value = b.open!=null ? b.open : '';
-      balClose.value = b.close!=null ? b.close : '';
-    };
-    if(balEnt) balEnt.onchange=prefillBal;
-    if(balPer) balPer.onchange=prefillBal;
-    prefillBal();
-    if(balBtn) balBtn.onclick=async()=>{
-      balMsg.style.color='#b3261e'; balMsg.textContent='';
-      const entity=balEnt.value, pcode=balPer.value;
-      const openRaw=(balOpen.value||'').replace(/[^0-9-]/g,'');
-      const closeRaw=(balClose.value||'').replace(/[^0-9-]/g,'');
-      if(openRaw===''&&closeRaw==='') return void(balMsg.textContent='Enter an opening and/or closing balance.');
-      balBtn.disabled=true; balBtn.textContent='Saving…';
-      try{
-        const prev=(BAL[entity]&&BAL[entity][pcode])||{};
-        const bp={entity_code:entity,period_code:pcode,updated_by:MY_EMAIL,updated_at:new Date().toISOString(),
-          opening_idr: openRaw!==''?Number(openRaw):(prev.open!=null?prev.open:null),
-          closing_idr: closeRaw!==''?Number(closeRaw):(prev.close!=null?prev.close:null)};
-        const r=await authedFetch(SB_URL+'/rest/v1/entity_period_balances',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(bp)});
-        if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
-        (BAL[entity]=BAL[entity]||{})[pcode]={open:bp.opening_idr,close:bp.closing_idr};
-        ENTRY_DIRTY=true;
-        balMsg.style.color='#2b7a4b'; balMsg.textContent='Saved.';
-      }catch(e){ balMsg.textContent='Failed to save: '+e.message; }
-      balBtn.disabled=false; balBtn.textContent='Save balance';
-    };
-  }
   // ── Update Cash Position — Daily (Manual) wiring ──
   {
     const cposdBtn=document.getElementById('cposd-send');
@@ -11047,8 +10654,6 @@ async function renderEntryBody(){
       cposdBtn.disabled=false; cposdBtn.textContent='Save cash position';
     };
   }
-  // ── Wire the "Replace Period Import" box ──
-  if(IS_ADMIN) wireReplacePeriodImport();
   if(IS_ADMIN){ renderCategoriesBody(); renderVendorsBody(); }
   body.querySelectorAll('.ap').forEach(btn=>btn.onclick=async()=>{
     btn.disabled=true; btn.textContent='…';
