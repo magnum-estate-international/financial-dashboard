@@ -7852,7 +7852,7 @@ const MON_SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','No
 function outstandingTrendSeries(){
   const ids=new Set(scopeIds());
   const items=OUTSTANDING.filter(o=>ids.has(o.e)&&o.inv);
-  if(!items.length) return {labels:[],added:[],paid:[],balance:[]};
+  if(!items.length) return {labels:[],added:[],paid:[],balance:[],months:[],topCat:[]};
   const idSet=new Set(items.map(o=>o.id));
   const pays=OUTSTANDING_PAYMENTS.filter(p=>idSet.has(p.outstanding_id)&&p.paid_date);
   const toYm=d=>d.slice(0,7);
@@ -7863,23 +7863,30 @@ function outstandingTrendSeries(){
   const months=[]; let y=+minYm.slice(0,4), m=+minYm.slice(5,7);
   while(y+'-'+String(m).padStart(2,'0')<=curYm){ months.push(y+'-'+String(m).padStart(2,'0')); m++; if(m>12){m=1;y++;} }
   const win=months.length>12?months.slice(-12):months;
-  const added=[],paid=[],balance=[];
+  const added=[],paid=[],balance=[],topCat=[];
   win.forEach(ym=>{
     const eom=ym+'-31'; // ISO strings sort lexicographically, so this is a safe "on or before end of month" bound
-    added.push(items.filter(o=>toYm(o.inv)===ym).reduce((s,o)=>s+o.amt,0));
+    const monthItems=items.filter(o=>toYm(o.inv)===ym);
+    added.push(monthItems.reduce((s,o)=>s+o.amt,0));
     paid.push(pays.filter(p=>toYm(p.paid_date)===ym).reduce((s,p)=>s+Number(p.amount_idr),0));
     balance.push(
       items.filter(o=>o.inv<=eom).reduce((s,o)=>s+o.amt,0) -
       pays.filter(p=>p.paid_date<=eom).reduce((s,p)=>s+Number(p.amount_idr),0)
     );
+    // Which category drove that month's new invoices the most — shown in the Ending Balance
+    // tooltip so "the balance went up" also answers "went up because of what".
+    const byCat={};
+    monthItems.forEach(o=>{ byCat[o.cat]=(byCat[o.cat]||0)+o.amt; });
+    const catEntries=Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+    topCat.push(catEntries.length?{name:catEntries[0][0],amt:catEntries[0][1]}:null);
   });
   const labels=win.map(ym=>MON_SHORT[+ym.slice(5,7)-1]+" '"+ym.slice(2,4));
-  return {labels,added,paid,balance,months:win};
+  return {labels,added,paid,balance,months:win,topCat};
 }
 let outstandingTrendChart=null;
 function renderOutstandingTrendChart(){
   const canvas=document.getElementById('outstandingTrendChart'); if(!canvas) return;
-  const {labels,added,paid,balance,months}=outstandingTrendSeries();
+  const {labels,added,paid,balance,months,topCat}=outstandingTrendSeries();
   if(outstandingTrendChart) outstandingTrendChart.destroy();
   if(!labels.length) return;
   Chart.defaults.font.family='Plus Jakarta Sans, sans-serif'; Chart.defaults.color='#3a4254';
@@ -7901,7 +7908,18 @@ function renderOutstandingTrendChart(){
         if(ym) openOutstandingTrendMonth(ym);
       },
       plugins:{legend:{position:'top',align:'start',labels:{boxWidth:9,usePointStyle:true,pointStyle:'circle',padding:16,font:{size:11,weight:'600'}}},
-        tooltip:{callbacks:{label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
+        // The Ending Balance tooltip answers "went up/down by how much, because of what" instead of
+        // just restating the raw balance — the month-over-month delta is exactly added[i]-paid[i]
+        // (see outstandingTrendSeries' derivation), and topCat[i] is that month's single largest new
+        // invoice category, so the reader doesn't have to open the drill-down just to see why.
+        tooltip:{callbacks:{label:c=>{
+          if(c.dataset.label!=='Ending Balance') return c.dataset.label+': IDR '+fmt(c.parsed.y);
+          const i=c.dataIndex, delta=added[i]-paid[i], cat=topCat[i];
+          const lines=['Ending Balance: IDR '+fmt(c.parsed.y)];
+          lines.push((delta>=0?'▲ +':'▼ −')+'IDR '+fmt(Math.abs(delta))+' from last month');
+          if(cat) lines.push('Mostly from: '+cat.name+' (IDR '+fmt(cat.amt)+')');
+          return lines;
+        }}}},
       scales:{y:{ticks:{callback:v=>fmtB(v)},grid:{color:'#f0f1f6'}},x:{grid:{display:false}}}}});
 }
 // Drill-down for one month clicked on the Outstanding Liability trend chart — same "New Invoices
