@@ -6285,7 +6285,7 @@ async function saveTxOnePinbuk(entity,date,desc,amt){
     (await r.json()).forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
     document.getElementById('tx1-desc').value='';
     document.getElementById('tx1-amt').value='';
-    msg.style.color='#2b7a4b'; msg.textContent='Pinbuk transfer saved — view it via Cash Position → the account\'s own ledger.';
+    msg.style.color='#2b7a4b'; msg.textContent='Pinbuk transfer saved — view it via Manage Bank Accounts → View ledger.';
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
 }
@@ -10086,7 +10086,7 @@ async function renderEntryBody(){
     // Pinbuk (transfer between two accounts of the same PT) needs a specific From/To bank account,
     // not a category/vendor — filled in by fillTx1PinbukAccts() once this entity has accounts loaded.
     +'<div id="tx1-pinbuk-fields" style="display:none">'
-    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records a transfer between two of this entity\'s own bank accounts — not income or expense, but still recorded so both accounts\' balances stay correct. Not included in any card total; view it later via Cash Position → the account\'s own ledger.</div>'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records a transfer between two of this entity\'s own bank accounts — not income or expense, but still recorded so both accounts\' balances stay correct. Not included in any card total; view it later via Manage Bank Accounts → View ledger.</div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-pinbuk-from" style="'+inp+'"></select>'
     +'<select id="tx1-pinbuk-to" style="'+inp+'"></select>'
