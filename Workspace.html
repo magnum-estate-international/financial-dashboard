@@ -461,18 +461,6 @@ a{color:#9a6f0a}
   </div>
 </div>
 
-<details class="fold">
-  <summary><span><span class="chev">▸</span>&nbsp; Operating Expense Categories</span><span class="hint">click a row for per-entity detail</span></summary>
-  <div class="fold-body">
-    <div class="table-scroll" style="margin-top:10px">
-      <table>
-        <thead><tr><th>Category</th><th class="num">Total (IDR)</th><th class="num">% of OpEx</th></tr></thead>
-        <tbody id="catTable"></tbody>
-      </table>
-    </div>
-  </div>
-</details>
-
 <details class="fold" id="secLoanFold">
   <summary><span><span class="chev">▸</span>&nbsp; Internal Book Transfers (Pindah Buku)</span><span class="hint" id="loanFoldHint">non-operational</span></summary>
   <div class="fold-body">
@@ -481,18 +469,6 @@ a{color:#9a6f0a}
       <table>
         <thead><tr><th>From (paid by)</th><th>To (received by)</th><th>Type</th><th class="num">Amount (IDR)</th></tr></thead>
         <tbody id="loanTable"></tbody>
-      </table>
-    </div>
-  </div>
-</details>
-
-<details class="fold">
-  <summary><span><span class="chev">▸</span>&nbsp; Key Transactions of the Month</span><span class="hint">largest movements</span></summary>
-  <div class="fold-body">
-    <div class="table-scroll" style="margin-top:10px">
-      <table>
-        <thead><tr><th>Date</th><th>Entity</th><th>Description</th><th>Type</th><th class="num">Amount (IDR)</th></tr></thead>
-        <tbody id="hlTable"></tbody>
       </table>
     </div>
   </div>
@@ -4251,21 +4227,6 @@ function renderEntTable(){
   document.getElementById('entTable').innerHTML=h;
 }
 
-function renderCatTable(a){
-  const cats=Object.entries(a.opexBD).sort((x,y)=>y[1]-x[1]);
-  let h='';
-  cats.forEach(([k,v],i)=>{
-    const c=CATCOLORS[i%CATCOLORS.length];
-    h+=`<tr style="cursor:pointer" onclick="openCat('${k.replace(/'/g,"\\'")}')">
-      <td><span class="pill" style="background:${c}22;color:${c}">${k}</span></td>
-      <td class="num neg">${fmt(v)}</td>
-      <td class="num">${(v/a.opex*100).toFixed(1)}%</td></tr>`;
-  });
-  h+=`<tr style="background:var(--blue-50);font-weight:700"><td><strong>TOTAL OPERATING EXPENSES</strong></td>
-    <td class="num neg"><strong>${fmt(a.opex)}</strong></td><td class="num"><strong>100%</strong></td></tr>`;
-  document.getElementById('catTable').innerHTML=h;
-}
-
 function renderLoans(){
   const tb=document.getElementById('loanTable');
   const ids=scopeIds();
@@ -4300,36 +4261,6 @@ function renderLoans(){
   });
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="3"><strong>TOTAL BOOK TRANSFERS — ${MONTHS[MONTH].toUpperCase()}</strong></td><td class="num"><strong>${fmt(tot)}</strong></td></tr>`;
   tb.innerHTML=h;
-}
-
-function renderHighlights(){
-  const ids=scopeIds();
-  let rows;
-  if(MONTH==='MAY'){
-    rows=HIGHLIGHTS.filter(t=>ids.includes(t.e)).slice().sort((x,y)=>Math.abs(y.amt)-Math.abs(x.amt));
-    let h='';
-    rows.forEach(t=>{
-      const tag=t.ty==='Revenue'?'in':(t.ty==='Expense'?'out':'loan');
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${t.d}</td>
-        <td>${pill(t.e)}</td><td style="font-size:12.5px">${t.desc}</td>
-        <td><span class="tag ${tag}">${t.ty}</span></td>
-        <td class="num ${t.amt>=0?'pos':'neg'}">${t.amt>=0?'+':'–'} ${fmt(Math.abs(t.amt))}</td></tr>`;
-    });
-    document.getElementById('hlTable').innerHTML=h||`<tr><td colspan="5" style="text-align:center;color:var(--muted)">No highlights for this scope.</td></tr>`;
-    return;
-  }
-  // Apr/Jun: derive top movements from transaction detail
-  rows=TX.filter(t=>(t.mo||'MAY')===MONTH&&ids.includes(t.e)).slice()
-    .sort((x,y)=>y.amt-x.amt).slice(0,15);
-  let h='';
-  rows.forEach(t=>{
-    const tag=t.type==='rev'?'in':'out';
-    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${t.d}</td>
-      <td>${pill(t.e)}</td><td style="font-size:12.5px">${t.desc}</td>
-      <td><span class="tag ${tag}">${t.type==='rev'?'Revenue':'Expense'}</span></td>
-      <td class="num ${t.type==='rev'?'pos':'neg'}">${t.type==='rev'?'+':'–'} ${fmt(t.amt)}</td></tr>`;
-  });
-  document.getElementById('hlTable').innerHTML=h||`<tr><td colspan="5" style="text-align:center;color:var(--muted)">No data for this scope in ${MONTHS[MONTH]}.</td></tr>`;
 }
 
 // ─── CHARTS ──────────────────────────────────────────────────────────────────
@@ -5004,7 +4935,7 @@ function openBDItem(type,encKey){
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="5"><strong>TOTAL TRANSACTIONS</strong></td><td class="num ${cls}"><strong id="txd-total-bd">${fmt(s)}</strong></td><td></td><td></td></tr></tbody></table></div>`;
     if(hasResidual) h+=`<p style="color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:8px"><b>Summary</b> rows represent entities whose figures are consolidated from bank-report category totals, so the TOTAL here matches the <b>By Entity</b> TOTAL above.</p>`;
   } else {
-    h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals — their largest transactions appear under <b>"Key Transactions of the Month"</b>.</p>`;
+    h+=`<p style="color:var(--muted);font-size:12.5px;line-height:1.7">Per-transaction detail for this item is not yet loaded into the consolidated dashboard. Full transaction detail is currently available for <b>PT Magnum Estate International &amp; PT Sky Stars Villas</b> (April–June), <b>KSO SUP &amp; KSO Magnum</b> (May), and <b>ICG Group &amp; PT BBU</b> (April &amp; June). Other entities are consolidated from their bank-report category totals.</p>`;
   }
   showModal((isRev?'Revenue — ':'OpEx Category — ')+key,h,true);
   if(tx.length||hasResidual){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-bd',totalId:'txd-total-bd'}; updateTxdFilterIndicators(); }
@@ -5054,7 +4985,6 @@ function openCatEntity(type,encKey,id,fromEntity){
   showModal(`${ENT[id].name} — ${key}`,h,true);
   if(tx.length){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-ce',totalId:'txd-total-ce'}; updateTxdFilterIndicators(); }
 }
-function openCat(cat){openBDItem('opex',encodeURIComponent(cat));}
 // Renders one transaction (or residual/summary) row for the OpEx/Revenue drill-down tables,
 // with a Category column and an Edit action — mirrors the look of the Outstanding Liability
 // table. Edit is only offered for genuine transaction rows (x.id set); residual "not itemized"
@@ -8252,7 +8182,7 @@ function renderAll(){
   const a=agg();
   renderBanner();renderKpiCash(a);renderAlert(a);renderKpiFin(a);renderLiabTopVendor();renderLiabPriority();
   renderEntChart();renderOpexChart(a);renderRevBD(a);
-  renderEntTable();renderCatTable(a);renderLoans();renderHighlights();
+  renderEntTable();renderLoans();
   renderFinancialHealth(a);renderCashInOutChart();renderRevByEntChart();renderTopExpCats(a);renderAgingChart();renderOutstandingTrendChart();renderIcSummary();
   renderFixCostTrend();renderOverdueInvoices();
 }
