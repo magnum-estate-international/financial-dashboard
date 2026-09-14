@@ -3382,7 +3382,7 @@ function openOtherReceivable(){
     </div>
   </div>`;
   if(!groups.length){
-    h+=`<p style="color:var(--muted);font-size:12.5px">No Other Receivable transactions yet — add one via <b>Update Data → Update Transaction → One at a time</b>.</p>`;
+    h+=`<p style="color:var(--muted);font-size:12.5px">No Other Receivable transactions yet — add one via <b>Update Data → Add a Transaction</b>.</p>`;
     showModal('Other Receivable',h,true);
     return;
   }
@@ -6203,9 +6203,8 @@ function computeTxRow(r){
     }
   }
 }
-// ── Update Transaction — single-entry save, used by the "One at a time" tab in the Update
-// Transaction section. Mirrors the bulk importer's own save path exactly (see the tx-import
-// button handler in renderTxPreview): insert one transactions row, then patch
+// ── Add a Transaction — single-entry save, the only way this section works now (its old bulk
+// Excel mode was retired in favor of Import Bank Ledger). Insert one transactions row, then patch
 // entity_period_totals additively for that entity+period — never recompute the headline from
 // scratch, since it can legitimately run ahead of itemized detail. ──
 function onTx1FlowChange(){
@@ -10046,12 +10045,13 @@ async function renderEntryBody(){
   }
   // ── The bulk-import / one-time-setup sections below are used less often than the four above,
   // so they sit further down the panel. ──
-  // ── Update Transaction — single-entry input only. Bulk Excel import used to live here too, but
-  // it's been retired in favor of Import Bank Ledger below (which additionally keeps each bank
-  // account's running balance correct, and shares one duplicate-check with everything else entered
-  // there) — this is now just the quick one-off manual entry, same save handler (saveTxOne) as
-  // before. ──
-  h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Update Transaction</summary>'
+  // ── Add a Transaction (formerly "Update Transaction") — single-entry input only. Bulk Excel
+  // import used to live here too, but it's been retired in favor of Import Bank Ledger below (which
+  // additionally keeps each bank account's running balance correct, and shares one duplicate-check
+  // with everything else entered there) — this is now just the quick one-off manual entry, same
+  // save handler (saveTxOne) as before. Renamed to match the "Add a ..." naming of its neighbors
+  // (Add a Daily Payment Plan, Add an Outstanding Liability, Add a Fixed Cost). ──
+  h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Add a Transaction</summary>'
     +'<div style="padding:12px 2px 0">'
     +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Add a single transaction directly — Opex, Revenue, Loan Affiliate, Pinbuk, Other Receivable, and Shareholder Capital Deposit are all supported here. New rows are added to the consolidated numbers immediately. For many transactions at once, use <b>Import Bank Ledger</b> further down instead.</div>'
     +'<div id="tx-single">'
@@ -10167,7 +10167,7 @@ async function renderEntryBody(){
   {
     h+='<details style="margin:4px 0 22px;border-top:1px solid #eef2f7;padding-top:14px"><summary style="font-size:13.5px;font-weight:700;color:#141b2d;cursor:pointer;display:inline-flex;align-items:center;gap:7px">'+ICON.file()+'Import Bank Ledger</summary>'
       +'<div style="padding:12px 2px 0">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate (Counterparty must be one of the 16 PTs, or ask an admin to add a new one); <b>Capital</b> (always a shareholder deposit, entered as Debit) also feeds the Shareholder Capital Deposit card; <b>Other Receivable</b> also feeds the Other Receivable card (Debit = In/refund received, Credit = Out/paid to the person); <b>Financing</b> (a loan whose lender is neither one of the 16 PTs nor a shareholder, e.g. a vehicle-backed loan — Debit when received, Credit for each repayment) and <b>Pinbuk</b> (transfer between the group\'s own accounts) only affect this account\'s balance and appear nowhere else. This is now the only way to bulk-import transactions — Update Transaction\'s Excel import has been retired in its favor; use its "One at a time" tab for a quick single manual entry instead. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Formatted like a real bank book/statement: one row per transaction with Debit, Credit and Balance, plus a <b>Code</b> to route it. Cash in goes in <b>Debit</b>, cash out goes in <b>Credit</b> — matching how a bank statement itself is usually printed. Import is always for <b>one specific account</b> — pick it below first, since Debit/Credit/Balance only balance sequentially within a single account, never mixed across accounts in one file. <b>Revenue</b>/<b>Opex</b> rows also feed the Revenue/Expenses boxes; <b>AR</b>/<b>AP</b> rows also feed Loan Affiliate (Counterparty must be one of the 16 PTs, or ask an admin to add a new one); <b>Capital</b> (always a shareholder deposit, entered as Debit) also feeds the Shareholder Capital Deposit card; <b>Other Receivable</b> also feeds the Other Receivable card (Debit = In/refund received, Credit = Out/paid to the person); <b>Financing</b> (a loan whose lender is neither one of the 16 PTs nor a shareholder, e.g. a vehicle-backed loan — Debit when received, Credit for each repayment) and <b>Pinbuk</b> (transfer between the group\'s own accounts) only affect this account\'s balance and appear nowhere else. This is now the only way to bulk-import transactions — the old bulk-Excel mode under <b>Add a Transaction</b> has been retired in its favor; that section is now just for a quick single manual entry. Fill in <b>Document Link</b> (a Google Drive link shared "Anyone with the link") to attach supporting evidence — it\'s pulled into secure storage automatically, so a viewer looking at an expense/opex detail on the dashboard can open the document right there. Leave it blank if there\'s no document yet — one can be attached later via the 📎 icon in the ledger view.</div>'
       +(BANK_ACCOUNTS.length?'':'<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin-bottom:10px">Add at least one bank account above first.</div>')
       +'<div style="margin-bottom:12px">'
       +'<select id="bl-acct" style="'+inp+';max-width:420px">'+(BANK_ACCOUNTS.length?'<option value="">— pick an account —</option>'+BANK_ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escH(bankAccountLabelFull(a))+'</option>').join(''):'<option value="">No accounts yet</option>')+'</select>'
@@ -10297,7 +10297,8 @@ async function renderEntryBody(){
   h+='<div id="en-lmsg" style="font-size:12px;color:#b3261e;margin-top:10px;min-height:1px"></div>';
   body.innerHTML=h;
   const setMsg=(id,t,ok)=>{const m=document.getElementById(id); if(m){m.style.color=ok?'#2b7a4b':'#b3261e'; m.textContent=t;}};
-  // ── Update Transaction tab toggle + single-entry save wiring ──
+  // ── Add a Transaction: single-entry save wiring (tab-toggle vars below are dead — the bulk-Excel
+  // tab/pane they toggled no longer exist in the DOM, so these just no-op) ──
   {
     const tabOne=document.getElementById('tx-tab-one'), tabBulk=document.getElementById('tx-tab-bulk');
     const paneOne=document.getElementById('tx-single'), paneBulk=document.getElementById('tx-bulk');
@@ -10421,7 +10422,7 @@ async function renderEntryBody(){
         ['Owner (PT)','Counterparty','Type','Date','Description','Amount'],
         [eName(EIDS[0]),cpOpts.find(n=>n!==eName(EIDS[0]))||cpOpts[0],'AP','2026-07-01','Sample loan affiliate transaction',1000000],
         [{col:'A',values:EIDS.map(eName)},{col:'B',values:cpOpts},{col:'C',values:['AP','AR']}],
-        'Owner must be one of the 16 PTs tracked in this dashboard. Counterparty must be one of those same 16, or a name an admin has added (the "+ Add" button next to the Counterparty picker in Update Transaction or Import Bank Ledger).');
+        'Owner must be one of the 16 PTs tracked in this dashboard. Counterparty must be one of those same 16, or a name an admin has added (the "+ Add" button next to the Counterparty picker in Add a Transaction or Import Bank Ledger).');
     } finally { ictxTplBtn.disabled=false; }
   };
   const ictxExpBtn=document.getElementById('ictx-export');
