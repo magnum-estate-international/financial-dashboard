@@ -6032,7 +6032,7 @@ function computeOpdRow(r){
   else if(r.idRaw && !r.existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
   else if(!r.entityMatch) error='Entity not recognized';
   else if(!r.catMatch) error='Category not recognized — pick one, or add it via Manage Categories first';
-  else if(!r.vendorMatch) error='Vendor not recognized — pick one, or add it via Manage Vendors first';
+  else if(!r.vendorMatch) error='Vendor not recognized — pick one, or type it in the Vendor cell below to add it';
   else if(!r.desc) error='Missing description';
   else if(!r.inv) error='Invalid invoice date';
   else if(!r.due) error='Invalid due date';
@@ -6061,7 +6061,7 @@ function opdCatCell(r,i){
   return r.catMatch?escH(r.catMatch):fixPickCellHtml('opd-fix-cat-'+i,`fixOpdField(${i},'cat',this.value)`,OPEX_CATS_G||[],'— pick category —','category');
 }
 function opdVendorCell(r,i){
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('opd-fix-vendor-'+i,`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('opd-fix-vendor-'+i,`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
 }
 function renderOpdPreview(){
   const el=document.getElementById('opd-preview'); if(!el) return;
@@ -6498,7 +6498,7 @@ function computeBlRow(r){
   else if(r.code==='orec'&&!r.cp) error='Counterparty is required for Other Receivable';
   else if(r.code==='capital'&&!(r.vendorMatch||r.vendorRaw)) error='Shareholder name is required for Capital deposit';
   else if(r.code==='financing'&&!(r.vendorMatch||r.vendorRaw)) error='Lender name is required for Financing';
-  else if(r.code==='opex'&&r.vendorRaw&&!r.vendorMatch) error='Vendor not recognized — pick one, or add it via Manage Vendors first';
+  else if(r.code==='opex'&&r.vendorRaw&&!r.vendorMatch) error='Vendor not recognized — pick one, or type it in the Vendor cell below to add it';
   r.error=error;
   r.amt=debit>0?debit:kredit;
   r.contra=isRefund||isRevRefund;
@@ -6567,7 +6567,7 @@ function blVendorCell(r,i){
   if(r.code==='capital') return r.vendor?escH(r.vendor):`<input id="bl-fix-vendor-${i}" placeholder="Shareholder name" style="font-size:11px;padding:3px 4px" onchange="fixBlField(${i},'vendor',this.value)">`;
   if(r.code==='financing') return r.vendor?escH(r.vendor):`<input id="bl-fix-vendor-${i}" placeholder="Lender name" style="font-size:11px;padding:3px 4px" onchange="fixBlField(${i},'vendor',this.value)">`;
   if(r.code!=='opex') return '—';
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('bl-fix-vendor-'+i,`fixBlField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('bl-fix-vendor-'+i,`fixBlField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
 }
 // AR/AP's counterparty is a PT, so it gets the same closed-list picker as Update Transaction's Loan
 // Affiliate flow; Other Receivable's is a person, so it stays a plain free-text fix like Vendor.
@@ -6748,7 +6748,7 @@ function computeFcdRow(r){
   else if(r.idRaw && !r.existing) error='ID not found in your scope — leave ID blank to add as a new entry instead';
   else if(!r.entityMatch) error='Entity not recognized';
   else if(!r.catMatch) error='Category not recognized — pick one, or add it via Manage Categories first';
-  else if(r.vendorRaw && !r.vendorMatch) error='Vendor not recognized — pick one, or add it via Manage Vendors first';
+  else if(r.vendorRaw && !r.vendorMatch) error='Vendor not recognized — pick one, or type it in the Vendor cell below to add it';
   else if(!r.desc) error='Missing description';
   else if(!r.amt||r.amt<=0||isNaN(r.amt)) error='Invalid amount';
   r.error=error;
@@ -6772,7 +6772,7 @@ function fcdCatCell(r,i){
 }
 function fcdVendorCell(r,i){
   if(!r.vendorRaw) return '—';
-  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('fcd-fix-vendor-'+i,`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —');
+  return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('fcd-fix-vendor-'+i,`fixFcdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
 }
 function renderFcdPreview(){
   const el=document.getElementById('fcd-preview'); if(!el) return;
@@ -6902,10 +6902,11 @@ function searchableSelectBlur(id){
   else { const cur=norm.find(o=>o.value===hidden.value); q.value=cur?cur.label:(hidden.value||''); }
 }
 // "+ Add new…" row inside any searchable picker with allowCreate set — registers the typed name
-// via the same cascade-safe path Manage Categories uses, instead of a separate prompt(). New
-// categories are created as ungrouped opex categories; assign a parent group afterwards via Manage
-// Categories if needed. Vendor no longer offers this — see vendorSelectHtml/fixPickCellHtml, a
-// vendor name must already exist in Manage Vendors (admin-only) so spelling can't drift.
+// via the same cascade-safe path Manage Categories/Manage Vendors uses, instead of a separate
+// prompt(). New categories are created as ungrouped opex categories; assign a parent group
+// afterwards via Manage Categories if needed. Vendor creation here relies on RLS (vendors_insert:
+// admin or editor) to keep viewers from actually inserting — the button itself isn't role-checked,
+// since every screen that renders a vendor picker is already an editor/admin-only entry form.
 async function searchableCreate(id){
   const list=document.getElementById(id+'-list');
   const createType=list&&list.dataset.createType;
@@ -6918,6 +6919,11 @@ async function searchableCreate(id){
       await addCategory(name,'opex',null);
       await ensureOpexCatsG();
       window.SS_OPTIONS[id]=ssNorm(OPEX_CATS_G);
+    } else if(createType==='vendor'){
+      await addVendor(name);
+      invalidateVendorCache();
+      await ensureVendorsG();
+      window.SS_OPTIONS[id]=ssNorm(VENDORS_G);
     }
     q.value=name; hidden.value=name;
     if(list) list.style.display='none';
@@ -6928,10 +6934,12 @@ function clearSearchableSelect(id){
   const q=document.getElementById(id+'-q'), hidden=document.getElementById(id);
   if(q) q.value=''; if(hidden) hidden.value='';
 }
-// Closed list only — a vendor name must already exist in Manage Vendors (admin-only) so spelling
-// never drifts into a new, differently-spelled duplicate of an existing vendor.
+// Any editor/admin entering a transaction can add a missing vendor right here (an exact-name
+// match still wins over creating a near-duplicate — see ssRenderList's `exact` check) instead of
+// having to stop and go add it via Manage Vendors first. RLS (vendors_insert) is the real gate;
+// Manage Vendors itself stays admin-only for renaming/deleting the list.
 function vendorSelectHtml(id,current,extraStyle){
-  return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search vendor…',style:extraStyle||''});
+  return searchableSelectHtml(id,VENDORS_G||[],current||'',{placeholder:'Search vendor…',style:extraStyle||'',allowCreate:'vendor'});
 }
 // Loan Affiliate's counterparty used to be free text, which let the exact same PT get typed
 // inconsistently across entries (e.g. "PT Magnum Estate International" vs "PT Magnum Estate
@@ -9455,7 +9463,7 @@ async function renderEntryBody(){
       +'<div id="opd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div>'
       +'<div id="opd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name, Category an existing cost category, and Vendor an existing vendor name (add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment), REC (monthly payment), or PRG (paid by project progress/milestone); defaults to OTP if left blank or unrecognized.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Invoice #, Vendor, Category, Frequency, Invoice Date, Due Date, Amount, Description</b>. Entity must match a PT name, Category an existing cost category (add new ones via Manage Categories first), and Vendor an existing vendor name (a flagged row\'s Vendor cell lets you add a new one right there) — rows that don\'t match are flagged before import so nothing bad gets saved silently. Frequency is optional — OTP (one time payment), REC (monthly payment), or PRG (paid by project progress/milestone); defaults to OTP if left blank or unrecognized.</div>'
       +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b> (e.g. correcting Frequency for many rows at once): click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
       +'<button id="opd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
       +'<div><label for="opd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
@@ -9490,7 +9498,7 @@ async function renderEntryBody(){
       +'<div id="fcd-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
       +'</div>'
       +'<div id="fcd-bulk" style="display:none">'
-      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Category, Vendor, Description, Amount</b>. Entity must match a PT name, Category an existing cost category, and Vendor an existing vendor name (leave blank for no vendor, or add new ones via Manage Vendors first) — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
+      +'<div style="font-size:12px;color:#3a4254;margin-bottom:10px">Columns (any order, first row = headers): <b>Entity, Category, Vendor, Description, Amount</b>. Entity must match a PT name, Category an existing cost category (add new ones via Manage Categories first), and Vendor an existing vendor name (leave blank for no vendor, or a flagged row\'s Vendor cell lets you add a new one right there) — rows that don\'t match are flagged before import so nothing bad gets saved silently.</div>'
       +'<div style="font-size:12px;color:#3a4254;background:#f7f8fd;border:1px solid #e4e7ef;border-radius:10px;padding:8px 12px;margin-bottom:10px"><b>Bulk-editing existing data</b>: click "Export current data" above, edit the values you need in Excel, then re-upload that same file here — rows that still have their <b>ID</b> column filled in are updated in place instead of creating duplicates. Leave ID blank (or use the blank template) to add brand-new entries.</div>'
       +'<button id="fcd-template" type="button" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:12px;font-size:12.5px;font-weight:700;padding:9px 15px;cursor:pointer;margin-bottom:10px;display:inline-flex;align-items:center;gap:6px">'+ICON.download()+'Download template (.xlsx)</button>'
       +'<div><label for="fcd-file" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;background:#f5e8c8;color:#9a6f0a;font-size:12.5px;font-weight:700;padding:10px 15px;cursor:pointer">'+ICON.clip()+'Choose Excel/CSV file</label>'
