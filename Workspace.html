@@ -3379,13 +3379,23 @@ function openOtherReceivable(){
 }
 function openOtherReceivableCp(encCp){
   const cp=decodeURIComponent(encCp);
+  const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const rows=otherReceivablesInScope().filter(r=>r.cp===cp).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOtherReceivable()">‹ Back to all people</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(cp)}</h4>`;
   let running=0;
-  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Date</th><th>Entity</th><th>Description</th><th class="num">Out</th><th class="num">Refund (In)</th><th class="num">Balance</th></tr></thead><tbody>`;
+  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Date</th><th>Entity</th><th>Description</th><th class="num">Out</th><th class="num">Refund (In)</th><th class="num">Balance</th>${canEdit?'<th></th>':''}</tr></thead><tbody>`;
   rows.forEach(r=>{
     running+=r.dir==='out'?r.amt:-r.amt;
+    let editCell='';
+    if(canEdit){
+      const items=[
+        menuItem(ICON.edit()+' Edit',`openOrecEdit(${r.id},'${encCp}')`),
+        menuItem(ICON.trash()+' Delete',`deleteOrecTx(${r.id},'${encCp}')`,'var(--red)'),
+      ];
+      editCell=`<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${r.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+        +`<div id="ope-menu-${r.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
+    }
     h+=`<tr>
       <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||r.day||'—'}</td>
       <td style="font-size:12.5px">${escH(eName(r.e))}</td>
@@ -3393,10 +3403,59 @@ function openOtherReceivableCp(encCp){
       <td class="num neg">${r.dir==='out'?fmt(r.amt):''}</td>
       <td class="num pos">${r.dir==='in'?fmt(r.amt):''}</td>
       <td class="num" style="font-weight:800;color:${running>=0?'#b3261e':'#2b7a4b'}">${running>=0?fmt(running):'− '+fmt(Math.abs(running))}</td>
+      ${editCell}
     </tr>`;
   });
   h+=`</tbody></table></div>`;
   showModal('Other Receivable — '+cp,h,true);
+}
+function openOrecEdit(id,encCp){
+  const r=OTHER_RECV.find(x=>x.id===id); if(!r) return;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOtherReceivableCp('${encCp}')">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Other Receivable</h4>`;
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  h+=opeField('Entity',`<select id="orece-ent" style="${inp}">`+EIDS.map(id2=>`<option value="${id2}"${id2===r.e?' selected':''}>${escH(eName(id2))}</option>`).join('')+`</select>`)
+    +opeField('Counterparty (person\'s name)',`<input id="orece-cp" value="${escH(r.cp)}" style="${inp}">`)
+    +opeField('Direction',`<select id="orece-dir" style="${inp}"><option value="out"${r.dir==='out'?' selected':''}>Out — paid to this person</option><option value="in"${r.dir==='in'?' selected':''}>In — refund from this person</option></select>`)
+    +opeField('Date',`<input id="orece-date" type="date" value="${r.date||''}" style="${inp}">`)
+    +opeField('Description',`<input id="orece-desc" value="${escH(r.desc||'')}" style="${inp}">`)
+    +opeField('Amount (IDR)',`<input id="orece-amt" type="number" min="0" step="1" value="${r.amt}" style="${inp}">`)
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveOrecEdit(${id},'${encCp}')">Save changes</button>`
+    +`<span id="orece-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Other Receivable',h);
+}
+async function saveOrecEdit(id,encCp){
+  const err=document.getElementById('orece-err'); err.textContent='';
+  const entity=document.getElementById('orece-ent').value;
+  const cp=document.getElementById('orece-cp').value.trim();
+  const dir=document.getElementById('orece-dir').value;
+  const date=document.getElementById('orece-date').value||null;
+  const desc=document.getElementById('orece-desc').value.trim();
+  const amt=Number(document.getElementById('orece-amt').value);
+  if(!cp) return void(err.textContent='Counterparty is required.');
+  if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Amount must be a positive number.');
+  try{
+    const body={entity_code:entity,counterparty:cp,direction:dir,tx_date:date,description:desc||null,amount_idr:amt};
+    if(date){ const P=periodFromDateG(date); body.period_code=P.code; body.day_label=dayLbl(date); }
+    const r=await authedFetch(SB_URL+'/rest/v1/other_receivables?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const t=OTHER_RECV.find(x=>x.id===id);
+    if(t){ t.e=entity; t.cp=cp; t.dir=dir; t.date=date; if(body.period_code){t.period=body.period_code; t.day=body.day_label;} t.desc=desc; t.amt=amt; }
+    renderKpiFin(agg());
+    openOtherReceivableCp(encodeURIComponent(cp));
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function deleteOrecTx(id,encCp){
+  if(!confirm('Delete this Other Receivable transaction? This cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/other_receivables?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const idx=OTHER_RECV.findIndex(x=>x.id===id);
+    if(idx>=0) OTHER_RECV.splice(idx,1);
+    renderKpiFin(agg());
+    openOtherReceivableCp(encCp);
+  }catch(e){ alert('Failed to delete: '+e.message); }
 }
 function mkOutstanding(o){
   const amt=+o.amount_idr, paidAmt=+(o.paid_amount_idr||0);
@@ -4724,7 +4783,71 @@ function openCapDepPerson(encPerson){
   h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="${tx.length?2:1}"><strong>TOTAL</strong></td><td class="num pos"><strong>${fmt(total)}</strong></td></tr></tbody></table>`;
   if(tx.length) h+=`</div>`;
   if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this shareholder in scope.</p>`;
+  // Entries actually entered through this dashboard (Input Transaction / Import Bank Ledger) are
+  // real loan_flows rows with an id — shown separately, below the historical reconciliation table
+  // above, since those older figures are a fixed consolidated summary with nothing to edit. Only
+  // these live rows get an Edit/Delete menu.
+  const canEdit=IS_ADMIN||MY_ROLE==='editor';
+  const live=list.filter(l=>l.id!=null&&(l.source==='Manual entry'||l.source==='Bank Ledger import'));
+  if(live.length){
+    h+=`<div style="font-size:11px;font-weight:800;letter-spacing:.4px;color:var(--muted);text-transform:uppercase;margin:18px 0 8px">Recorded via dashboard</div>`;
+    h+=`<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Period</th><th>Description</th><th class="num">Amount (IDR)</th>${canEdit?'<th></th>':''}</tr></thead><tbody>`;
+    live.forEach(l=>{
+      let editCell='';
+      if(canEdit){
+        const items=[
+          menuItem(ICON.edit()+' Edit',`openLoanFlowEdit(${l.id},'${encPerson}')`),
+          menuItem(ICON.trash()+' Delete',`deleteLoanFlow(${l.id},'${encPerson}')`,'var(--red)'),
+        ];
+        editCell=`<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${l.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+          +`<div id="ope-menu-${l.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
+      }
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${escH(MONTHS[l.period]||l.period||'—')}</td><td style="font-size:12.5px">${escH(l.desc||'—')}${sourceTagHtml(l.source)}</td><td class="num pos">${fmt(l.amt)}</td>${editCell}</tr>`;
+    });
+    h+=`</tbody></table></div>`;
+  }
   showModal(`${person} — Shareholder Capital Deposit`,h);
+}
+function openLoanFlowEdit(id,encPerson){
+  const l=(LOANS_BY_MONTH.Q2||[]).find(x=>x.id===id); if(!l) return;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openCapDepPerson('${encPerson}')">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Shareholder Capital Deposit</h4>`;
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  h+=opeField('Shareholder name',`<input id="lfe-cp" value="${escH(l.f)}" style="${inp}">`)
+    +opeField('Period',`<select id="lfe-per" style="${inp}">`+Q2_MONTHS.filter(m=>m!=='Q2').map(m=>`<option value="${m}"${m===l.period?' selected':''}>${escH(MONTHS[m]||m)}</option>`).join('')+`</select>`)
+    +opeField('Description',`<input id="lfe-desc" value="${escH(l.desc||'')}" style="${inp}">`)
+    +opeField('Amount (IDR)',`<input id="lfe-amt" type="number" min="0" step="1" value="${l.amt}" style="${inp}">`)
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveLoanFlowEdit(${id},'${encPerson}')">Save changes</button>`
+    +`<span id="lfe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit Shareholder Capital Deposit',h);
+}
+async function saveLoanFlowEdit(id,encPerson){
+  const err=document.getElementById('lfe-err'); err.textContent='';
+  const cp=document.getElementById('lfe-cp').value.trim();
+  const period=document.getElementById('lfe-per').value;
+  const desc=document.getElementById('lfe-desc').value.trim();
+  const amt=Number(document.getElementById('lfe-amt').value);
+  if(!cp) return void(err.textContent='Shareholder name is required.');
+  if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Amount must be a positive number.');
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/loan_flows?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({from_label:cp,period_code:period,description:desc||null,amount_idr:amt})});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    await refreshLoanFlows();
+    renderKpiFin(agg());
+    openCapDepPerson(encodeURIComponent(cp));
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function deleteLoanFlow(id,encPerson){
+  if(!confirm('Delete this Shareholder Capital Deposit entry? This cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/loan_flows?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    await refreshLoanFlows();
+    renderKpiFin(agg());
+    openCapDepPerson(encPerson);
+  }catch(e){ alert('Failed to delete: '+e.message); }
 }
 function openDetail(kind){
   const a=agg();
@@ -6024,7 +6147,7 @@ function findDuplicateTx(list,r){
 // Deposit, via Update Transaction) so the card/summary reflect it without a full page reload.
 async function refreshLoanFlows(){
   const loans=await sbFetch('loan_flows?select=*&order=id');
-  const mkLoan=r=>({f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr});
+  const mkLoan=r=>({id:r.id,f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr,desc:r.description||'',period:r.period_code,source:r.source_label});
   Object.keys(LOANS_BY_MONTH).forEach(p=>{ if(p!=='Q2'&&p!=='CUSTOM') LOANS_BY_MONTH[p]=loans.filter(l=>l.period_code===p).map(mkLoan); });
   LOANS_APR=LOANS_BY_MONTH.APR||[]; LOANS_MAY=LOANS_BY_MONTH.MAY||[]; LOANS_JUN=LOANS_BY_MONTH.JUN||[];
   LOANS_BY_MONTH.Q2=[...LOANS_APR,...LOANS_MAY,...LOANS_JUN];
@@ -7983,7 +8106,7 @@ async function loadFromSupabase(){
   const M={};
   tots.forEach(t=>{(M[t.entity_code]=M[t.entity_code]||{})[t.period_code]={rev:+t.revenue,opex:+t.opex,finIn:+t.financing_in,finOut:+t.financing_out};});
   Object.keys(M).forEach(id=>{const ks=Object.keys(M[id]); if(ks.length===1&&ks[0]==='MAY') delete M[id];});
-  const mkLoan=r=>({f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr});
+  const mkLoan=r=>({id:r.id,f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr,desc:r.description||'',period:r.period_code,source:r.source_label});
   const mkTx=r=>{const o={id:r.id,mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,vendor:r.vendor||null,k:r.raw_label,amt:+r.amount_idr,attachments:Array.isArray(r.attachments)?r.attachments:[],srcLabel:r.source_label||null}; if(r.contra)o.contra=1; return o;};
   const bs={TX:[],TX_MULTI:[],TX_MS:[],TX_ICG_OPEX:[]};
   txAll.forEach(r=>{(bs[r.source]=bs[r.source]||[]).push(mkTx(r));});
@@ -8291,11 +8414,11 @@ function openBankAccountLedger(id){
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const backCall=encodeURIComponent(`openBankAccountLedger(${id})`);
   const acctLbl=bankAccountLabelFull(a);
-  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Bank Account</th><th>Date</th><th>Code</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th></tr></thead><tbody>`;
+  h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Bank Account</th><th>Date</th><th>Code</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th><th></th></tr></thead><tbody>`;
   let saldo=a.opening;
-  h+=`<tr style="background:#f7f8fb"><td style="font-size:12px;color:var(--muted)">${escH(acctLbl)}</td><td colspan="5" style="font-size:12px;color:var(--muted)">Opening Balance (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td></tr>`;
+  h+=`<tr style="background:#f7f8fb"><td style="font-size:12px;color:var(--muted)">${escH(acctLbl)}</td><td colspan="5" style="font-size:12px;color:var(--muted)">Opening Balance (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td><td></td></tr>`;
   if(!rows.length){
-    h+=`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">No ledger entries yet for this account — import via <b>Update Data → Import Bank Ledger</b>.</td></tr>`;
+    h+=`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">No ledger entries yet for this account — import via <b>Update Data → Import Bank Ledger</b>.</td></tr>`;
   } else {
     rows.forEach(r=>{
       saldo+=r.debit-r.kredit;
@@ -8304,6 +8427,19 @@ function openBankAccountLedger(id){
       let docCell='<td></td>';
       if(hasDoc) docCell=`<td style="white-space:nowrap">${docViewChip('bank-ledger-docs',r.attachments)}</td>`;
       else if(canEdit) docCell=`<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerDocUpload('bank_ledger_entries',${r.id},'${backCall}')" title="Upload supporting document">${ICON.file(13)}</button></td>`;
+      // Pinbuk and Financing are the only two Codes whose sole record IS this bank_ledger_entries
+      // row (Revenue/Opex/AR/AP are mirrored into transactions/intercompany_transactions, which is
+      // where their own Edit/Delete already lives — editing the ledger's copy of those here instead
+      // would desync the two tables, so this menu is deliberately withheld for them).
+      let editCell='<td></td>';
+      if(canEdit && (r.code==='pinbuk'||r.code==='financing')){
+        const items=[
+          menuItem(ICON.edit()+' Edit',`openBlEntryEdit(${r.id},'${backCall}')`),
+          menuItem(ICON.trash()+' Delete',`deleteBlEntry(${r.id},'${backCall}')`,'var(--red)'),
+        ];
+        editCell=`<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${r.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+          +`<div id="ope-menu-${r.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
+      }
       h+=`<tr>
         <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escH(acctLbl)}</td>
         <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
@@ -8313,11 +8449,62 @@ function openBankAccountLedger(id){
         <td class="num neg">${r.kredit?fmt(r.kredit):''}</td>
         <td class="num" style="font-weight:800;color:${saldoPos?'#2b7a4b':'#b3261e'}">${fmt(saldo)}</td>
         ${docCell}
+        ${editCell}
       </tr>`;
     });
   }
   h+=`</tbody></table></div>`;
   showModal(eName(a.entity)+' — '+a.bank,h,true);
+}
+function openBlEntryEdit(id,backCall){
+  backCall=decodeURIComponent(backCall);
+  const r=BANK_LEDGER.find(x=>x.id===id); if(!r) return;
+  const isFin=r.code==='financing';
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit ${isFin?'Financing':'Pinbuk'} Entry</h4>`;
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  const dir=r.debit>0?'debit':'kredit';
+  const amt=r.debit>0?r.debit:r.kredit;
+  h+=opeField('Date',`<input id="ble-date" type="date" value="${r.date||''}" style="${inp}">`)
+    +opeField('Direction',`<select id="ble-dir" style="${inp}"><option value="debit"${dir==='debit'?' selected':''}>Debit — ${isFin?'loan received':'cash in'}</option><option value="kredit"${dir==='kredit'?' selected':''}>Credit — ${isFin?'repayment':'cash out'}</option></select>`)
+    +opeField('Amount (IDR)',`<input id="ble-amt" type="number" min="0" step="1" value="${amt}" style="${inp}">`)
+    +opeField('Description',`<input id="ble-desc" value="${escH(r.desc||'')}" style="${inp}">`);
+  if(isFin) h+=opeField('Lender name',`<input id="ble-vendor" value="${escH(r.vendor||'')}" style="${inp}">`);
+  if(r.code==='pinbuk') h+=`<div style="font-size:11.5px;color:var(--muted);margin:-4px 0 10px">A Pinbuk transfer is recorded as two separate rows (one on each account) — this edits only this side. If the amount or date is wrong, correct the matching row on the other account too.</div>`;
+  h+=`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveBlEntryEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
+    +`<span id="ble-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Edit '+(isFin?'Financing':'Pinbuk')+' Entry',h);
+}
+async function saveBlEntryEdit(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
+  const err=document.getElementById('ble-err'); err.textContent='';
+  const r=BANK_LEDGER.find(x=>x.id===id); if(!r) return void(err.textContent='Entry not found.');
+  const date=document.getElementById('ble-date').value||null;
+  const dir=document.getElementById('ble-dir').value;
+  const amt=Number(document.getElementById('ble-amt').value);
+  const desc=document.getElementById('ble-desc').value.trim();
+  const vendorInp=document.getElementById('ble-vendor');
+  if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Amount must be a positive number.');
+  const body={tx_date:date,description:desc||null,debit:dir==='debit'?amt:0,kredit:dir==='kredit'?amt:0};
+  if(vendorInp) body.vendor=vendorInp.value.trim()||null;
+  try{
+    const resp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries?id=eq.'+id,{method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(body)});
+    if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
+    r.date=date; r.desc=desc; r.debit=body.debit; r.kredit=body.kredit; if(vendorInp) r.vendor=body.vendor||'';
+    eval(backCall);
+  }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+async function deleteBlEntry(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
+  if(!confirm('Delete this ledger entry? This changes the account\'s running balance and cannot be undone.')) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries?id=eq.'+id,{method:'DELETE'});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const idx=BANK_LEDGER.findIndex(x=>x.id===id);
+    if(idx>=0) BANK_LEDGER.splice(idx,1);
+    eval(backCall);
+  }catch(e){ alert('Failed to delete: '+e.message); }
 }
 async function runDashboard(){
   const D=await loadFromSupabase();
