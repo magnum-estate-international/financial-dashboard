@@ -6810,13 +6810,25 @@ function vendorSelectHtml(id,current,extraStyle){
 // admin has explicitly added via intercompany_counterparties (external/holding PTs not tracked as
 // entities here) — no free-text entry for anyone else, so a new spelling can't sneak in.
 let IC_COUNTERPARTIES=[];
+// All 16 tracked entities' names, independent of the current user's own entity_grants scope — the
+// `entities` table itself is RLS-gated by allowed_entity(), so a user only granted access to a
+// couple of PTs would otherwise never see the other 14 as selectable AR/AP counterparties, even
+// though naming one as a counterparty doesn't expose any of its financial data. Backed by the
+// list_all_entity_names() SECURITY DEFINER RPC, which deliberately bypasses that per-user scoping.
+let ALL_ENTITY_NAMES_G=null;
 async function refreshIcCounterparties(){
   try{ IC_COUNTERPARTIES=(await sbFetch('intercompany_counterparties?select=*&order=name')).map(r=>({id:r.id,name:r.name,active:r.is_active!==false})); }
   catch(e){ IC_COUNTERPARTIES=IC_COUNTERPARTIES||[]; }
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/rpc/list_all_entity_names',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r.ok) ALL_ENTITY_NAMES_G=(await r.json()).map(e=>e.name);
+  }catch(e){}
   return IC_COUNTERPARTIES;
 }
 function icCounterpartyOptions(){
-  const names=new Set(EIDS.map(eName));
+  // Falls back to the caller's own scoped EIDS if the RPC hasn't loaded yet (e.g. called before
+  // refreshIcCounterparties()) or failed — better an incomplete list than none at all.
+  const names=new Set((ALL_ENTITY_NAMES_G&&ALL_ENTITY_NAMES_G.length)?ALL_ENTITY_NAMES_G:EIDS.map(eName));
   (IC_COUNTERPARTIES||[]).filter(c=>c.active).forEach(c=>names.add(c.name));
   return Array.from(names).sort();
 }
