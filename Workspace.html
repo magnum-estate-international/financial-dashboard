@@ -3101,8 +3101,8 @@ function renderKpiCash(a){
 // the group's own AR/AP recap spreadsheets (see intercompany_ar_ap table) — read-only for now,
 // deliberately NOT scoped by the entity/group/month filters since it isn't month-bound data. ───
 function intercompanyCard(){
-  const totAP=IC_TX.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
-  const totAR=IC_TX.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
+  const totAP=IC_TX.filter(r=>r.type==='AP').reduce((s,r)=>s+icRowAmt(r),0);
+  const totAR=IC_TX.filter(r=>r.type==='AR').reduce((s,r)=>s+icRowAmt(r),0);
   const owners=new Set(IC_TX.map(r=>r.owner)).size;
   return `<div class="pcard boxed gold-hl clickable" onclick="openIntercompany()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
@@ -3124,7 +3124,7 @@ function icOwnerCounterpartySummary(){
   IC_TX.forEach(r=>{
     const key=r.owner+'␟'+r.cp;
     const g=byPair[key]=byPair[key]||{owner:r.owner,cp:r.cp,ap:0,ar:0,n:0};
-    if(r.type==='AP') g.ap+=r.amt; else g.ar+=r.amt;
+    if(r.type==='AP') g.ap+=icRowAmt(r); else g.ar+=icRowAmt(r);
     g.n++;
   });
   return Object.values(byPair).map(g=>({...g,net:g.ar-g.ap}));
@@ -3209,7 +3209,7 @@ function icTxLedgerRowHtml(r,saldo,encOwner){
   const saldoPos=saldo>=0;
   return `<tr>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
-    <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}${sourceTagHtml(r.source)}</td>
+    <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}${r.category==='Repayment Loan'?'<span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px;margin-left:6px">repayment</span>':''}${sourceTagHtml(r.source)}</td>
     <td class="num neg">${r.type==='AP'?'− '+fmt(r.amt):''}</td>
     <td class="num pos">${r.type==='AR'?'+ '+fmt(r.amt):''}</td>
     <td class="num" style="font-weight:800;color:${saldoPos?'#2b7a4b':'#b3261e'}">${saldoPos?'+':'− '}${fmt(Math.abs(saldo))}</td>
@@ -3219,8 +3219,8 @@ function icTxLedgerRowHtml(r,saldo,encOwner){
 function openIntercompanyOwner(encOwner){
   const owner=decodeURIComponent(encOwner);
   const rows=IC_TX.filter(r=>r.owner===owner);
-  const apTot=rows.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
-  const arTot=rows.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
+  const apTot=rows.filter(r=>r.type==='AP').reduce((s,r)=>s+icRowAmt(r),0);
+  const arTot=rows.filter(r=>r.type==='AR').reduce((s,r)=>s+icRowAmt(r),0);
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openIntercompany()">‹ Back to all PTs</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(owner)}</h4>`;
   h+=icStatCards(apTot,arTot);
@@ -3229,8 +3229,8 @@ function openIntercompanyOwner(encOwner){
   const byCp={};
   rows.forEach(r=>{ (byCp[r.cp]=byCp[r.cp]||[]).push(r); });
   const cpNames=Object.keys(byCp).sort((a,b)=>{
-    const na=byCp[a].reduce((s,r)=>s+(r.type==='AR'?r.amt:-r.amt),0);
-    const nb=byCp[b].reduce((s,r)=>s+(r.type==='AR'?r.amt:-r.amt),0);
+    const na=byCp[a].reduce((s,r)=>s+(r.type==='AR'?1:-1)*icRowAmt(r),0);
+    const nb=byCp[b].reduce((s,r)=>s+(r.type==='AR'?1:-1)*icRowAmt(r),0);
     return Math.abs(nb)-Math.abs(na);
   });
   if(!cpNames.length){
@@ -3238,7 +3238,7 @@ function openIntercompanyOwner(encOwner){
   }
   cpNames.forEach(cp=>{
     const list=byCp[cp].slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-    const finalNet=list.reduce((s,r)=>s+(r.type==='AR'?r.amt:-r.amt),0);
+    const finalNet=list.reduce((s,r)=>s+(r.type==='AR'?1:-1)*icRowAmt(r),0);
     const finalPos=finalNet>=0;
     h+=`<div style="margin:18px 0 8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div style="font-size:13px;font-weight:800;color:var(--blue-900)">${escH(cp)}</div>
@@ -3247,7 +3247,7 @@ function openIntercompanyOwner(encOwner){
     h+=`<div class="table-scroll" style="max-height:320px;margin-bottom:6px"><table><thead><tr><th>Date</th><th>Description</th><th class="num">Debit (AP)</th><th class="num">Credit (AR)</th><th class="num">Balance</th><th></th></tr></thead><tbody>`;
     let saldo=0;
     list.forEach(r=>{
-      saldo+=(r.type==='AR'?r.amt:-r.amt);
+      saldo+=(r.type==='AR'?1:-1)*icRowAmt(r);
       h+=icTxLedgerRowHtml(r,saldo,encOwner);
     });
     h+=`</tbody></table></div>`;
@@ -3272,6 +3272,7 @@ function openIcTxEdit(id,encOwner){
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">PT (Owner): <b style="color:var(--ink)">${escH(r.owner)}</b></div>`
     +opeField('Counterparty',`<input id="ictxe-cp" value="${escH(r.cp)}" style="${inp}">`)
     +opeField('Type',`<select id="ictxe-type" style="${inp}"><option value="AP"${r.type==='AP'?' selected':''}>AP — this PT owes the counterparty</option><option value="AR"${r.type==='AR'?' selected':''}>AR — the counterparty owes this PT</option></select>`)
+    +opeField('Category',`<select id="ictxe-cat" style="${inp}"><option value="Loan Affiliate"${r.category!=='Repayment Loan'?' selected':''}>Loan Affiliate — a new loan</option><option value="Repayment Loan"${r.category==='Repayment Loan'?' selected':''}>Repayment Loan — nets off the balance</option></select>`)
     +opeField('Date',`<input id="ictxe-date" type="date" value="${r.date||''}" style="${inp}">`)
     +opeField('Description',`<input id="ictxe-desc" value="${escH(r.desc||'')}" style="${inp}">`)
     +opeField('Amount (IDR)',`<input id="ictxe-amt" type="number" min="0" step="1" value="${r.amt}" style="${inp}">`)
@@ -3283,6 +3284,7 @@ async function saveIcTxEdit(id,encOwner){
   const err=document.getElementById('ictxe-err'); err.textContent='';
   const cp=document.getElementById('ictxe-cp').value.trim();
   const type=document.getElementById('ictxe-type').value;
+  const category=document.getElementById('ictxe-cat').value;
   const date=document.getElementById('ictxe-date').value||null;
   const desc=document.getElementById('ictxe-desc').value.trim();
   const amt=Number(document.getElementById('ictxe-amt').value);
@@ -3291,10 +3293,10 @@ async function saveIcTxEdit(id,encOwner){
   try{
     const r=await authedFetch(SB_URL+'/rest/v1/intercompany_transactions?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({counterparty_label:cp,type,tx_date:date,description:desc||null,amount_idr:amt})});
+      body:JSON.stringify({counterparty_label:cp,type,category,tx_date:date,description:desc||null,amount_idr:amt})});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const t=IC_TX.find(x=>x.id===id);
-    if(t){ t.cp=cp; t.type=type; t.date=date; t.desc=desc; t.amt=amt; }
+    if(t){ t.cp=cp; t.type=type; t.category=category; t.date=date; t.desc=desc; t.amt=amt; }
     openIntercompanyOwner(encOwner);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
@@ -6189,15 +6191,16 @@ async function saveTxOneLoan(entity,date,desc,amt){
   const msg=document.getElementById('tx1-msg');
   const type=document.getElementById('tx1-ic-type').value;
   const cp=(document.getElementById('tx1-ic-cp').value||'').trim();
+  const category=document.getElementById('tx1-ic-cat').value;
   if(!cp) return void(msg.style.color='#b3261e', msg.textContent='Counterparty is required.');
-  const dup=findDuplicateIcTx(IC_TX,{owner:eName(entity),cp,type,date,amt,desc});
+  const dup=findDuplicateIcTx(IC_TX,{owner:eName(entity),cp,type,date,amt,desc,category});
   if(dup){
     if(!confirm('A very similar Loan Affiliate transaction already exists — '+dup.date+' · '+dup.type+' · '+dup.cp+' · '+fmt(dup.amt)+' · "'+dup.desc+'".\n\nSave this one anyway?')) return;
   }
   const btn=document.getElementById('tx1-send');
   btn.disabled=true; btn.textContent='Saving…';
   try{
-    const row={owner_label:eName(entity),counterparty_label:cp,type,tx_date:date,description:desc||null,amount_idr:amt,source_label:'Manual entry'};
+    const row={owner_label:eName(entity),counterparty_label:cp,type,tx_date:date,description:desc||null,amount_idr:amt,category,source_label:'Manual entry'};
     await adminAddBatch('intercompany_transactions',[row]);
     const fresh=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
     IC_TX=fresh.map(mkIcTx);
@@ -6363,7 +6366,10 @@ async function saveTxOne(){
 // AR/AP rows. ──
 function findDuplicateIcTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
+  // Category is included so a new loan and an unrelated repayment of the same amount/date/desc
+  // aren't flagged as duplicates of each other — they're different transactions by design.
   return list.find(o=>norm(o.owner)===norm(r.owner) && norm(o.cp)===norm(r.cp) && o.type===r.type
+    && norm(o.category||'Loan Affiliate')===norm(r.category||'Loan Affiliate')
     && (o.date||'')===(r.date||'') && Math.round(o.amt)===Math.round(r.amt||0) && norm(o.desc)===norm(r.desc));
 }
 function findDuplicateOrec(list,r){
@@ -6690,7 +6696,8 @@ function renderBlPreview(){
       const arAp=toImport.filter(r=>r.code==='ar'||r.code==='ap');
       if(arAp.length){
         const icRows=arAp.map(r=>({owner_label:(ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity),counterparty_label:r.cp,
-          type:r.code.toUpperCase(),tx_date:r.date,description:r.desc||null,amount_idr:r.amt,source_label:'Bank Ledger import'}));
+          type:r.code.toUpperCase(),tx_date:r.date,description:r.desc||null,amount_idr:r.amt,
+          category:r.category==='Repayment Loan'?'Repayment Loan':'Loan Affiliate',source_label:'Bank Ledger import'}));
         await adminAddBatch('intercompany_transactions',icRows);
         const freshIc=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
         IC_TX=freshIc.map(mkIcTx);
@@ -7904,11 +7911,11 @@ function renderAgingChart(){
 function renderIcSummary(){
   const el=document.getElementById('icSummary'); if(!el) return;
   if(!IC_TX.length){ el.innerHTML='<div style="font-size:12.5px;color:var(--muted)">No loan affiliate transactions imported yet.</div>'; return; }
-  const totAR=IC_TX.filter(r=>r.type==='AR').reduce((s,r)=>s+r.amt,0);
-  const totAP=IC_TX.filter(r=>r.type==='AP').reduce((s,r)=>s+r.amt,0);
+  const totAR=IC_TX.filter(r=>r.type==='AR').reduce((s,r)=>s+icRowAmt(r),0);
+  const totAP=IC_TX.filter(r=>r.type==='AP').reduce((s,r)=>s+icRowAmt(r),0);
   const net=totAR-totAP;
   const byOwner={};
-  IC_TX.forEach(r=>{ const v=(r.type==='AR'?1:-1)*r.amt; byOwner[r.owner]=(byOwner[r.owner]||0)+v; });
+  IC_TX.forEach(r=>{ const v=(r.type==='AR'?1:-1)*icRowAmt(r); byOwner[r.owner]=(byOwner[r.owner]||0)+v; });
   const rows=Object.entries(byOwner).sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,5);
   el.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12.5px"><span style="color:var(--muted)">Total Receivable</span><b style="color:#1f8a61">${fmtB(totAR)}</b></div>`
     +`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:12.5px"><span style="color:var(--muted)">Total Payable</span><b style="color:#d92d20">${fmtB(totAP)}</b></div>`
@@ -8173,9 +8180,14 @@ let INTERCOMPANY=[];
 let IC_TX=[];
 function mkIcTx(r){
   return {id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,date:r.tx_date,
-    desc:r.description||'',amt:+r.amount_idr,source:r.source_label,
+    desc:r.description||'',amt:+r.amount_idr,category:r.category||'Loan Affiliate',source:r.source_label,
     createdBy:r.created_by,createdAt:r.created_at};
 }
+// A "Repayment Loan" row nets OFF its Type's balance instead of adding to it (e.g. an AP row
+// categorized as Repayment Loan means this PT paid down what it owes, not that it owes more) —
+// every AR/AP total and running balance reads through this instead of raw r.amt so Category can
+// never drift out of sync with what the numbers actually show.
+function icRowAmt(r){ return r.category==='Repayment Loan'?-r.amt:r.amt; }
 // Other Receivable — money advanced to / refunded by an individual (shareholder or other related
 // party), kept separate from Loan Affiliate (PT-to-PT, intercompany_transactions) and Capital
 // Deposit (loan_flows, flow_type='Capital deposit') since neither of those fit a person as the
@@ -9557,7 +9569,9 @@ async function renderEntryBody(){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-ic-type" style="'+inp+'"><option value="AP">AP — this PT owes the counterparty</option><option value="AR">AR — the counterparty owes this PT</option></select>'
     +icCounterpartySelectHtml('tx1-ic-cp','',inp)
+    +'<select id="tx1-ic-cat" style="'+inp+'"><option value="Loan Affiliate">Loan Affiliate — a new loan</option><option value="Repayment Loan">Repayment Loan — paying down an existing one</option></select>'
     +'</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Repayment Loan nets OFF the AP/AR balance instead of adding to it — pick it when this transaction is settling a loan already recorded, not creating a new one.</div>'
     +'</div>'
     +'<div id="tx1-pinbuk-fields" style="display:none">'
     +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Records a transfer between two of this entity\'s own bank accounts — not income or expense, but still recorded so both accounts\' balances stay correct. Not included in any card total; view it later via Manage Bank Accounts → View ledger.</div>'
