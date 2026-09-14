@@ -406,7 +406,7 @@ a{color:#9a6f0a}
 
 <div style="margin-bottom:16px">
   <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Outstanding Liability Over Time</h2><span class="pn-sub" style="margin:0;font-size:11.5px;color:var(--muted)">New invoices vs. paid, and ending balance by month</span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between"><h2>Outstanding Liability Over Time</h2><span class="pn-sub" style="margin:0;font-size:11.5px;color:var(--muted)">New invoices vs. paid, and ending balance by month — click a month for detail</span></div>
     <div class="chart-box" style="height:260px;margin-top:10px"><canvas id="outstandingTrendChart"></canvas></div>
   </div>
 </div>
@@ -7874,12 +7874,12 @@ function outstandingTrendSeries(){
     );
   });
   const labels=win.map(ym=>MON_SHORT[+ym.slice(5,7)-1]+" '"+ym.slice(2,4));
-  return {labels,added,paid,balance};
+  return {labels,added,paid,balance,months:win};
 }
 let outstandingTrendChart=null;
 function renderOutstandingTrendChart(){
   const canvas=document.getElementById('outstandingTrendChart'); if(!canvas) return;
-  const {labels,added,paid,balance}=outstandingTrendSeries();
+  const {labels,added,paid,balance,months}=outstandingTrendSeries();
   if(outstandingTrendChart) outstandingTrendChart.destroy();
   if(!labels.length) return;
   Chart.defaults.font.family='Plus Jakarta Sans, sans-serif'; Chart.defaults.color='#3a4254';
@@ -7890,9 +7890,78 @@ function renderOutstandingTrendChart(){
       {type:'line',label:'Ending Balance',data:balance,borderColor:'#d92d20',backgroundColor:'#d92d2022',fill:false,tension:.35,pointRadius:4,pointBackgroundColor:'#d92d20',pointBorderColor:'#fff',pointBorderWidth:2,borderWidth:3,order:1}
     ]},
     options:{responsive:true,maintainAspectRatio:false,
+      // 'index'+intersect:false makes the whole month column clickable/hoverable (bar, line point,
+      // or the gap between them), not just a pixel-precise hit on one dataset's element — a user
+      // shouldn't have to aim for the thin red line to drill into that month.
+      interaction:{mode:'index',intersect:false},
+      onHover:(evt,elements)=>{ evt.native.target.style.cursor=elements.length?'pointer':'default'; },
+      onClick:(evt,elements)=>{
+        if(!elements.length) return;
+        const ym=months[elements[0].index];
+        if(ym) openOutstandingTrendMonth(ym);
+      },
       plugins:{legend:{position:'top',align:'start',labels:{boxWidth:9,usePointStyle:true,pointStyle:'circle',padding:16,font:{size:11,weight:'600'}}},
         tooltip:{callbacks:{label:c=>c.dataset.label+': IDR '+fmt(c.parsed.y)}}},
       scales:{y:{ticks:{callback:v=>fmtB(v)},grid:{color:'#f0f1f6'}},x:{grid:{display:false}}}}});
+}
+// Drill-down for one month clicked on the Outstanding Liability trend chart — same "New Invoices
+// this month" / "Paid this month" split the chart itself plots, but itemized, plus the resulting
+// Ending Balance for context. Rebuilds from OUTSTANDING/OUTSTANDING_PAYMENTS with the exact same
+// scope/eom-bound logic as outstandingTrendSeries() so the numbers always match what was clicked.
+function openOutstandingTrendMonth(ym){
+  const ids=new Set(scopeIds());
+  const items=OUTSTANDING.filter(o=>ids.has(o.e)&&o.inv);
+  const idSet=new Set(items.map(o=>o.id));
+  const pays=OUTSTANDING_PAYMENTS.filter(p=>idSet.has(p.outstanding_id)&&p.paid_date);
+  const toYm=d=>d.slice(0,7);
+  const eom=ym+'-31';
+  const byId={}; items.forEach(o=>{byId[o.id]=o;});
+  const newInv=items.filter(o=>toYm(o.inv)===ym).sort((a,b)=>(a.inv||'').localeCompare(b.inv||''));
+  const paidThis=pays.filter(p=>toYm(p.paid_date)===ym).sort((a,b)=>(a.paid_date||'').localeCompare(b.paid_date||''));
+  const newTot=newInv.reduce((s,o)=>s+o.amt,0);
+  const paidTot=paidThis.reduce((s,p)=>s+Number(p.amount_idr),0);
+  const balance=items.filter(o=>o.inv<=eom).reduce((s,o)=>s+o.amt,0)-pays.filter(p=>p.paid_date<=eom).reduce((s,p)=>s+Number(p.amount_idr),0);
+  const label=MON_SHORT[+ym.slice(5,7)-1]+' '+ym.slice(0,4);
+  let h=`<div class="pn-sub" style="margin-bottom:12px">Outstanding Liability activity in ${label}, and the resulting month-end balance.</div>`;
+  h+=`<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+    <div style="flex:1;min-width:150px;background:#fdf3e0;border-radius:12px;padding:12px 16px">
+      <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#9a6f0a;text-transform:uppercase">New Invoices</div>
+      <div style="font-size:18px;font-weight:800;color:#9a6f0a;margin-top:3px">${fmt(newTot)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${newInv.length} invoice${newInv.length===1?'':'s'}</div>
+    </div>
+    <div style="flex:1;min-width:150px;background:#e3f2e8;border-radius:12px;padding:12px 16px">
+      <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#2b7a4b;text-transform:uppercase">Paid</div>
+      <div style="font-size:18px;font-weight:800;color:#2b7a4b;margin-top:3px">${fmt(paidTot)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${paidThis.length} payment${paidThis.length===1?'':'s'}</div>
+    </div>
+    <div style="flex:1;min-width:150px;background:#fdeef1;border-radius:12px;padding:12px 16px">
+      <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:#b3261e;text-transform:uppercase">Ending Balance</div>
+      <div style="font-size:18px;font-weight:800;color:#b3261e;margin-top:3px">${fmt(balance)}</div>
+    </div>
+  </div>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--blue-900);margin:0 0 8px">New Invoices — ${label}</h4>`;
+  if(newInv.length){
+    h+=`<div class="table-scroll" style="max-height:260px;margin-bottom:20px"><table><thead><tr><th>Entity</th><th>Vendor</th><th>Description</th><th>Invoice Date</th><th>Due Date</th><th class="num">Amount</th></tr></thead><tbody>`
+      +newInv.map(o=>`<tr class="clickable" style="cursor:pointer" onclick="openOutstandingEntity('${o.e}')">
+        <td>${pill(o.e)}</td><td style="font-size:12.5px">${escH(o.vendor||'—')}</td>
+        <td style="font-size:12.5px;color:var(--muted)">${escH(o.desc||'—')}</td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${o.inv||'—'}</td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${o.due||'—'}</td>
+        <td class="num">${fmt(o.amt)}</td></tr>`).join('')
+      +`</tbody></table></div>`;
+  } else h+=`<p style="color:var(--muted);font-size:12.5px;margin-bottom:20px">No new invoices in ${label}.</p>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--blue-900);margin:0 0 8px">Paid — ${label}</h4>`;
+  if(paidThis.length){
+    h+=`<div class="table-scroll" style="max-height:260px"><table><thead><tr><th>Entity</th><th>Vendor</th><th>Description</th><th>Paid Date</th><th class="num">Amount</th></tr></thead><tbody>`
+      +paidThis.map(p=>{const o=byId[p.outstanding_id];
+        return `<tr class="clickable" style="cursor:pointer" onclick="openOutstandingEntity('${o?o.e:''}')">
+        <td>${o?pill(o.e):'—'}</td><td style="font-size:12.5px">${escH(o?o.vendor||'—':'—')}</td>
+        <td style="font-size:12.5px;color:var(--muted)">${escH(o?o.desc||'—':(p.note||'—'))}</td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${p.paid_date||'—'}</td>
+        <td class="num">${fmt(Number(p.amount_idr))}</td></tr>`;}).join('')
+      +`</tbody></table></div>`;
+  } else h+=`<p style="color:var(--muted);font-size:12.5px">No payments recorded in ${label}.</p>`;
+  showModal('Outstanding Liability — '+label,h,true);
 }
 let agingChart=null;
 function renderAgingChart(){
