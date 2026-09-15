@@ -3200,17 +3200,11 @@ function openIntercompany(){
   const si=document.getElementById('ic-search');
   if(si && document.activeElement!==si && IC_SEARCH_FOCUS){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
 }
+// Read-only — editing a Loan Affiliate entry now happens at its source instead: View Ledger for one
+// that came from Import Bank Ledger, Add a Transaction's own record list for one entered manually
+// (see the "edit centralized at Ledger + Input Transaction" change).
 function icTxLedgerRowHtml(r,saldo,encOwner){
-  const canEdit=MY_ROLE==='editor';
-  let editCell='';
-  if(canEdit){
-    const items=[
-      menuItem(ICON.edit()+' Edit',`openIcTxEdit(${r.id},'${encOwner}')`),
-      menuItem(ICON.trash()+' Delete',`deleteIcTx(${r.id},'${encOwner}')`,'var(--red)'),
-    ];
-    editCell=`<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${r.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
-      +`<div id="ope-menu-${r.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
-  } else { editCell='<td></td>'; }
+  const editCell='<td></td>';
   const saldoPos=saldo>=0;
   // Debit(AP)/Credit(AR) used to just mirror Type — always "− amt" for AP, "+ amt" for AR — even
   // for a Repayment Loan row, which actually moves the balance the OPPOSITE way (a repayment nets
@@ -3408,25 +3402,18 @@ function openOtherReceivable(){
   h+=`</tbody></table></div>`;
   showModal('Other Receivable',h,true);
 }
+// Read-only — editing an Other Receivable entry now happens at its source instead: View Ledger for
+// one that came from Import Bank Ledger, Add a Transaction's own record list for one entered
+// manually (see the "edit centralized at Ledger + Input Transaction" change).
 function openOtherReceivableCp(encCp){
   const cp=decodeURIComponent(encCp);
-  const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const rows=otherReceivablesInScope().filter(r=>r.cp===cp).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOtherReceivable()">‹ Back to all people</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">${escH(cp)}</h4>`;
   let running=0;
-  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Date</th><th>Entity</th><th>Description</th><th class="num">Out</th><th class="num">Refund (In)</th><th class="num">Balance</th>${canEdit?'<th></th>':''}</tr></thead><tbody>`;
+  h+=`<div class="table-scroll" style="max-height:420px"><table><thead><tr><th>Date</th><th>Entity</th><th>Description</th><th class="num">Out</th><th class="num">Refund (In)</th><th class="num">Balance</th></tr></thead><tbody>`;
   rows.forEach(r=>{
     running+=r.dir==='out'?r.amt:-r.amt;
-    let editCell='';
-    if(canEdit){
-      const items=[
-        menuItem(ICON.edit()+' Edit',`openOrecEdit(${r.id},'${encCp}')`),
-        menuItem(ICON.trash()+' Delete',`deleteOrecTx(${r.id},'${encCp}')`,'var(--red)'),
-      ];
-      editCell=`<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${r.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
-        +`<div id="ope-menu-${r.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
-    }
     h+=`<tr>
       <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||r.day||'—'}</td>
       <td style="font-size:12.5px">${escH(eName(r.e))}</td>
@@ -3434,7 +3421,6 @@ function openOtherReceivableCp(encCp){
       <td class="num neg">${r.dir==='out'?fmt(r.amt):''}</td>
       <td class="num pos">${r.dir==='in'?fmt(r.amt):''}</td>
       <td class="num" style="font-weight:800;color:${running>=0?'#b3261e':'#2b7a4b'}">${running>=0?fmt(running):'− '+fmt(Math.abs(running))}</td>
-      ${editCell}
     </tr>`;
   });
   h+=`</tbody></table></div>`;
@@ -4875,24 +4861,15 @@ function openCapDepPerson(encPerson){
   if(!tx.length && Math.abs(residual)<=0.5) h+=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No transactions recorded for this shareholder in scope.</p>`;
   // Entries actually entered through this dashboard (Input Transaction / Import Bank Ledger) are
   // real loan_flows rows with an id — shown separately, below the historical reconciliation table
-  // above, since those older figures are a fixed consolidated summary with nothing to edit. Only
-  // these live rows get an Edit/Delete menu.
-  const canEdit=IS_ADMIN||MY_ROLE==='editor';
+  // above, since those older figures are a fixed consolidated summary with nothing to edit. Read-
+  // only here too — editing now happens at its source (View Ledger for Bank Ledger import, Add a
+  // Transaction's own record list for Manual entry).
   const live=list.filter(l=>l.id!=null&&(l.source==='Manual entry'||l.source==='Bank Ledger import'));
   if(live.length){
     h+=`<div style="font-size:11px;font-weight:800;letter-spacing:.4px;color:var(--muted);text-transform:uppercase;margin:18px 0 8px">Recorded via dashboard</div>`;
-    h+=`<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Period</th><th>Description</th><th class="num">Amount (IDR)</th>${canEdit?'<th></th>':''}</tr></thead><tbody>`;
+    h+=`<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Period</th><th>Description</th><th class="num">Amount (IDR)</th></tr></thead><tbody>`;
     live.forEach(l=>{
-      let editCell='';
-      if(canEdit){
-        const items=[
-          menuItem(ICON.edit()+' Edit',`openLoanFlowEdit(${l.id},'${encPerson}')`),
-          menuItem(ICON.trash()+' Delete',`deleteLoanFlow(${l.id},'${encPerson}')`,'var(--red)'),
-        ];
-        editCell=`<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${l.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
-          +`<div id="ope-menu-${l.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
-      }
-      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${escH(MONTHS[l.period]||l.period||'—')}</td><td style="font-size:12.5px">${escH(l.desc||'—')}${sourceTagHtml(l.source)}</td><td class="num pos">${fmt(l.amt)}</td>${editCell}</tr>`;
+      h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${escH(MONTHS[l.period]||l.period||'—')}</td><td style="font-size:12.5px">${escH(l.desc||'—')}${sourceTagHtml(l.source)}</td><td class="num pos">${fmt(l.amt)}</td></tr>`;
     });
     h+=`</tbody></table></div>`;
   }
@@ -5240,13 +5217,14 @@ function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   } else if(canEdit && x.id!=null){
     docCell = `<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerDocUpload('transactions',${x.id},'${bc}')" title="Upload supporting document">${ICON.file(13)}</button></td>`;
   }
+  // Read-only besides History/Doc — editing a Revenue/Opex row now happens at its source instead:
+  // View Ledger for one that came from Import Bank Ledger, Add a Transaction's own record list for
+  // one entered manually (see the "edit centralized at Ledger + Input Transaction" change).
   let editCell = `<td></td>`;
   if(canEdit && x.id!=null){
     const items=[
       menuItem(ICON.history()+' History',`openTxHistory(${x.id},'${bc}')`),
-      menuItem(ICON.edit()+' Edit',`openTxEdit(${x.id},'${bc}')`),
       menuItem((hasDoc?'🔄 Replace Document':'📎 Upload Document'),`triggerDocUpload('transactions',${x.id},'${bc}')`),
-      menuItem(ICON.trash()+' Delete',`deleteTxRow(${x.id},'${bc}')`,'var(--red)'),
     ];
     editCell = `<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu(${x.id},this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
       +`<div id="ope-menu-${x.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div></td>`;
