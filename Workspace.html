@@ -6232,7 +6232,7 @@ function findDuplicateTx(list,r){
 // Deposit, via Update Transaction) so the card/summary reflect it without a full page reload.
 async function refreshLoanFlows(){
   const loans=await sbFetch('loan_flows?select=*&order=id');
-  const mkLoan=r=>({id:r.id,f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr,desc:r.description||'',period:r.period_code,source:r.source_label});
+  const mkLoan=r=>({id:r.id,f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr,desc:r.description||'',period:r.period_code,source:r.source_label,sourceLedgerId:r.source_ledger_id||null});
   Object.keys(LOANS_BY_MONTH).forEach(p=>{ if(p!=='Q2'&&p!=='CUSTOM') LOANS_BY_MONTH[p]=loans.filter(l=>l.period_code===p).map(mkLoan); });
   LOANS_APR=LOANS_BY_MONTH.APR||[]; LOANS_MAY=LOANS_BY_MONTH.MAY||[]; LOANS_JUN=LOANS_BY_MONTH.JUN||[];
   LOANS_BY_MONTH.Q2=[...LOANS_APR,...LOANS_MAY,...LOANS_JUN];
@@ -6831,6 +6831,14 @@ function renderBlPreview(){
       if(!ledgerResp.ok) throw new Error((await ledgerResp.text())||('HTTP '+ledgerResp.status));
       const savedLedgerRows=await ledgerResp.json();
       savedLedgerRows.forEach(saved=>BANK_LEDGER.push(mkBankLedger(saved)));
+      // Every row downstream (transactions/intercompany_transactions/other_receivables/loan_flows)
+      // carries source_ledger_id back to the exact bank_ledger_entries row it came from, so editing
+      // or deleting from either side (View Ledger, or the Cards/Transactions detail it also lands
+      // in) can find and update the other copy instead of the two silently drifting apart — see
+      // openBlEntryEdit/deleteBlEntry. Relies on the insert response preserving submission order
+      // (already assumed above for the document-link matching), which a plain PostgREST bulk insert
+      // does.
+      toImport.forEach((r,i)=>{ r.savedLedgerId=savedLedgerRows[i]&&savedLedgerRows[i].id; });
       // 1b) Rows with a document link get that link pulled into secure storage and attached —
       // relies on the insert response preserving submission order (true for a plain PostgREST
       // bulk insert) to match each saved row back to its source row's Document Link.
@@ -6855,7 +6863,8 @@ function renderBlPreview(){
           source:'TX_MULTI',ord:baseOrd+i,period_code:periodFromDateG(r.date).code,flow:r.code==='revenue'?'rev':'opex',
           entity_code:r.acctMatch.entity,day_label:dayLbl(r.date),
           description:String(r.desc||'').slice(0,200),raw_label:r.category,
-          source_label:'Bank Ledger import',upload_batch:batchId,amount_idr:r.signedAmt,contra:r.contra}));
+          source_label:'Bank Ledger import',upload_batch:batchId,amount_idr:r.signedAmt,contra:r.contra,
+          source_ledger_id:r.savedLedgerId||null}));
         await adminAddBatch('transactions',txRows);
         const touched={};
         revOpex.forEach(r=>{ const per=periodFromDateG(r.date).code; (touched[r.acctMatch.entity]=touched[r.acctMatch.entity]||new Set()).add(per); });
@@ -6886,7 +6895,8 @@ function renderBlPreview(){
       if(arAp.length){
         const icRows=arAp.map(r=>({owner_label:(ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity),counterparty_label:r.cp,
           type:r.code.toUpperCase(),tx_date:r.date,description:r.desc||null,amount_idr:r.amt,
-          category:r.category==='Repayment Loan'?'Repayment Loan':'Loan Affiliate',source_label:'Bank Ledger import'}));
+          category:r.category==='Repayment Loan'?'Repayment Loan':'Loan Affiliate',source_label:'Bank Ledger import',
+          source_ledger_id:r.savedLedgerId||null}));
         await adminAddBatch('intercompany_transactions',icRows);
         const freshIc=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
         IC_TX=freshIc.map(mkIcTx);
@@ -6899,7 +6909,8 @@ function renderBlPreview(){
       if(capital.length){
         const loanRows=capital.map(r=>({period_code:periodFromDateG(r.date).code,from_label:r.vendor,
           to_label:eName(r.acctMatch.entity),flow_type:'Capital deposit',amount_idr:r.amt,
-          from_group:null,to_group:ENT[r.acctMatch.entity].grp,description:r.desc||null,source_label:'Bank Ledger import'}));
+          from_group:null,to_group:ENT[r.acctMatch.entity].grp,description:r.desc||null,source_label:'Bank Ledger import',
+          source_ledger_id:r.savedLedgerId||null}));
         await adminAddBatch('loan_flows',loanRows);
         await refreshLoanFlows();
       }
@@ -6909,7 +6920,8 @@ function renderBlPreview(){
       if(orec.length){
         const orecRows=orec.map(r=>({entity_code:r.acctMatch.entity,period_code:periodFromDateG(r.date).code,
           day_label:dayLbl(r.date),tx_date:r.date,counterparty:r.cp,direction:r.dir,
-          amount_idr:r.amt,description:r.desc||null,source_label:'Bank Ledger import',created_by:MY_EMAIL}));
+          amount_idr:r.amt,description:r.desc||null,source_label:'Bank Ledger import',created_by:MY_EMAIL,
+          source_ledger_id:r.savedLedgerId||null}));
         const orecResp=await authedFetch(SB_URL+'/rest/v1/other_receivables',{method:'POST',
           headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify(orecRows)});
         if(!orecResp.ok) throw new Error((await orecResp.text())||('HTTP '+orecResp.status));
@@ -8397,8 +8409,8 @@ async function loadFromSupabase(){
   const M={};
   tots.forEach(t=>{(M[t.entity_code]=M[t.entity_code]||{})[t.period_code]={rev:+t.revenue,opex:+t.opex,finIn:+t.financing_in,finOut:+t.financing_out};});
   Object.keys(M).forEach(id=>{const ks=Object.keys(M[id]); if(ks.length===1&&ks[0]==='MAY') delete M[id];});
-  const mkLoan=r=>({id:r.id,f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr,desc:r.description||'',period:r.period_code,source:r.source_label});
-  const mkTx=r=>{const o={id:r.id,mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,vendor:r.vendor||null,k:r.raw_label,amt:+r.amount_idr,attachments:Array.isArray(r.attachments)?r.attachments:[],srcLabel:r.source_label||null}; if(r.contra)o.contra=1; return o;};
+  const mkLoan=r=>({id:r.id,f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr,desc:r.description||'',period:r.period_code,source:r.source_label,sourceLedgerId:r.source_ledger_id||null});
+  const mkTx=r=>{const o={id:r.id,mo:r.period_code,type:r.flow,e:r.entity_code,d:r.day_label,desc:r.description,vendor:r.vendor||null,k:r.raw_label,amt:+r.amount_idr,attachments:Array.isArray(r.attachments)?r.attachments:[],srcLabel:r.source_label||null,sourceLedgerId:r.source_ledger_id||null}; if(r.contra)o.contra=1; return o;};
   const bs={TX:[],TX_MULTI:[],TX_MS:[],TX_ICG_OPEX:[]};
   txAll.forEach(r=>{(bs[r.source]=bs[r.source]||[]).push(mkTx(r));});
   // TX must include every source bucket (not just the four original ones) — a fixed allow-list here
@@ -8465,7 +8477,7 @@ let IC_TX=[];
 function mkIcTx(r){
   return {id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,date:r.tx_date,
     desc:r.description||'',amt:+r.amount_idr,category:r.category||'Loan Affiliate',source:r.source_label,
-    createdBy:r.created_by,createdAt:r.created_at};
+    createdBy:r.created_by,createdAt:r.created_at,sourceLedgerId:r.source_ledger_id||null};
 }
 // A "Repayment Loan" row nets OFF its Type's balance instead of adding to it (e.g. an AP row
 // categorized as Repayment Loan means this PT paid down what it owes, not that it owes more) —
@@ -8481,7 +8493,7 @@ let OTHER_RECV=[];
 function mkOrec(r){
   return {id:r.id,e:r.entity_code,period:r.period_code,day:r.day_label,date:r.tx_date,
     cp:r.counterparty,dir:r.direction,amt:+r.amount_idr,desc:r.description||'',
-    source:r.source_label,createdBy:r.created_by,createdAt:r.created_at};
+    source:r.source_label,createdBy:r.created_by,createdAt:r.created_at,sourceLedgerId:r.source_ledger_id||null};
 }
 let BANK_ACCOUNTS=[];
 let BANK_LEDGER=[];
