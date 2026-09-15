@@ -847,6 +847,11 @@ let LOANS_JUN=[
   {f:'IC Amara',t:'PT Berawa Bali Utama',ty:'Repayment',amt:9000000}
 ];
 let LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
+// Flat, period-bucket-agnostic list of every loan_flows row — LOANS_BY_MONTH only ever tracked
+// APR/MAY/JUN, so a Capital deposit dated any later month has no bucket to live in there; this is
+// what findLinkedMirror (see openBlEntryEdit) searches instead, so the ledger-edit cascade works
+// regardless of which period a row falls in.
+let LOAN_FLOWS_ALL=[];
 
 // ─── KEY TRANSACTIONS ────────────────────────────────────────────────────────
 let HIGHLIGHTS=[
@@ -5595,14 +5600,33 @@ async function openTxHistory(id,backCall){
   }
   showModal('Transaction Record Info',h);
 }
+// Additive patch to entity_period_totals (revenue or opex only — Financing In/Out has no itemized
+// backing and is deliberately left alone, same convention as every other write here). Shared by
+// every place that deletes or edits a Revenue/Opex row, so the headline KPI total never drifts from
+// what's actually in the itemized detail — a delete used to skip this entirely (see deleteTxRow's
+// old warning), which is exactly the kind of silent desync this whole change exists to close.
+async function adjustEntityPeriodTotal(entity,period,flow,delta){
+  if(!delta) return;
+  const cur=await sbFetch('entity_period_totals?entity_code=eq.'+entity+'&period_code=eq.'+period+'&select=revenue,opex,financing_in,financing_out');
+  const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
+  const body={entity_code:entity,period_code:period,
+    revenue:Number(c.revenue||0)+(flow==='rev'?delta:0),
+    opex:Number(c.opex||0)+(flow==='opex'?delta:0),
+    financing_in:Number(c.financing_in||0),financing_out:Number(c.financing_out||0)};
+  const ptr=await authedFetch(SB_URL+'/rest/v1/entity_period_totals',{method:'POST',
+    headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(body)});
+  if(!ptr.ok) throw new Error('Failed to update '+entity+' '+period+"'s headline total: "+((await ptr.text())||('HTTP '+ptr.status)));
+}
 async function deleteTxRow(id,backCall){
   backCall=decodeURIComponent(backCall);
-  if(!confirm('Delete this transaction? This removes it from the itemized detail but does NOT change the monthly total shown on the dashboard. This cannot be undone.')) return;
+  if(!confirm('Delete this transaction? This also corrects this entity\'s headline total for the period. This cannot be undone.')) return;
   try{
+    const x=TX.find(t=>t.id===id);
     const r=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+id,{method:'DELETE'});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const stillThere=await sbFetch('transactions?select=id&id=eq.'+id);
     if(stillThere.length) throw new Error('Row still exists after delete — you may not have permission to delete transactions for this entity.');
+    if(x) await adjustEntityPeriodTotal(x.e,x.mo,x.type==='rev'?'rev':'opex',-x.amt);
     const idx=TX.findIndex(t=>t.id===id);
     if(idx>=0) TX.splice(idx,1);
     eval(backCall);
@@ -6233,6 +6257,7 @@ function findDuplicateTx(list,r){
 async function refreshLoanFlows(){
   const loans=await sbFetch('loan_flows?select=*&order=id');
   const mkLoan=r=>({id:r.id,f:r.from_label,t:r.to_label,ty:r.flow_type,amt:+r.amount_idr,desc:r.description||'',period:r.period_code,source:r.source_label,sourceLedgerId:r.source_ledger_id||null});
+  LOAN_FLOWS_ALL=loans.map(mkLoan);
   Object.keys(LOANS_BY_MONTH).forEach(p=>{ if(p!=='Q2'&&p!=='CUSTOM') LOANS_BY_MONTH[p]=loans.filter(l=>l.period_code===p).map(mkLoan); });
   LOANS_APR=LOANS_BY_MONTH.APR||[]; LOANS_MAY=LOANS_BY_MONTH.MAY||[]; LOANS_JUN=LOANS_BY_MONTH.JUN||[];
   LOANS_BY_MONTH.Q2=[...LOANS_APR,...LOANS_MAY,...LOANS_JUN];
@@ -8419,6 +8444,7 @@ async function loadFromSupabase(){
     LOANS_MAY:loans.filter(l=>l.period_code==='MAY').map(mkLoan),
     LOANS_APR:loans.filter(l=>l.period_code==='APR').map(mkLoan),
     LOANS_JUN:loans.filter(l=>l.period_code==='JUN').map(mkLoan),
+    LOAN_FLOWS_ALL:loans.map(mkLoan),
     HIGHLIGHTS:hls.map(h=>({d:h.day_label,e:h.entity_code,desc:h.description,ty:h.flow_type,amt:+h.amount_idr})),
     OUTSTANDING:(outs||[]).map(mkOutstanding),
     OUTSTANDING_PAYMENTS:opays||[],
@@ -8735,12 +8761,13 @@ function openBankAccountLedger(id){
       let docCell='<td></td>';
       if(hasDoc) docCell=`<td style="white-space:nowrap">${docViewChip('bank-ledger-docs',r.attachments)}</td>`;
       else if(canEdit) docCell=`<td style="white-space:nowrap"><button type="button" class="tx-doc-chip tx-doc-chip-empty" onclick="event.stopPropagation();triggerDocUpload('bank_ledger_entries',${r.id},'${backCall}')" title="Upload supporting document">${ICON.file(13)}</button></td>`;
-      // Pinbuk and Financing are the only two Codes whose sole record IS this bank_ledger_entries
-      // row (Revenue/Opex/AR/AP are mirrored into transactions/intercompany_transactions, which is
-      // where their own Edit/Delete already lives — editing the ledger's copy of those here instead
-      // would desync the two tables, so this menu is deliberately withheld for them).
+      // View Ledger is now the one place any code gets edited/deleted (Cards/Transactions/Loan
+      // Affiliate/Other Receivable are read-only — see their row renderers). For a code mirrored
+      // into another table (Revenue/Opex/AR/AP/Other Receivable/Capital), saveBlEntryEdit/
+      // deleteBlEntry look up the linked row via findLinkedMirror and keep both sides — and, for
+      // Revenue/Opex, the headline total — in sync in the same request.
       let editCell='<td></td>';
-      if(canEdit && (r.code==='pinbuk'||r.code==='financing')){
+      if(canEdit){
         const items=[
           menuItem(ICON.edit()+' Edit',`openBlEntryEdit(${r.id},'${backCall}')`),
           menuItem(ICON.trash()+' Delete',`deleteBlEntry(${r.id},'${backCall}')`,'var(--red)'),
@@ -8764,24 +8791,48 @@ function openBankAccountLedger(id){
   h+=`</tbody></table></div>`;
   showModal(eName(a.entity)+' — '+a.bank,h,true);
 }
-function openBlEntryEdit(id,backCall){
+// Finds the row a bank_ledger_entries row was mirrored into (populated at import time — see
+// source_ledger_id in the Import Bank Ledger handler), if any. A row imported before that linking
+// existed, or whose mirror copy was since edited independently, may come back null — the edit/
+// delete flows below fall back to touching only the ledger row itself in that case, same as before
+// this change, rather than guessing.
+function findLinkedMirror(r){
+  if(r.code==='opex'||r.code==='revenue'){ const rec=TX.find(x=>x.sourceLedgerId===r.id); return rec?{table:'transactions',rec}:null; }
+  if(r.code==='ar'||r.code==='ap'){ const rec=IC_TX.find(x=>x.sourceLedgerId===r.id); return rec?{table:'intercompany_transactions',rec}:null; }
+  if(r.code==='orec'){ const rec=OTHER_RECV.find(x=>x.sourceLedgerId===r.id); return rec?{table:'other_receivables',rec}:null; }
+  if(r.code==='capital'){ const rec=LOAN_FLOWS_ALL.find(x=>x.sourceLedgerId===r.id); return rec?{table:'loan_flows',rec}:null; }
+  return null;
+}
+const BL_EDIT_TITLE={opex:'Opex',revenue:'Revenue',ar:'AR',ap:'AP',orec:'Other Receivable',capital:'Capital',financing:'Financing',pinbuk:'Pinbuk'};
+async function openBlEntryEdit(id,backCall){
   backCall=decodeURIComponent(backCall);
   const r=BANK_LEDGER.find(x=>x.id===id); if(!r) return;
-  const isFin=r.code==='financing';
+  if(r.code==='opex') await Promise.all([ensureOpexCatsG(),ensureVendorsG()]);
+  else if(r.code==='revenue') await ensureCatsByKind('revenue');
+  else if(r.code==='ar'||r.code==='ap') await refreshIcCounterparties();
+  const linked=findLinkedMirror(r);
+  const title=BL_EDIT_TITLE[r.code]||r.code;
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
-  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit ${isFin?'Financing':'Pinbuk'} Entry</h4>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit ${title} Entry</h4>`;
+  if(!linked&&r.code!=='pinbuk'&&r.code!=='financing') h+=`<div style="font-size:11.5px;color:#8a5a1e;background:#fff8ec;border:1px solid #f0cb87;border-radius:8px;padding:8px 10px;margin-bottom:10px">Not linked to a copy in Cards/Transactions (imported before that linking existed, or its copy was since edited on its own) — saving here updates only this ledger row.</div>`;
   const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
   const dir=r.debit>0?'debit':'kredit';
   const amt=r.debit>0?r.debit:r.kredit;
+  const cashLabel=r.code==='ar'||r.code==='ap'?['loan received / advanced','repayment']:['cash in','cash out'];
   h+=opeField('Date',`<input id="ble-date" type="date" value="${r.date||''}" style="${inp}">`)
-    +opeField('Direction',`<select id="ble-dir" style="${inp}"><option value="debit"${dir==='debit'?' selected':''}>Debit — ${isFin?'loan received':'cash in'}</option><option value="kredit"${dir==='kredit'?' selected':''}>Credit — ${isFin?'repayment':'cash out'}</option></select>`)
+    +opeField('Direction',`<select id="ble-dir" style="${inp}"><option value="debit"${dir==='debit'?' selected':''}>Debit — ${cashLabel[0]}</option><option value="kredit"${dir==='kredit'?' selected':''}>Credit — ${cashLabel[1]}</option></select>`)
     +opeField('Amount (IDR)',`<input id="ble-amt" type="number" min="0" step="1" value="${amt}" style="${inp}">`)
     +opeField('Description',`<input id="ble-desc" value="${escH(r.desc||'')}" style="${inp}">`);
-  if(isFin) h+=opeField('Lender name',`<input id="ble-vendor" value="${escH(r.vendor||'')}" style="${inp}">`);
+  if(r.code==='opex') h+=opeField('Category',categorySelectHtml('ble-cat',OPEX_CATS_G||[],r.category||'',inp))+opeField('Vendor',vendorSelectHtml('ble-vendor',r.vendor||'',inp));
+  else if(r.code==='revenue') h+=opeField('Category',categorySelectHtml('ble-cat',CATS_BY_KIND_G.revenue||[],r.category||'',inp));
+  else if(r.code==='ar'||r.code==='ap') h+=opeField('Counterparty',icCounterpartySelectHtml('ble-cp',r.cp||'',inp))+opeField('Category',`<select id="ble-cat" style="${inp}"><option value="Loan Affiliate"${r.category!=='Repayment Loan'?' selected':''}>Loan Affiliate — a new loan</option><option value="Repayment Loan"${r.category==='Repayment Loan'?' selected':''}>Repayment Loan — paying down an existing one</option></select>`);
+  else if(r.code==='orec') h+=opeField('Counterparty',`<input id="ble-cp" value="${escH(r.cp||'')}" style="${inp}">`);
+  else if(r.code==='capital') h+=opeField('Shareholder name',`<input id="ble-vendor" value="${escH(r.vendor||'')}" style="${inp}">`);
+  else if(r.code==='financing') h+=opeField('Lender name',`<input id="ble-vendor" value="${escH(r.vendor||'')}" style="${inp}">`);
   if(r.code==='pinbuk') h+=`<div style="font-size:11.5px;color:var(--muted);margin:-4px 0 10px">A Pinbuk transfer is recorded as two separate rows (one on each account) — this edits only this side. If the amount or date is wrong, correct the matching row on the other account too.</div>`;
   h+=`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveBlEntryEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
     +`<span id="ble-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
-  showModal('Edit '+(isFin?'Financing':'Pinbuk')+' Entry',h);
+  showModal('Edit '+title+' Entry',h);
 }
 async function saveBlEntryEdit(id,encBackCall){
   const backCall=decodeURIComponent(encBackCall);
@@ -8792,31 +8843,99 @@ async function saveBlEntryEdit(id,encBackCall){
   const amt=Number(document.getElementById('ble-amt').value);
   const desc=document.getElementById('ble-desc').value.trim();
   const vendorInp=document.getElementById('ble-vendor');
+  const cpInp=document.getElementById('ble-cp');
+  const catInp=document.getElementById('ble-cat');
   if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Amount must be a positive number.');
+  const category=catInp?catInp.value:null;
+  if((r.code==='opex'||r.code==='revenue')&&!category) return void(err.textContent='Category is required.');
+  if((r.code==='ar'||r.code==='ap'||r.code==='orec')&&cpInp&&!cpInp.value.trim()) return void(err.textContent='Counterparty is required.');
+  const oldDate=r.date, oldDebit=r.debit, oldKredit=r.kredit;
   const body={tx_date:date,description:desc||null,debit:dir==='debit'?amt:0,kredit:dir==='kredit'?amt:0};
+  if(catInp) body.category=category;
   if(vendorInp) body.vendor=vendorInp.value.trim()||null;
+  if(cpInp) body.counterparty_label=cpInp.value.trim()||null;
   try{
     const resp=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(body)});
     if(!resp.ok) throw new Error((await resp.text())||('HTTP '+resp.status));
-    r.date=date; r.desc=desc; r.debit=body.debit; r.kredit=body.kredit; if(vendorInp) r.vendor=body.vendor||'';
+    const linked=findLinkedMirror(r);
+    if(linked&&(r.code==='opex'||r.code==='revenue')){
+      const flow=r.code==='revenue'?'rev':'opex';
+      const OPEX_REFUND='Refund / Reimbursement Received', REV_REFUND='Deposit Refund Paid';
+      const contra=(flow==='opex'&&category===OPEX_REFUND)||(flow==='rev'&&category===REV_REFUND);
+      const signedAmt=contra?-amt:amt;
+      const oldPeriod=periodFromDateG(oldDate).code, newPeriod=periodFromDateG(date).code;
+      const txResp=await authedFetch(SB_URL+'/rest/v1/transactions?id=eq.'+linked.rec.id,{method:'PATCH',
+        headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+        body:JSON.stringify({description:desc||null,raw_label:category,vendor:body.vendor,day_label:dayLbl(date),period_code:newPeriod,amount_idr:signedAmt,contra})});
+      if(!txResp.ok) throw new Error('Saved the ledger row, but failed to update its Cards copy: '+((await txResp.text())||('HTTP '+txResp.status)));
+      if(oldPeriod!==newPeriod){
+        await adjustEntityPeriodTotal(r.entity,oldPeriod,flow,-linked.rec.amt);
+        await adjustEntityPeriodTotal(r.entity,newPeriod,flow,signedAmt);
+      } else {
+        await adjustEntityPeriodTotal(r.entity,newPeriod,flow,signedAmt-linked.rec.amt);
+      }
+      linked.rec.desc=desc; linked.rec.k=category; linked.rec.vendor=body.vendor; linked.rec.d=dayLbl(date); linked.rec.mo=newPeriod; linked.rec.amt=signedAmt; if(contra)linked.rec.contra=1; else delete linked.rec.contra;
+    } else if(linked&&(r.code==='ar'||r.code==='ap')){
+      const icResp=await authedFetch(SB_URL+'/rest/v1/intercompany_transactions?id=eq.'+linked.rec.id,{method:'PATCH',
+        headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+        body:JSON.stringify({counterparty_label:body.counterparty_label,tx_date:date,description:desc||null,amount_idr:amt,category})});
+      if(!icResp.ok) throw new Error('Saved the ledger row, but failed to update its Loan Affiliate copy: '+((await icResp.text())||('HTTP '+icResp.status)));
+      linked.rec.cp=body.counterparty_label; linked.rec.date=date; linked.rec.desc=desc; linked.rec.amt=amt; linked.rec.category=category;
+    } else if(linked&&r.code==='orec'){
+      const orecResp=await authedFetch(SB_URL+'/rest/v1/other_receivables?id=eq.'+linked.rec.id,{method:'PATCH',
+        headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+        body:JSON.stringify({counterparty:body.counterparty_label,direction:dir==='debit'?'in':'out',tx_date:date,day_label:dayLbl(date),description:desc||null,amount_idr:amt})});
+      if(!orecResp.ok) throw new Error('Saved the ledger row, but failed to update its Other Receivable copy: '+((await orecResp.text())||('HTTP '+orecResp.status)));
+      linked.rec.cp=body.counterparty_label; linked.rec.dir=dir==='debit'?'in':'out'; linked.rec.date=date; linked.rec.desc=desc; linked.rec.amt=amt;
+    } else if(linked&&r.code==='capital'){
+      const newPeriod=periodFromDateG(date).code;
+      const lfResp=await authedFetch(SB_URL+'/rest/v1/loan_flows?id=eq.'+linked.rec.id,{method:'PATCH',
+        headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+        body:JSON.stringify({from_label:body.vendor,description:desc||null,amount_idr:amt,period_code:newPeriod})});
+      if(!lfResp.ok) throw new Error('Saved the ledger row, but failed to update its Capital copy: '+((await lfResp.text())||('HTTP '+lfResp.status)));
+      linked.rec.f=body.vendor; linked.rec.desc=desc; linked.rec.amt=amt; linked.rec.period=newPeriod;
+      await refreshLoanFlows();
+    }
+    r.date=date; r.desc=desc; r.debit=body.debit; r.kredit=body.kredit;
+    if(catInp) r.category=category; if(vendorInp) r.vendor=body.vendor||''; if(cpInp) r.cp=body.counterparty_label||'';
+    renderKpiCash(agg());
     eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
 async function deleteBlEntry(id,encBackCall){
   const backCall=decodeURIComponent(encBackCall);
-  if(!confirm('Delete this ledger entry? This changes the account\'s running balance and cannot be undone.')) return;
+  const r=BANK_LEDGER.find(x=>x.id===id); if(!r) return;
+  const linked=findLinkedMirror(r);
+  const warn=linked?' Its linked copy in Cards/Transactions is deleted too'+((r.code==='opex'||r.code==='revenue')?', and the headline total is corrected':'')+'.':'';
+  if(!confirm('Delete this ledger entry? This changes the account\'s running balance.'+warn+' This cannot be undone.')) return;
   try{
-    const r=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries?id=eq.'+id,{method:'DELETE'});
-    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const r2=await authedFetch(SB_URL+'/rest/v1/bank_ledger_entries?id=eq.'+id,{method:'DELETE'});
+    if(!r2.ok) throw new Error((await r2.text())||('HTTP '+r2.status));
+    if(linked){
+      const table=linked.table;
+      const delResp=await authedFetch(SB_URL+'/rest/v1/'+table+'?id=eq.'+linked.rec.id,{method:'DELETE'});
+      if(!delResp.ok) throw new Error('Deleted the ledger row, but failed to delete its linked copy: '+((await delResp.text())||('HTTP '+delResp.status)));
+      if(table==='transactions'){
+        await adjustEntityPeriodTotal(r.entity,periodFromDateG(r.date).code,r.code==='revenue'?'rev':'opex',-linked.rec.amt);
+        const i=TX.findIndex(x=>x.id===linked.rec.id); if(i>=0) TX.splice(i,1);
+      } else if(table==='intercompany_transactions'){
+        const i=IC_TX.findIndex(x=>x.id===linked.rec.id); if(i>=0) IC_TX.splice(i,1);
+      } else if(table==='other_receivables'){
+        const i=OTHER_RECV.findIndex(x=>x.id===linked.rec.id); if(i>=0) OTHER_RECV.splice(i,1);
+      } else if(table==='loan_flows'){
+        await refreshLoanFlows();
+      }
+    }
     const idx=BANK_LEDGER.findIndex(x=>x.id===id);
     if(idx>=0) BANK_LEDGER.splice(idx,1);
+    renderKpiCash(agg());
     eval(backCall);
   }catch(e){ alert('Failed to delete: '+e.message); }
 }
 async function runDashboard(){
   const D=await loadFromSupabase();
-  ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;
+  ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;LOAN_FLOWS_ALL=D.LOAN_FLOWS_ALL;
   HIGHLIGHTS=D.HIGHLIGHTS;TX=D.TX;TX_MULTI=D.TX_MULTI;TX_MS=D.TX_MS;TX_ICG_OPEX=D.TX_ICG_OPEX;
   OUTSTANDING=D.OUTSTANDING;
   OUTSTANDING_PAYMENTS=D.OUTSTANDING_PAYMENTS;
