@@ -3207,11 +3207,27 @@ function icTxLedgerRowHtml(r,saldo,encOwner){
       +`<div id="ope-menu-${r.id}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${items.join('')}</div></td>`;
   } else { editCell='<td></td>'; }
   const saldoPos=saldo>=0;
+  // Debit(AP)/Credit(AR) used to just mirror Type — always "− amt" for AP, "+ amt" for AR — even
+  // for a Repayment Loan row, which actually moves the balance the OPPOSITE way (a repayment nets
+  // OFF that Type's contribution, see icRowAmt). That made a repayment look identical to a new
+  // loan except for the small "repayment" tag next to the description, easy to miss. A repayment
+  // row's sign now matches its true, signed contribution to the running Balance column instead
+  // (contrib = (type==='AR'?1:-1)*icRowAmt(r) — this is exactly what gets added to saldo below),
+  // and is colored the same blue as its "repayment" tag instead of the usual green/red, so it
+  // reads as "this one's different" at a glance rather than requiring the reader to also check
+  // the tag and mentally reverse the sign themselves.
+  const isRepay=r.category===REPAYMENT_LOAN_CATEGORY;
+  const contrib=(r.type==='AR'?1:-1)*icRowAmt(r);
+  const cellSign=contrib>=0?'+ ':'− ';
+  const cellCls=isRepay?'':(contrib>=0?'pos':'neg');
+  const cellStyle=isRepay?' style="color:var(--blue-700)"':'';
+  const apCell=r.type==='AP'?`<td class="num ${cellCls}"${cellStyle}>${cellSign}${fmt(r.amt)}</td>`:'<td></td>';
+  const arCell=r.type==='AR'?`<td class="num ${cellCls}"${cellStyle}>${cellSign}${fmt(r.amt)}</td>`:'<td></td>';
   return `<tr>
     <td style="white-space:nowrap;color:var(--muted);font-size:12px">${r.date||'—'}</td>
-    <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}${r.category==='Repayment Loan'?'<span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px;margin-left:6px">repayment</span>':''}${sourceTagHtml(r.source)}</td>
-    <td class="num neg">${r.type==='AP'?'− '+fmt(r.amt):''}</td>
-    <td class="num pos">${r.type==='AR'?'+ '+fmt(r.amt):''}</td>
+    <td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}${isRepay?'<span class="tag" style="background:var(--blue-50);color:var(--blue-700);font-size:9px;padding:2px 6px;margin-left:6px">repayment</span>':''}${sourceTagHtml(r.source)}</td>
+    ${apCell}
+    ${arCell}
     <td class="num" style="font-weight:800;color:${saldoPos?'#2b7a4b':'#b3261e'}">${saldoPos?'+':'− '}${fmt(Math.abs(saldo))}</td>
     ${editCell}
   </tr>`;
