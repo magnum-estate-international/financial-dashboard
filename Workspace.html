@@ -3571,21 +3571,30 @@ function paymentPlanCard(){
       <span style="font-size:15px;font-weight:800;color:var(--blue-300)">${needsMe}</span>
       <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Awaiting Approve</span>
     </div>`;
-  const stats=[
+  // Split left (still owed — what this card is actually about) from right (already settled) with
+  // its own divider, heavier than the hairlines between stats within a group, so "Paid this month"
+  // reads as a related-but-separate figure rather than one more item in the same tally.
+  const leftStats=[
     stat(ICON.file(14),scoped.length,'Total plans','var(--ink)',''),
     // For an approver, what needs their own action sits right after the headline count — before
-    // Pending/Approved/Paid/Rejected, which are whole-scope totals, not personal to-dos.
+    // Pending/Approved/Rejected, which are whole-scope totals, not personal to-dos.
     ...(needsMe!==null?[needsMeStat]:[]),
     stat(clockIcon(14),pend.length,'Pending','#9a6f0a','pending'),
     stat(ICON.check(14),approved.length,'Approved','var(--green)','approved'),
-    stat(ICON.check(14),fmt(paidThisMonthTotal),'Paid this month','#2f6fb0','',`openPaymentPlanHistory()`),
     stat(xIcon(14),rejected.length,'Rejected','var(--red)','rejected'),
+  ];
+  const rightStats=[
+    stat(ICON.check(14),fmt(paidThisMonthTotal),'Paid this month','#2f6fb0','',`openPaymentPlanHistory()`),
   ];
   return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.check(17)}</div><div class="lab">Daily Payment Plan</div></div>
       <div class="big" style="${outstanding.length?'':'color:var(--muted)'}">${outstanding.length?fmt(tot):'—'}</div>
-      ${scoped.length?`<div style="display:flex;margin-top:12px;border-top:1px solid #eef2f7;padding-top:10px">${stats.map((s,i)=>`<div style="flex:1;${i>0?'border-left:1px solid #eef2f7':''}">${s}</div>`).join('')}</div>`:''}
+      ${scoped.length?`<div style="display:flex;align-items:stretch;margin-top:12px;border-top:1px solid #eef2f7;padding-top:10px">
+        <div style="display:flex;flex:1">${leftStats.map((s,i)=>`<div style="flex:1;${i>0?'border-left:1px solid #eef2f7':''}">${s}</div>`).join('')}</div>
+        <div style="width:1px;background:#d7dae3;margin:0 6px"></div>
+        <div style="display:flex;flex:0 0 auto;min-width:150px">${rightStats.map(s=>`<div style="flex:1">${s}</div>`).join('')}</div>
+      </div>`:''}
     </div>`;
 }
 function paymentPlanStatusBadge(p){
