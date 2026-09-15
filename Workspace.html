@@ -6531,11 +6531,37 @@ function findDuplicateBl(list,r){
 // blDupCompareRowHtml renders either kind identically. Pinbuk/Capital/Financing are unaffected —
 // Pinbuk only ever touches bank_ledger_entries (already covered above), and Capital/Financing have
 // no single-entry counterpart to collide with.
+// Deliberately looser than findDuplicateTx/findDuplicateIcTx/findDuplicateOrec (which findCrossPathDup
+// below used to call directly): a bank's own remark text ("MVP059 - Payment of ... MCM InhouseTrf
+// KE...") essentially never matches how a person phrased the same transaction typing it in by hand,
+// so requiring an exact description (and, for AR/AP/Other Receivable, exact day) match here would
+// almost never catch a real duplicate — silently defeating the whole point of this check for exactly
+// the manual entries it exists to protect. Entity/Vendor-or-Counterparty/Category/Amount stay
+// required (plus month, for AR/AP/Other Receivable) since those are what people get right
+// consistently on both sides, and together are still specific enough to rarely false-positive on two
+// genuinely different transactions.
+function findLooseDuplicateTx(list,r){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return list.find(o=>o.e===r.entityMatch && o.mo===r.period && o.type===r.flowKey
+    && norm(o.k)===norm(r.category) && norm(o.vendor)===norm(r.vendor||'')
+    && Math.round(Math.abs(o.amt))===Math.round(r.amt||0));
+}
+function findLooseDuplicateIcTx(list,r){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return list.find(o=>norm(o.owner)===norm(r.owner) && norm(o.cp)===norm(r.cp) && o.type===r.type
+    && norm(o.category||'Loan Affiliate')===norm(r.category||'Loan Affiliate')
+    && (o.date||'').slice(0,7)===(r.date||'').slice(0,7) && Math.round(o.amt)===Math.round(r.amt||0));
+}
+function findLooseDuplicateOrec(list,r){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  return list.find(o=>o.e===r.e && norm(o.cp)===norm(r.cp) && o.dir===r.dir
+    && (o.date||'').slice(0,7)===(r.date||'').slice(0,7) && Math.round(o.amt)===Math.round(r.amt||0));
+}
 function findCrossPathDup(r){
   if(r.code==='revenue'||r.code==='opex'){
     const flowKey=r.code==='revenue'?'rev':'opex';
     const per=periodFromDateG(r.date);
-    const o=findDuplicateTx(TX,{entityMatch:r.acctMatch.entity,period:per.code,flowKey,category:r.category,vendor:r.vendor,amt:r.amt,desc:r.desc,date:r.date});
+    const o=findLooseDuplicateTx(TX,{entityMatch:r.acctMatch.entity,period:per.code,flowKey,category:r.category,vendor:r.vendor,amt:r.amt});
     if(!o) return null;
     return {date:r.date,code:r.code,category:o.k,vendor:o.vendor,cp:'',
       debit:flowKey==='rev'?Math.abs(o.amt):0,kredit:flowKey==='opex'?Math.abs(o.amt):0,
@@ -6544,14 +6570,14 @@ function findCrossPathDup(r){
   if(r.code==='ar'||r.code==='ap'){
     const owner=ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity;
     const category=r.category==='Repayment Loan'?'Repayment Loan':'Loan Affiliate';
-    const o=findDuplicateIcTx(IC_TX,{owner,cp:r.cp,type:r.code.toUpperCase(),date:r.date,amt:r.amt,desc:r.desc,category});
+    const o=findLooseDuplicateIcTx(IC_TX,{owner,cp:r.cp,type:r.code.toUpperCase(),date:r.date,amt:r.amt,category});
     if(!o) return null;
     return {date:r.date,code:r.code,category:o.category,vendor:'',cp:o.cp,
       debit:r.code==='ap'?o.amt:0,kredit:r.code==='ar'?o.amt:0,
       desc:o.desc,source:o.source||'Add a Transaction',crossPath:true};
   }
   if(r.code==='orec'){
-    const o=findDuplicateOrec(OTHER_RECV,{e:r.acctMatch.entity,cp:r.cp,dir:r.dir,date:r.date,amt:r.amt,desc:r.desc});
+    const o=findLooseDuplicateOrec(OTHER_RECV,{e:r.acctMatch.entity,cp:r.cp,dir:r.dir,date:r.date,amt:r.amt});
     if(!o) return null;
     return {date:r.date,code:'orec',category:'',vendor:'',cp:o.cp,
       debit:o.dir==='in'?o.amt:0,kredit:o.dir==='out'?o.amt:0,
@@ -6582,7 +6608,7 @@ function blDupCompareRowHtml(i,dup){
     +`<td class="num" style="padding-right:14px">${fmt(dup.debit||dup.kredit||0)}</td>`
     +`<td style="color:var(--muted)">${escH(dup.desc||'—')}</td>`
     +`</tr></table>`
-    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.source||'—')} · ${dup.crossPath?'found in Add a Transaction’s own record, not this account’s ledger — matched on entity/counterparty, date, category, amount &amp; description':'matched on account, date, code, amount &amp; description'} — all identical to the row above</div>`
+    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.source||'—')} · ${dup.crossPath?'found in Add a Transaction’s own record, not this account’s ledger — matched on entity/counterparty, month, category &amp; amount (description often reads differently between a bank statement and a manual entry, so it isn’t required to match)':'matched on account, date, code, amount &amp; description — all identical to the row above'}</div>`
     +`</div></td></tr>`;
 }
 function computeBlRow(r){
