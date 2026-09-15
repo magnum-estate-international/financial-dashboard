@@ -6609,6 +6609,10 @@ function blDupCompareRowHtml(i,dup){
     +`<td style="color:var(--muted)">${escH(dup.desc||'—')}</td>`
     +`</tr></table>`
     +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.source||'—')} · ${dup.crossPath?'found in Add a Transaction’s own record, not this account’s ledger — matched on entity/counterparty, month, category &amp; amount (description often reads differently between a bank statement and a manual entry, so it isn’t required to match)':'matched on account, date, code, amount &amp; description — all identical to the row above'}</div>`
+    +`<div style="margin-top:10px;display:flex;gap:8px">`
+    +`<button type="button" onclick="toggleBlDupKeep(${i})" style="border:0;border-radius:8px;background:var(--green);color:#fff;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer">✓ Not a duplicate — include this row</button>`
+    +`<button type="button" onclick="toggleBlDupCheck(${i})" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:8px;font-size:11.5px;padding:6px 12px;cursor:pointer">It is a duplicate — hide</button>`
+    +`</div>`
     +`</div></td></tr>`;
 }
 function computeBlRow(r){
@@ -6743,6 +6747,22 @@ function blCpCell(r,i){
   if(r.code==='orec') return r.cp?escH(r.cp):`<input id="bl-fix-cp-${i}" placeholder="Counterparty (person's name)" style="font-size:11px;padding:3px 4px" onchange="fixBlField(${i},'cp',this.value)">`;
   return '—';
 }
+// A row flagged r.dup can be resolved two ways: leave it flagged (the global "skip duplicates"
+// checkbox excludes it, same as before) or, once the "check" panel shows it's actually a different
+// transaction, mark it here as confirmed-unique — that overrides the global checkbox for this one
+// row specifically, so a batch mixing real duplicates and coincidental lookalikes (e.g. two genuine
+// bank fees the same month, same amount) doesn't force an all-or-nothing choice.
+let BL_DUP_KEEP=new Set();
+function toggleBlDupKeep(i){
+  if(BL_DUP_KEEP.has(i)) BL_DUP_KEEP.delete(i); else { BL_DUP_KEEP.add(i); BL_DUP_OPEN.delete(i); }
+  renderBlPreview();
+}
+// Single source of truth for which rows actually get imported — reused by the summary line, the
+// button's enabled/count state, and the import handler itself, so all three always agree.
+function blToImportRows(){
+  const skipDup=document.getElementById('bl-skip-dup')?.checked!==false;
+  return BL_ROWS.filter((r,i)=>!r.error&&!r.saldoError&&(!r.dup||BL_DUP_KEEP.has(i)||!skipDup));
+}
 function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
   const skippedNote=BL_SKIPPED_OUT_OF_RANGE?'<div style="font-size:12.5px;background:#eef2f7;border:1px solid #d7dae3;color:#3a4254;border-radius:10px;padding:10px 12px;margin-bottom:10px">'+BL_SKIPPED_OUT_OF_RANGE+' row'+(BL_SKIPPED_OUT_OF_RANGE===1?'':'s')+' outside the selected date range '+(BL_ROWS.length?'left out of this preview':'— nothing in this file falls inside it')+'.</div>':'';
@@ -6750,11 +6770,13 @@ function renderBlPreview(){
   const valid=BL_ROWS.filter(r=>!r.error&&!r.saldoError);
   let h=skippedNote+'<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Code</th><th>Category</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Credit</th><th class="num" style="text-align:right">Balance</th><th>Doc?</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
-    const rowBg=(r.error||r.saldoError)?'#fbe9e7':(r.dup?'#fff4e0':'');
+    const kept=r.dup&&BL_DUP_KEEP.has(i);
+    const rowBg=(r.error||r.saldoError)?'#fbe9e7':((r.dup&&!kept)?'#fff4e0':'');
     const open=BL_DUP_OPEN.has(i);
     const status=r.error?escH(r.error)
       :(r.saldoError?escH(r.saldoError)
-      :(r.dup?`<button type="button" onclick="toggleBlDupCheck(${i})" style="border:1px solid #f0cb87;background:#fff8ec;color:#8a5a1e;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">⚠ Possible duplicate — ${open?'hide':'check'}</button>`:'OK'));
+      :(kept?`<span style="color:var(--green)">✓ Confirmed unique</span> <button type="button" onclick="toggleBlDupKeep(${i})" style="border:0;background:none;color:var(--blue-300);font-size:11px;cursor:pointer;padding:0">↺ re-flag</button>`
+      :(r.dup?`<button type="button" onclick="toggleBlDupCheck(${i})" style="border:1px solid #f0cb87;background:#fff8ec;color:#8a5a1e;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">⚠ Possible duplicate — ${open?'hide':'check'}</button>`:'OK')));
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
       +'<td style="font-size:12px">'+blCodeCell(r,i)+'</td>'
@@ -6765,25 +6787,28 @@ function renderBlPreview(){
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.kredit?fmtIDR(r.kredit):'')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px;font-weight:700">'+(r.expectedSaldo!=null?fmtIDR(r.expectedSaldo):'—')+'</td>'
       +'<td style="font-size:12px;text-align:center">'+(r.docLink?'📎':'—')+'</td>'
-      +'<td style="font-size:11px;color:'+((r.error||r.saldoError)?'#b3261e':(r.dup?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
-    if(r.dup && open) h+=blDupCompareRowHtml(i,r.dup);
+      +'<td style="font-size:11px;color:'+((r.error||r.saldoError)?'#b3261e':((r.dup&&!kept)?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
+    if(r.dup && open && !kept) h+=blDupCompareRowHtml(i,r.dup);
   });
   h+='</tbody></table></div>';
-  const dupN=valid.filter(r=>r.dup).length;
+  const dupN=BL_ROWS.filter((r,i)=>!r.error&&!r.saldoError&&r.dup&&!BL_DUP_KEEP.has(i)).length;
+  const keptN=BL_ROWS.filter((r,i)=>!r.error&&!r.saldoError&&r.dup&&BL_DUP_KEEP.has(i)).length;
   h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> ledger entr'+(valid.length===1?'y':'ies')+' — '+valid.length+' of '+BL_ROWS.length+' row(s) ready'
-    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved entry (same account, date, code, amount &amp; description) — review before importing':'')
+    +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved entry — click "check" on a flagged row to see what it matched, then confirm it\'s unique or leave it skipped':'')
+    +(keptN?(dupN?' ('+keptN+' other'+(keptN===1?'':'s')+' already confirmed unique)':', including <b>'+keptN+'</b> confirmed unique after review'):'')
     +(BL_ROWS.length>valid.length?'. Fix the flagged rows above and they\'ll be included automatically':'')+'.</div>';
   // Re-uploading an edited "Export current data" file re-includes every unchanged row too — those
   // all land here flagged as possible duplicates, so defaulting this checked (only shown when there
   // actually are any) keeps that workflow from silently double-recording everything already saved.
-  if(dupN>0) h+='<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3a4254;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="bl-skip-dup" checked onchange="updateBlImportBtn()"> Skip the '+dupN+' row'+(dupN===1?'':'s')+' flagged as possible duplicate'+(dupN===1?'':'s')+'</label>';
+  // Confirmed-unique rows (BL_DUP_KEEP) are excluded from dupN so this checkbox only ever governs
+  // the ones still actually in question.
+  if(dupN>0) h+='<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3a4254;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="bl-skip-dup" checked onchange="updateBlImportBtn()"> Skip the '+dupN+' row'+(dupN===1?'':'s')+' still flagged as possible duplicate'+(dupN===1?'':'s')+'</label>';
   h+='<button id="bl-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'></button>';
   h+='<div id="bl-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
   window.updateBlImportBtn=()=>{
     const btn=document.getElementById('bl-import'); if(!btn) return;
-    const skip=document.getElementById('bl-skip-dup')?.checked;
-    const n=skip?valid.length-dupN:valid.length;
+    const n=blToImportRows().length;
     btn.textContent='Import '+n+' entr'+(n===1?'y':'ies');
     btn.disabled=n<=0;
   };
@@ -6792,8 +6817,7 @@ function renderBlPreview(){
   if(impBtn) impBtn.onclick=async()=>{
     impBtn.disabled=true; impBtn.textContent='Importing…';
     try{
-      const skipDup=document.getElementById('bl-skip-dup')?.checked;
-      const toImport=skipDup?valid.filter(r=>!r.dup):valid;
+      const toImport=blToImportRows();
       // 1) Every row becomes its own bank_ledger_entries row, regardless of Code.
       const ledgerRows=toImport.map(r=>({
         bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:r.date,code:r.code,
@@ -6891,7 +6915,7 @@ function renderBlPreview(){
         if(!orecResp.ok) throw new Error((await orecResp.text())||('HTTP '+orecResp.status));
         (await orecResp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
       }
-      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set();
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set();
       document.getElementById('bl-import-msg').style.color='#2b7a4b';
       document.getElementById('bl-import-msg').textContent='✓ Added '+toImport.length+' ledger entr'+(toImport.length===1?'y':'ies')
         +(docOk?', '+docOk+' document'+(docOk===1?'':'s')+' attached':'')
@@ -10070,7 +10094,7 @@ async function renderEntryBody(){
       if(blExpBtn) blExpBtn.disabled=!has;
       if(blFileInp) blFileInp.disabled=!has;
       if(blFileLabel){ blFileLabel.style.background=has?'#f5e8c8':'#e4e7ef'; blFileLabel.style.color=has?'#9a6f0a':'#9aa1b1'; blFileLabel.style.cursor=has?'pointer':'not-allowed'; }
-      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); renderBlPreview();
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); renderBlPreview();
       document.getElementById('bl-filename').textContent='';
     };
     if(blAcctSel) blAcctSel.onchange=setBlAcctEnabled;
@@ -10179,7 +10203,7 @@ async function renderEntryBody(){
       const rows=aoa.slice(headerRowIdx+1)
         .filter(r=>r.some(c=>String(c).trim()!==''))
         .map(r=>{ const o={}; headerArr.forEach((h,i)=>{ if(h!=='') o[h]=r[i]!=null?r[i]:''; }); return o; });
-      if(!rows.length){ BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); renderBlPreview(); return; }
+      if(!rows.length){ BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); renderBlPreview(); return; }
       const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
       const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
       const kDate=col(['date','tanggal']),
@@ -10195,7 +10219,7 @@ async function renderEntryBody(){
         kVendorOld=kVendorCp==null?col(['vendor']):null,
         kCpOld=kVendorCp==null?col(['counterparty (pt)','counterparty']):null,
         kDocLink=col(['link dokumen','dokumen','document link','link']);
-      BL_DUP_OPEN=new Set();
+      BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set();
       BL_ROWS_ALL=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
         const date=kDate!=null?parseFlexDate(r[kDate]):null;
         const codeRaw=kCode!=null?String(r[kCode]||'').trim().toLowerCase():'';
