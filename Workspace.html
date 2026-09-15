@@ -3269,19 +3269,24 @@ function openIntercompanyOwner(encOwner){
   });
   showModal(owner,h,true);
 }
-async function deleteIcTx(id,encOwner){
+// backCall follows openTxEdit/saveTxEdit/deleteTxRow's convention (an encoded JS expression to
+// eval when done — e.g. renderTx1ManualList() from the manual-entries list below, this function's
+// only caller now that openIntercompanyOwner is read-only), not a bare owner name.
+async function deleteIcTx(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
   if(!confirm('Delete this inter-company transaction? This cannot be undone.')) return;
   try{
     const r=await authedFetch(SB_URL+'/rest/v1/intercompany_transactions?id=eq.'+id,{method:'DELETE'});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const idx=IC_TX.findIndex(t=>t.id===id);
     if(idx>=0) IC_TX.splice(idx,1);
-    openIntercompanyOwner(encOwner);
+    eval(backCall);
   }catch(e){ alert('Failed to delete: '+e.message); }
 }
-function openIcTxEdit(id,encOwner){
+function openIcTxEdit(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
   const r=IC_TX.find(t=>t.id===id); if(!r) return;
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openIntercompanyOwner('${encOwner}')">‹ Back</button>`;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Loan Affiliate Transaction</h4>`;
   const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">PT (Owner): <b style="color:var(--ink)">${escH(r.owner)}</b></div>`
@@ -3291,11 +3296,12 @@ function openIcTxEdit(id,encOwner){
     +opeField('Date',`<input id="ictxe-date" type="date" value="${r.date||''}" style="${inp}">`)
     +opeField('Description',`<input id="ictxe-desc" value="${escH(r.desc||'')}" style="${inp}">`)
     +opeField('Amount (IDR)',`<input id="ictxe-amt" type="number" min="0" step="1" value="${r.amt}" style="${inp}">`)
-    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveIcTxEdit(${id},'${encOwner}')">Save changes</button>`
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveIcTxEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
     +`<span id="ictxe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal('Edit Loan Affiliate Transaction',h);
 }
-async function saveIcTxEdit(id,encOwner){
+async function saveIcTxEdit(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
   const err=document.getElementById('ictxe-err'); err.textContent='';
   const cp=document.getElementById('ictxe-cp').value.trim();
   const type=document.getElementById('ictxe-type').value;
@@ -3312,7 +3318,7 @@ async function saveIcTxEdit(id,encOwner){
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     const t=IC_TX.find(x=>x.id===id);
     if(t){ t.cp=cp; t.type=type; t.category=category; t.date=date; t.desc=desc; t.amt=amt; }
-    openIntercompanyOwner(encOwner);
+    eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
 function renderKpiFin(a){
@@ -3426,9 +3432,12 @@ function openOtherReceivableCp(encCp){
   h+=`</tbody></table></div>`;
   showModal('Other Receivable — '+cp,h,true);
 }
-function openOrecEdit(id,encCp){
+// backCall follows openTxEdit's convention — this function's only caller now is the manual-entries
+// list below, openOtherReceivableCp being read-only.
+function openOrecEdit(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
   const r=OTHER_RECV.find(x=>x.id===id); if(!r) return;
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openOtherReceivableCp('${encCp}')">‹ Back</button>`;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Other Receivable</h4>`;
   const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
   h+=opeField('Entity',`<select id="orece-ent" style="${inp}">`+EIDS.map(id2=>`<option value="${id2}"${id2===r.e?' selected':''}>${escH(eName(id2))}</option>`).join('')+`</select>`)
@@ -3437,11 +3446,12 @@ function openOrecEdit(id,encCp){
     +opeField('Date',`<input id="orece-date" type="date" value="${r.date||''}" style="${inp}">`)
     +opeField('Description',`<input id="orece-desc" value="${escH(r.desc||'')}" style="${inp}">`)
     +opeField('Amount (IDR)',`<input id="orece-amt" type="number" min="0" step="1" value="${r.amt}" style="${inp}">`)
-    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveOrecEdit(${id},'${encCp}')">Save changes</button>`
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveOrecEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
     +`<span id="orece-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal('Edit Other Receivable',h);
 }
-async function saveOrecEdit(id,encCp){
+async function saveOrecEdit(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
   const err=document.getElementById('orece-err'); err.textContent='';
   const entity=document.getElementById('orece-ent').value;
   const cp=document.getElementById('orece-cp').value.trim();
@@ -3460,10 +3470,11 @@ async function saveOrecEdit(id,encCp){
     const t=OTHER_RECV.find(x=>x.id===id);
     if(t){ t.e=entity; t.cp=cp; t.dir=dir; t.date=date; if(body.period_code){t.period=body.period_code; t.day=body.day_label;} t.desc=desc; t.amt=amt; }
     renderKpiFin(agg());
-    openOtherReceivableCp(encodeURIComponent(cp));
+    eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
-async function deleteOrecTx(id,encCp){
+async function deleteOrecTx(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
   if(!confirm('Delete this Other Receivable transaction? This cannot be undone.')) return;
   try{
     const r=await authedFetch(SB_URL+'/rest/v1/other_receivables?id=eq.'+id,{method:'DELETE'});
@@ -3471,7 +3482,7 @@ async function deleteOrecTx(id,encCp){
     const idx=OTHER_RECV.findIndex(x=>x.id===id);
     if(idx>=0) OTHER_RECV.splice(idx,1);
     renderKpiFin(agg());
-    openOtherReceivableCp(encCp);
+    eval(backCall);
   }catch(e){ alert('Failed to delete: '+e.message); }
 }
 function mkOutstanding(o){
@@ -4875,20 +4886,24 @@ function openCapDepPerson(encPerson){
   }
   showModal(`${person} — Shareholder Capital Deposit`,h);
 }
-function openLoanFlowEdit(id,encPerson){
-  const l=(LOANS_BY_MONTH.Q2||[]).find(x=>x.id===id); if(!l) return;
-  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openCapDepPerson('${encPerson}')">‹ Back</button>`;
+// backCall follows openTxEdit's convention — this function's only caller now is the manual-entries
+// list below, openCapDepPerson being read-only.
+function openLoanFlowEdit(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
+  const l=LOAN_FLOWS_ALL.find(x=>x.id===id); if(!l) return;
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
   h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 12px">Edit Shareholder Capital Deposit</h4>`;
   const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
   h+=opeField('Shareholder name',`<input id="lfe-cp" value="${escH(l.f)}" style="${inp}">`)
     +opeField('Period',`<select id="lfe-per" style="${inp}">`+Q2_MONTHS.filter(m=>m!=='Q2').map(m=>`<option value="${m}"${m===l.period?' selected':''}>${escH(MONTHS[m]||m)}</option>`).join('')+`</select>`)
     +opeField('Description',`<input id="lfe-desc" value="${escH(l.desc||'')}" style="${inp}">`)
     +opeField('Amount (IDR)',`<input id="lfe-amt" type="number" min="0" step="1" value="${l.amt}" style="${inp}">`)
-    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveLoanFlowEdit(${id},'${encPerson}')">Save changes</button>`
+    +`<button class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveLoanFlowEdit(${id},'${encodeURIComponent(backCall).replace(/'/g,'%27')}')">Save changes</button>`
     +`<span id="lfe-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
   showModal('Edit Shareholder Capital Deposit',h);
 }
-async function saveLoanFlowEdit(id,encPerson){
+async function saveLoanFlowEdit(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
   const err=document.getElementById('lfe-err'); err.textContent='';
   const cp=document.getElementById('lfe-cp').value.trim();
   const period=document.getElementById('lfe-per').value;
@@ -4903,17 +4918,18 @@ async function saveLoanFlowEdit(id,encPerson){
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     await refreshLoanFlows();
     renderKpiFin(agg());
-    openCapDepPerson(encodeURIComponent(cp));
+    eval(backCall);
   }catch(e){ err.textContent='Failed to save: '+e.message; }
 }
-async function deleteLoanFlow(id,encPerson){
+async function deleteLoanFlow(id,encBackCall){
+  const backCall=decodeURIComponent(encBackCall);
   if(!confirm('Delete this Shareholder Capital Deposit entry? This cannot be undone.')) return;
   try{
     const r=await authedFetch(SB_URL+'/rest/v1/loan_flows?id=eq.'+id,{method:'DELETE'});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
     await refreshLoanFlows();
     renderKpiFin(agg());
-    openCapDepPerson(encPerson);
+    eval(backCall);
   }catch(e){ alert('Failed to delete: '+e.message); }
 }
 function openDetail(kind){
@@ -6294,6 +6310,7 @@ async function saveTxOneLoan(entity,date,desc,amt){
     document.getElementById('tx1-desc').value='';
     document.getElementById('tx1-amt').value='';
     clearSearchableSelect('tx1-ic-cp');
+    renderTx1ManualList();
     msg.style.color='#2b7a4b'; msg.textContent='Loan Affiliate transaction saved.';
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
@@ -6356,6 +6373,7 @@ async function saveTxOneOtherReceivable(entity,date,desc,amt){
     document.getElementById('tx1-desc').value='';
     document.getElementById('tx1-amt').value='';
     document.getElementById('tx1-orec-cp').value='';
+    renderTx1ManualList();
     msg.style.color='#2b7a4b'; msg.textContent='Other Receivable transaction saved.';
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
@@ -6385,9 +6403,57 @@ async function saveTxOneCapDep(entity,date,desc,amt){
     document.getElementById('tx1-desc').value='';
     document.getElementById('tx1-amt').value='';
     document.getElementById('tx1-capdep-cp').value='';
+    renderTx1ManualList();
     msg.style.color='#2b7a4b'; msg.textContent='Shareholder Capital Deposit saved.';
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
+}
+// Add a Transaction is now the edit/delete surface for anything entered manually (source_label
+// 'Manual entry') — Pinbuk excluded since it has no separate mirror to desync (it only ever lives
+// in bank_ledger_entries, editable via View Ledger regardless of how it was entered), and Financing
+// excluded since it has no single-entry counterpart to begin with (Import Bank Ledger only). Reuses
+// openTxEdit/deleteTxRow, openIcTxEdit/deleteIcTx, openOrecEdit/deleteOrecTx and
+// openLoanFlowEdit/deleteLoanFlow exactly as-is — their only remaining callers now that Cards is
+// read-only — passing 'renderTx1ManualList()' as the backCall so the list refreshes in place
+// instead of navigating elsewhere.
+function renderTx1ManualList(){
+  const el=document.getElementById('tx1-manual-list'); if(!el) return;
+  if(!(IS_ADMIN||MY_ROLE==='editor')){ el.innerHTML=''; return; }
+  const bc=encodeURIComponent('renderTx1ManualList()');
+  const rows=[];
+  TX.filter(x=>x.srcLabel==='Manual entry').forEach(x=>rows.push({date:x.d,kind:x.type==='rev'?'Revenue':'Opex',ent:x.e,desc:x.desc,amt:x.amt,
+    editHtml:menuItem(ICON.edit()+' Edit',`openTxEdit(${x.id},'${bc}')`),
+    delHtml:menuItem(ICON.trash()+' Delete',`deleteTxRow(${x.id},'${bc}')`,'var(--red)'),rid:'tx1m-tx-'+x.id}));
+  IC_TX.filter(x=>x.source==='Manual entry').forEach(x=>{
+    const ownerEnt=EIDS.find(id=>ENT[id]&&ENT[id].name===x.owner);
+    rows.push({date:x.date,kind:'Loan Affiliate ('+x.type+')',ent:ownerEnt||x.owner,desc:x.desc,amt:x.amt,
+      editHtml:menuItem(ICON.edit()+' Edit',`openIcTxEdit(${x.id},'${bc}')`),
+      delHtml:menuItem(ICON.trash()+' Delete',`deleteIcTx(${x.id},'${bc}')`,'var(--red)'),rid:'tx1m-ic-'+x.id});
+  });
+  OTHER_RECV.filter(x=>x.source==='Manual entry').forEach(x=>rows.push({date:x.date||x.day,kind:'Other Receivable',ent:x.e,desc:x.desc,amt:x.amt,
+    editHtml:menuItem(ICON.edit()+' Edit',`openOrecEdit(${x.id},'${bc}')`),
+    delHtml:menuItem(ICON.trash()+' Delete',`deleteOrecTx(${x.id},'${bc}')`,'var(--red)'),rid:'tx1m-or-'+x.id}));
+  LOAN_FLOWS_ALL.filter(x=>x.ty==='Capital deposit'&&x.source==='Manual entry').forEach(x=>{
+    const ownerEnt=EIDS.find(id=>ENT[id]&&ENT[id].name===x.t);
+    rows.push({date:MONTHS[x.period]||x.period,kind:'Capital Deposit',ent:ownerEnt||x.t,desc:x.desc,amt:x.amt,
+      editHtml:menuItem(ICON.edit()+' Edit',`openLoanFlowEdit(${x.id},'${bc}')`),
+      delHtml:menuItem(ICON.trash()+' Delete',`deleteLoanFlow(${x.id},'${bc}')`,'var(--red)'),rid:'tx1m-lf-'+x.id});
+  });
+  if(!rows.length){ el.innerHTML='<div style="font-size:12px;color:var(--muted);margin-top:14px">No manually-entered transactions yet.</div>'; return; }
+  rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  let h='<div style="font-size:11px;font-weight:800;letter-spacing:.4px;color:var(--muted);text-transform:uppercase;margin:18px 0 8px">Manually entered — click ⋮ to edit or delete</div>';
+  h+='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Date</th><th>Type</th><th>Entity</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    h+=`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${escH(r.date||'—')}</td>`
+      +`<td style="font-size:12px">${escH(r.kind)}</td>`
+      +`<td style="font-size:12.5px">${escH(eName(r.ent))}</td>`
+      +`<td style="font-size:12.5px;color:var(--muted)">${escH(r.desc||'—')}</td>`
+      +`<td class="num">${fmt(Math.abs(r.amt))}</td>`
+      +`<td style="white-space:nowrap"><button type="button" onclick="toggleOpeRowMenu('${r.rid}',this)" title="Actions" style="border:0;background:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--muted);line-height:1">⋮</button>`
+      +`<div id="ope-menu-${r.rid}" class="ope-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:150px">${r.editHtml}${r.delHtml}</div></td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
 }
 async function saveTxOne(){
   const msg=document.getElementById('tx1-msg'); msg.textContent='';
@@ -6428,7 +6494,14 @@ async function saveTxOne(){
     const row={source:'TX_SINGLE',ord:Math.floor(Date.now()/1000),period_code:P.code,flow,
       entity_code:entity,day_label:dayLbl(date),description:desc.slice(0,200),raw_label:category,
       vendor:vendor||null,source_label:'Manual entry',amount_idr:signedAmt,contra};
-    await adminAddBatch('transactions',[row]);
+    // return=representation (not adminAddBatch's return=minimal) so the new row can be pushed into
+    // TX with a real id right away — needed for the manual-entries list below to show it, and to
+    // edit/delete it, without waiting for "the page refreshes when you close this panel".
+    const insResp=await authedFetch(SB_URL+'/rest/v1/transactions',{method:'POST',
+      headers:{'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify([row])});
+    if(!insResp.ok) throw new Error((await insResp.text())||('HTTP '+insResp.status));
+    const [savedRow]=await insResp.json();
+    TX.push({id:savedRow.id,mo:savedRow.period_code,type:savedRow.flow,e:savedRow.entity_code,d:savedRow.day_label,desc:savedRow.description,vendor:savedRow.vendor||null,k:savedRow.raw_label,amt:+savedRow.amount_idr,attachments:[],srcLabel:savedRow.source_label||null,sourceLedgerId:null,contra:savedRow.contra?1:undefined});
     const cur=await sbFetch('entity_period_totals?entity_code=eq.'+entity+'&period_code=eq.'+P.code+'&select=revenue,opex,financing_in,financing_out');
     const c=cur[0]||{revenue:0,opex:0,financing_in:0,financing_out:0};
     const inc={revenue:flow==='rev'?signedAmt:0,opex:flow==='opex'?signedAmt:0};
@@ -6443,6 +6516,7 @@ async function saveTxOne(){
     document.getElementById('tx1-amt').value='';
     clearSearchableSelect(flow==='rev'?'tx1-cat-rev':'tx1-cat-opex');
     clearSearchableSelect('tx1-vendor');
+    renderTx1ManualList();
     msg.style.color='#2b7a4b'; msg.textContent=(contra?'Refund saved — netted off '+(flow==='rev'?'Revenue':'Opex')+'. ':'Transaction saved. ')+'The page refreshes when you close this panel.';
   }catch(e){ msg.style.color='#b3261e'; msg.textContent='Failed to save: '+e.message; }
   btn.disabled=false; btn.textContent='Save transaction';
@@ -9989,6 +10063,7 @@ async function renderEntryBody(){
     +'<input id="tx1-desc" placeholder="Description" style="'+inp+';width:100%;margin-bottom:10px">'
     +'<button id="tx1-send" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">Save transaction</button>'
     +'<div id="tx1-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>'
+    +'<div id="tx1-manual-list"></div>'
     +'</div>'
     +'</div></details>';
   // ── Manage Database group: Manage Bank Accounts (not admin-only, so this group and its divlabel
@@ -10083,6 +10158,7 @@ async function renderEntryBody(){
   {
     const tx1Btn=document.getElementById('tx1-send');
     if(tx1Btn) tx1Btn.onclick=saveTxOne;
+    renderTx1ManualList();
   }
   // ── Manage Bank Accounts wiring ──
   renderBankAccList();
