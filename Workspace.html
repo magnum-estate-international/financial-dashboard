@@ -3546,7 +3546,11 @@ function paymentPlanCard(){
   const approved=scoped.filter(p=>p.status==='approved'&&!p.paidAt);
   const paid=scoped.filter(p=>p.status==='approved'&&p.paidAt);
   const rejected=scoped.filter(p=>p.status==='rejected');
-  const tot=pend.reduce((s,p)=>s+p.amt,0);
+  // Headline total is what's still outstanding — pending at its purposed amount, approved-but-
+  // unpaid at its final approved amount (falling back to purpose if not yet set) — not just Pending
+  // alone, so the card reflects everything still owed, not only what hasn't been decided on yet.
+  const outstanding=[...pend,...approved];
+  const tot=outstanding.reduce((s,p)=>s+(p.status==='approved'&&p.approvedAmt!=null?p.approvedAmt:p.amt),0);
   // A raw "Paid" count only grows forever and needs no action once true — the nominal paid so far
   // THIS month is the more useful headline figure here, and doubles as the entry point into Payment
   // History (see openPaymentPlanHistory()).
@@ -3580,7 +3584,7 @@ function paymentPlanCard(){
   return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.check(17)}</div><div class="lab">Daily Payment Plan</div></div>
-      <div class="big ${pend.length?'':''}" style="${pend.length?'':'color:var(--muted)'}">${pend.length?fmt(tot):'—'}</div>
+      <div class="big" style="${outstanding.length?'':'color:var(--muted)'}">${outstanding.length?fmt(tot):'—'}</div>
       ${scoped.length?`<div style="display:flex;margin-top:12px;border-top:1px solid #eef2f7;padding-top:10px">${stats.map((s,i)=>`<div style="flex:1;${i>0?'border-left:1px solid #eef2f7':''}">${s}</div>`).join('')}</div>`:''}
     </div>`;
 }
