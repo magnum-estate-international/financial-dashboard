@@ -6520,6 +6520,45 @@ function findDuplicateBl(list,r){
     && Math.round(o.debit||0)===Math.round(r.debit||0) && Math.round(o.kredit||0)===Math.round(r.kredit||0)
     && norm(o.desc)===norm(r.desc));
 }
+// findDuplicateBl alone only catches a row that matches something already in bank_ledger_entries —
+// but "Add a Transaction" never writes there (it goes straight to transactions/
+// intercompany_transactions/other_receivables), so a transaction entered by hand mid-period and
+// then swept up again when the full period's ledger gets imported later would sail through with no
+// warning. This cross-checks Revenue/Opex/AR/AP/Other Receivable rows against those same tables
+// too, using the exact matching rules findDuplicateTx/findDuplicateIcTx/findDuplicateOrec already
+// use for "Add a Transaction" itself, and normalizes whatever it finds into the same
+// {date,code,category,vendor,cp,debit,kredit,desc,source} shape findDuplicateBl returns, so
+// blDupCompareRowHtml renders either kind identically. Pinbuk/Capital/Financing are unaffected —
+// Pinbuk only ever touches bank_ledger_entries (already covered above), and Capital/Financing have
+// no single-entry counterpart to collide with.
+function findCrossPathDup(r){
+  if(r.code==='revenue'||r.code==='opex'){
+    const flowKey=r.code==='revenue'?'rev':'opex';
+    const per=periodFromDateG(r.date);
+    const o=findDuplicateTx(TX,{entityMatch:r.acctMatch.entity,period:per.code,flowKey,category:r.category,vendor:r.vendor,amt:r.amt,desc:r.desc,date:r.date});
+    if(!o) return null;
+    return {date:r.date,code:r.code,category:o.k,vendor:o.vendor,cp:'',
+      debit:flowKey==='rev'?Math.abs(o.amt):0,kredit:flowKey==='opex'?Math.abs(o.amt):0,
+      desc:o.desc,source:o.srcLabel||'Add a Transaction',crossPath:true};
+  }
+  if(r.code==='ar'||r.code==='ap'){
+    const owner=ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity;
+    const category=r.category==='Repayment Loan'?'Repayment Loan':'Loan Affiliate';
+    const o=findDuplicateIcTx(IC_TX,{owner,cp:r.cp,type:r.code.toUpperCase(),date:r.date,amt:r.amt,desc:r.desc,category});
+    if(!o) return null;
+    return {date:r.date,code:r.code,category:o.category,vendor:'',cp:o.cp,
+      debit:r.code==='ap'?o.amt:0,kredit:r.code==='ar'?o.amt:0,
+      desc:o.desc,source:o.source||'Add a Transaction',crossPath:true};
+  }
+  if(r.code==='orec'){
+    const o=findDuplicateOrec(OTHER_RECV,{e:r.acctMatch.entity,cp:r.cp,dir:r.dir,date:r.date,amt:r.amt,desc:r.desc});
+    if(!o) return null;
+    return {date:r.date,code:'orec',category:'',vendor:'',cp:o.cp,
+      debit:o.dir==='in'?o.amt:0,kredit:o.dir==='out'?o.amt:0,
+      desc:o.desc,source:o.source||'Add a Transaction',crossPath:true};
+  }
+  return null;
+}
 // Inline duplicate-check — a flagged row's status becomes a toggle button instead of forcing a
 // trip elsewhere in the dashboard
 // to see what it supposedly matches, so it can be confirmed (and left flagged, to skip on import) or
@@ -6543,7 +6582,7 @@ function blDupCompareRowHtml(i,dup){
     +`<td class="num" style="padding-right:14px">${fmt(dup.debit||dup.kredit||0)}</td>`
     +`<td style="color:var(--muted)">${escH(dup.desc||'—')}</td>`
     +`</tr></table>`
-    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.source||'—')} · matched on account, date, code, amount &amp; description — all identical to the row above</div>`
+    +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.source||'—')} · ${dup.crossPath?'found in Add a Transaction’s own record, not this account’s ledger — matched on entity/counterparty, date, category, amount &amp; description':'matched on account, date, code, amount &amp; description'} — all identical to the row above</div>`
     +`</div></td></tr>`;
 }
 function computeBlRow(r){
@@ -6601,7 +6640,7 @@ function computeBlRow(r){
   // it's matched against below — free text, same as Update Transaction's Shareholder Capital
   // Deposit field.
   r.vendor=(r.code==='capital'||r.code==='financing')?String(r.vendorRaw||'').trim():(r.vendorMatch||r.vendorRaw||'');
-  r.dup=error?null:findDuplicateBl(BANK_LEDGER,r);
+  r.dup=error?null:(findDuplicateBl(BANK_LEDGER,r)||findCrossPathDup(r));
 }
 // Cross-checks the optional Balance column against a running balance computed per account (starting
 // from that account's current live balance, then accumulating each row's Debit/Credit in date
