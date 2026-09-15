@@ -5207,12 +5207,18 @@ function displayVendor(x){
 // Transactions, manual add/edit, balance corrections — recorded under various source_label values)
 // or the unified Bank Ledger import, which also routes revenue/opex rows in here so they show up
 // in these same boxes. Tag each row so it's visible which path it came from.
+// "Manual" used to cover every non-Ledger row, but that's no longer precise now that editing is
+// split between View Ledger (Bank Ledger import) and Add a Transaction's manual-entries list
+// (source_label exactly 'Manual entry', see renderTx1ManualList) — a Daily Payment Plan payout, a
+// one-off reconciliation fix, or historical data predating both flows isn't reachable from either
+// place, so labeling it "Input Transaction" would send someone looking in the wrong place. Those
+// show their real source_label instead (or no tag at all if there isn't one).
 function sourceTagHtml(srcLabel){
-  const isLedger = srcLabel === 'Bank Ledger import';
-  const bg = isLedger ? '#e6f6ee' : '#eef0f4';
-  const fg = isLedger ? '#1f8a56' : 'var(--muted)';
-  const title = isLedger ? 'Imported via the unified Bank Ledger' : 'Entered via the per-category import/entry flow';
-  return ` <span class="tag" style="background:${bg};color:${fg};font-size:9px;padding:2px 6px" title="${title}">${isLedger?'Ledger':'Manual'}</span>`;
+  if(srcLabel==='Bank Ledger import') return ` <span class="tag" style="background:#e6f6ee;color:#1f8a56;font-size:9px;padding:2px 6px" title="Imported via the unified Bank Ledger — edit or delete via View Ledger">Ledger</span>`;
+  if(srcLabel==='Manual entry') return ` <span class="tag" style="background:#eef0f4;color:var(--muted);font-size:9px;padding:2px 6px" title="Entered via Add a Transaction — edit or delete via its manual-entries list">Input Transaction</span>`;
+  if(!srcLabel) return '';
+  const short=srcLabel.length>28?srcLabel.slice(0,26)+'…':srcLabel;
+  return ` <span class="tag" style="background:#eef0f4;color:var(--muted);font-size:9px;padding:2px 6px" title="${escH(srcLabel)}">${escH(short)}</span>`;
 }
 function txRowHtml(x,type,cls,isRev,showEntity,backCall){
   const canEdit=MY_ROLE==='editor';
