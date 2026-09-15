@@ -3530,6 +3530,13 @@ function paymentPlansInScope(){
   const ids=new Set(scopeIds());
   return DPP.filter(p=>ids.has(p.e));
 }
+// A plan's own paid_at, not the dashboard's reporting-period filter — Payment History tracks when
+// money actually went out, in real calendar time, independent of which period the user is browsing.
+function isThisCalendarMonth(iso){
+  if(!iso) return false;
+  const d=new Date(iso), now=new Date();
+  return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
+}
 function paymentPlanCard(){
   const scoped=paymentPlansInScope();
   const pend=scoped.filter(p=>p.status==='pending');
@@ -3540,13 +3547,17 @@ function paymentPlanCard(){
   const paid=scoped.filter(p=>p.status==='approved'&&p.paidAt);
   const rejected=scoped.filter(p=>p.status==='rejected');
   const tot=pend.reduce((s,p)=>s+p.amt,0);
+  // A raw "Paid" count only grows forever and needs no action once true — the nominal paid so far
+  // THIS month is the more useful headline figure here, and doubles as the entry point into Payment
+  // History (see openPaymentPlanHistory()).
+  const paidThisMonthTotal=paid.filter(p=>isThisCalendarMonth(p.paidAt)).reduce((s,p)=>s+(p.paidAmountIdr!=null?p.paidAmountIdr:p.amt),0);
   const iAmApprover=isApproverAnywhere(MY_EMAIL);
   const needsMe=iAmApprover?pend.filter(p=>isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL)).length:null;
   const clockIcon=(s=14)=>svgOpen(s)+`<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>`;
   const xIcon=(s=14)=>svgOpen(s)+`<circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
   // Each stat is its own clickable jump to the matching filter on the full list — stopPropagation
   // keeps the click from also firing the card's own onclick (which opens the list unfiltered).
-  const stat=(icon,n,label,color,status)=>`<div onclick="event.stopPropagation();openPaymentPlansStatus('${status}')" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
+  const stat=(icon,n,label,color,status,onclick)=>`<div onclick="event.stopPropagation();${onclick||`openPaymentPlansStatus('${status}')`}" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
       <span style="color:${color||'var(--muted)'};display:inline-flex">${icon}</span>
       <span style="font-size:15px;font-weight:800;color:${color||'var(--ink)'}">${n}</span>
       <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">${label}</span>
@@ -3563,7 +3574,7 @@ function paymentPlanCard(){
     ...(needsMe!==null?[needsMeStat]:[]),
     stat(clockIcon(14),pend.length,'Pending','#9a6f0a','pending'),
     stat(ICON.check(14),approved.length,'Approved','var(--green)','approved'),
-    stat(ICON.check(14),paid.length,'Paid','#2f6fb0','paid'),
+    stat(ICON.check(14),fmt(paidThisMonthTotal),'Paid this month','#2f6fb0','',`openPaymentPlanHistory()`),
     stat(xIcon(14),rejected.length,'Rejected','var(--red)','rejected'),
   ];
   return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
@@ -3682,13 +3693,28 @@ function pendingForMe(){
 }
 // Column-filter state for the Daily Payment Plan list — persists across reopens within the
 // session (like the rest of the filter bar), reset only via the explicit "Clear filters" link.
-let DPP_FILTER={entity:'',vendor:'',category:'',status:''};
+// paidFrom/paidTo only apply when status==='paid' (see openPaymentPlans) — a date range on when the
+// money actually went out, for reviewing Payment History over a period rather than the single
+// undifferentiated list of every plan ever paid.
+let DPP_FILTER={entity:'',vendor:'',category:'',status:'',paidFrom:'',paidTo:''};
 function setDppFilter(key,val){ DPP_FILTER[key]=val; openPaymentPlans(); }
-function clearDppFilters(){ DPP_FILTER={entity:'',vendor:'',category:'',status:''}; openPaymentPlans(); }
+function clearDppFilters(){ DPP_FILTER={entity:'',vendor:'',category:'',status:'',paidFrom:'',paidTo:''}; openPaymentPlans(); }
 // Used by the clickable stats on the Daily Payment Plan card — always starts from a clean slate
 // (entity/vendor/category cleared) since these are whole-scope counts, not tied to any one of
 // those filters, then jumps straight to that status.
-function openPaymentPlansStatus(status){ DPP_FILTER={entity:'',vendor:'',category:'',status}; openPaymentPlans(); }
+function openPaymentPlansStatus(status){ DPP_FILTER={entity:'',vendor:'',category:'',status,paidFrom:'',paidTo:''}; openPaymentPlans(); }
+// Entry point for "Paid this month" on the card — Payment History defaults to the real current
+// calendar month (not the dashboard's reporting-period filter, see isThisCalendarMonth), widen/
+// narrow via the Paid From/To inputs that appear once status is Paid.
+function openPaymentPlanHistory(){
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  const pad=n=>String(n).padStart(2,'0');
+  const from=y+'-'+pad(m+1)+'-01';
+  const lastDay=new Date(y,m+1,0).getDate();
+  const to=y+'-'+pad(m+1)+'-'+pad(lastDay);
+  DPP_FILTER={entity:'',vendor:'',category:'',status:'paid',paidFrom:from,paidTo:to};
+  openPaymentPlans();
+}
 function openPaymentPlans(){
   const scoped=paymentPlansInScope();
   let rows=scoped.slice();
@@ -3698,10 +3724,17 @@ function openPaymentPlans(){
   // "Paid" and "Approved" both correspond to status==='approved' underneath (paidAt is what
   // differentiates them, same as the status badge itself) — so the two filters are kept mutually
   // exclusive here rather than "Approved" silently also matching every already-paid plan.
-  if(DPP_FILTER.status==='paid') rows=rows.filter(p=>p.status==='approved'&&p.paidAt);
+  if(DPP_FILTER.status==='paid'){
+    rows=rows.filter(p=>p.status==='approved'&&p.paidAt);
+    if(DPP_FILTER.paidFrom) rows=rows.filter(p=>p.paidAt.slice(0,10)>=DPP_FILTER.paidFrom);
+    if(DPP_FILTER.paidTo) rows=rows.filter(p=>p.paidAt.slice(0,10)<=DPP_FILTER.paidTo);
+  }
   else if(DPP_FILTER.status==='approved') rows=rows.filter(p=>p.status==='approved'&&!p.paidAt);
   else if(DPP_FILTER.status) rows=rows.filter(p=>p.status===DPP_FILTER.status);
-  rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  // Payment History (status=Paid) reads newest-first by when it was actually paid, not by plan_date
+  // — that's the timeline this view is for.
+  if(DPP_FILTER.status==='paid') rows.sort((a,b)=>(b.paidAt||'').localeCompare(a.paidAt||''));
+  else rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const mine=pendingForMe();
   // Options are built from the full in-scope set (not the already-filtered `rows`), so picking one
   // filter never makes another filter's other options disappear.
@@ -3716,6 +3749,7 @@ function openPaymentPlans(){
     +`<select style="${selStyle}" onchange="setDppFilter('vendor',this.value)"><option value="">All Vendors</option>${vendorOpts.map(v=>`<option value="${escH(v)}"${DPP_FILTER.vendor===v?' selected':''}>${escH(v)}</option>`).join('')}</select>`
     +`<select style="${selStyle}" onchange="setDppFilter('category',this.value)"><option value="">All Categories</option>${catOpts.map(c=>`<option value="${escH(c)}"${DPP_FILTER.category===c?' selected':''}>${escH(c)}</option>`).join('')}</select>`
     +`<select style="${selStyle}" onchange="setDppFilter('status',this.value)"><option value="">All Status</option>${statusOpts.map(([v,lab])=>`<option value="${v}"${DPP_FILTER.status===v?' selected':''}>${lab}</option>`).join('')}</select>`
+    +(DPP_FILTER.status==='paid'?`<span style="font-size:11px;color:var(--muted)">Paid from</span><input type="date" value="${DPP_FILTER.paidFrom||''}" style="${selStyle}" onchange="setDppFilter('paidFrom',this.value)"><span style="font-size:11px;color:var(--muted)">to</span><input type="date" value="${DPP_FILTER.paidTo||''}" style="${selStyle}" onchange="setDppFilter('paidTo',this.value)">`:'')
     +(anyFilter?`<button type="button" onclick="clearDppFilters()" style="border:0;background:none;color:var(--blue-300);font-size:12px;font-weight:700;cursor:pointer">Clear filters</button>`:'')
     +(mine.length?`<button class="btn" style="background:#2b7a4b;color:#fff;border:0;margin-left:auto" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button>`:'')
     +`</div>`;
@@ -3723,11 +3757,15 @@ function openPaymentPlans(){
   h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):`<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">${anyFilter?'No payment plans match these filters.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</td></tr>`;
   if(rows.length){
     const totPurpose=rows.reduce((s,p)=>s+p.amt,0);
-    const totApprove=rows.reduce((s,p)=>s+((p.status==='approved'&&p.approvedAmt!=null)?p.approvedAmt:0),0);
+    // Payment History cares about what actually went out (paidAmountIdr, falling back to the
+    // requested amount for an older row saved before that column existed), not the approval ceiling.
+    const totApprove=DPP_FILTER.status==='paid'
+      ?rows.reduce((s,p)=>s+(p.paidAmountIdr!=null?p.paidAmountIdr:p.amt),0)
+      :rows.reduce((s,p)=>s+((p.status==='approved'&&p.approvedAmt!=null)?p.approvedAmt:0),0);
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="6"><strong>TOTAL</strong></td><td class="num"><strong>${fmt(totPurpose)}</strong></td><td class="num"><strong>${fmt(totApprove)}</strong></td><td colspan="5"></td></tr>`;
   }
   h+='</tbody></table></div>';
-  showModal('Daily Payment Plan',h,true);
+  showModal(DPP_FILTER.status==='paid'?'Payment History':'Daily Payment Plan',h,true);
   // Default the horizontal scroll past the Date column, so Status/Approvals/Comment — what
   // approvers actually need to act on — are visible without scrolling right first.
   requestAnimationFrame(()=>{
