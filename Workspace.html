@@ -3554,19 +3554,23 @@ function paymentPlanCard(){
   // A raw "Paid" count only grows forever and needs no action once true — the nominal paid so far
   // THIS month is the more useful headline figure here, and doubles as the entry point into Payment
   // History (see openPaymentPlanHistory()).
-  const paidThisMonthTotal=paid.filter(p=>isThisCalendarMonth(p.paidAt)).reduce((s,p)=>s+(p.paidAmountIdr!=null?p.paidAmountIdr:p.amt),0);
+  const paidThisMonth=paid.filter(p=>isThisCalendarMonth(p.paidAt));
+  const paidThisMonthTotal=paidThisMonth.reduce((s,p)=>s+(p.paidAmountIdr!=null?p.paidAmountIdr:p.amt),0);
   const iAmApprover=isApproverAnywhere(MY_EMAIL);
-  const needsMe=iAmApprover?pend.filter(p=>isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL)).length:null;
+  const needsMeList=iAmApprover?pend.filter(p=>isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL)):null;
+  const needsMe=needsMeList?needsMeList.length:null;
   const clockIcon=(s=14)=>svgOpen(s)+`<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>`;
   const xIcon=(s=14)=>svgOpen(s)+`<circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
   // Each stat is its own clickable jump to the matching filter on the full list — stopPropagation
-  // keeps the click from also firing the card's own onclick (which opens the list unfiltered).
-  const stat=(icon,n,label,color,status,onclick)=>`<div onclick="event.stopPropagation();${onclick||`openPaymentPlansStatus('${status}')`}" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
+  // keeps the click from also firing the card's own onclick (which opens the list unfiltered). The
+  // native title tooltip on hover surfaces the nominal Rp total behind the count, since the number
+  // shown is a count for every stat except Paid this month.
+  const stat=(icon,n,label,color,status,onclick,hint)=>`<div title="${escH(hint||'')}" onclick="event.stopPropagation();${onclick||`openPaymentPlansStatus('${status}')`}" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
       <span style="color:${color||'var(--muted)'};display:inline-flex">${icon}</span>
       <span style="font-size:15px;font-weight:800;color:${color||'var(--ink)'}">${n}</span>
       <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">${label}</span>
     </div>`;
-  const needsMeStat=`<div onclick="event.stopPropagation();openApproveAllModal()" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
+  const needsMeStat=`<div title="${escH('Total: '+fmt((needsMeList||[]).reduce((s,p)=>s+p.amt,0)))}" onclick="event.stopPropagation();openApproveAllModal()" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;border-radius:8px;padding:4px 2px" onmouseover="this.style.background='#f7f8fb'" onmouseout="this.style.background='none'">
       <span style="color:var(--blue-300);display:inline-flex">${ICON.bell(14)}</span>
       <span style="font-size:15px;font-weight:800;color:var(--blue-300)">${needsMe}</span>
       <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Awaiting Approve</span>
@@ -3574,17 +3578,21 @@ function paymentPlanCard(){
   // Split left (still owed — what this card is actually about) from right (already settled) with
   // its own divider, heavier than the hairlines between stats within a group, so "Paid this month"
   // reads as a related-but-separate figure rather than one more item in the same tally.
+  const totalSum=scoped.reduce((s,p)=>s+(p.paidAmountIdr!=null?p.paidAmountIdr:(p.approvedAmt!=null?p.approvedAmt:p.amt)),0);
+  const pendSum=pend.reduce((s,p)=>s+p.amt,0);
+  const approvedSum=approved.reduce((s,p)=>s+(p.approvedAmt!=null?p.approvedAmt:p.amt),0);
+  const rejectedSum=rejected.reduce((s,p)=>s+p.amt,0);
   const leftStats=[
-    stat(ICON.file(14),scoped.length,'Total plans','var(--ink)',''),
+    stat(ICON.file(14),scoped.length,'Total plans','var(--ink)','',null,'Total: '+fmt(totalSum)),
     // For an approver, what needs their own action sits right after the headline count — before
     // Pending/Approved/Rejected, which are whole-scope totals, not personal to-dos.
     ...(needsMe!==null?[needsMeStat]:[]),
-    stat(clockIcon(14),pend.length,'Pending','#9a6f0a','pending'),
-    stat(ICON.check(14),approved.length,'Approved','var(--green)','approved'),
-    stat(xIcon(14),rejected.length,'Rejected','var(--red)','rejected'),
+    stat(clockIcon(14),pend.length,'Pending','#9a6f0a','pending',null,'Total: '+fmt(pendSum)),
+    stat(ICON.check(14),approved.length,'Approved','var(--green)','approved',null,'Total: '+fmt(approvedSum)),
+    stat(xIcon(14),rejected.length,'Rejected','var(--red)','rejected',null,'Total: '+fmt(rejectedSum)),
   ];
   const rightStats=[
-    stat(ICON.check(14),fmt(paidThisMonthTotal),'Paid this month','#2f6fb0','',`openPaymentPlanHistory()`),
+    stat(ICON.check(14),fmt(paidThisMonthTotal),'Paid this month','#2f6fb0','',`openPaymentPlanHistory()`,paidThisMonth.length+' payment'+(paidThisMonth.length===1?'':'s')),
   ];
   return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
