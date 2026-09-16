@@ -3292,7 +3292,7 @@ function openIcTxEdit(id,encBackCall){
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">PT (Owner): <b style="color:var(--ink)">${escH(r.owner)}</b></div>`
     +opeField('Counterparty',`<input id="ictxe-cp" value="${escH(r.cp)}" style="${inp}">`)
     +opeField('Type',`<select id="ictxe-type" style="${inp}"><option value="AP"${r.type==='AP'?' selected':''}>AP — this PT owes the counterparty</option><option value="AR"${r.type==='AR'?' selected':''}>AR — the counterparty owes this PT</option></select>`)
-    +opeField('Category',`<select id="ictxe-cat" style="${inp}"><option value="Loan Affiliate"${r.category!=='Repayment Loan'?' selected':''}>Loan Affiliate — a new loan</option><option value="Repayment Loan"${r.category==='Repayment Loan'?' selected':''}>Repayment Loan — nets off the balance</option></select>`)
+    +opeField('Category',`<select id="ictxe-cat" style="${inp}"><option value="Loan Affiliate"${r.category!==REPAYMENT_LOAN_CATEGORY?' selected':''}>Loan Affiliate — a new loan</option><option value="${REPAYMENT_LOAN_CATEGORY}"${r.category===REPAYMENT_LOAN_CATEGORY?' selected':''}>${REPAYMENT_LOAN_CATEGORY} — nets off the balance</option></select>`)
     +opeField('Date',`<input id="ictxe-date" type="date" value="${r.date||''}" style="${inp}">`)
     +opeField('Description',`<input id="ictxe-desc" value="${escH(r.desc||'')}" style="${inp}">`)
     +opeField('Amount (IDR)',`<input id="ictxe-amt" type="number" min="0" step="1" value="${r.amt}" style="${inp}">`)
@@ -6595,11 +6595,11 @@ const OPEX_REFUND_CATEGORY='Refund / Reimbursement Received';
 // Revenue's normal Debit, netted off Revenue via the same negative-amount + contra convention.
 const REV_REFUND_CATEGORY='Deposit Refund Paid';
 // Mirror image on AR/AP: a NEW loan (Category "Loan Affiliate") moves cash the normal way — AR
-// (we lent money out) is Credit, AP (we borrowed money in) is Debit. A "Repayment Loan" row flips
+// (we lent money out) is Credit, AP (we borrowed money in) is Debit. A "Repayment Loan Afiliate" row flips
 // that: paying DOWN an AR (they're repaying us) brings cash IN (Debit), paying down an AP (we're
 // repaying them) sends cash OUT (Credit) — same category icRowAmt() already treats as netting the
 // balance the other way, so the cash side now has to agree with it too.
-const REPAYMENT_LOAN_CATEGORY='Repayment Loan';
+const REPAYMENT_LOAN_CATEGORY='Repayment Loan Afiliate';
 // Same tuple-matching convention as findDuplicateTx/findDuplicateIcTx — flags (doesn't block) a row
 // that looks identical to one already saved for this account, so re-uploading the same file (or an
 // overlapping date range) twice doesn't silently double every balance.
@@ -6658,7 +6658,7 @@ function findCrossPathDup(r){
   }
   if(r.code==='ar'||r.code==='ap'){
     const owner=ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity;
-    const category=r.category==='Repayment Loan'?'Repayment Loan':'Loan Affiliate';
+    const category=r.category===REPAYMENT_LOAN_CATEGORY?REPAYMENT_LOAN_CATEGORY:'Loan Affiliate';
     const o=findLooseDuplicateIcTx(IC_TX,{owner,cp:r.cp,type:r.code.toUpperCase(),date:r.date,amt:r.amt,category});
     if(!o) return null;
     return {date:r.date,code:r.code,category:o.category,vendor:'',cp:o.cp,
@@ -6984,7 +6984,7 @@ function renderBlPreview(){
       if(arAp.length){
         const icRows=arAp.map(r=>({owner_label:(ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity),counterparty_label:r.cp,
           type:r.code.toUpperCase(),tx_date:r.date,description:r.desc||null,amount_idr:r.amt,
-          category:r.category==='Repayment Loan'?'Repayment Loan':'Loan Affiliate',source_label:'Bank Ledger import',
+          category:r.category===REPAYMENT_LOAN_CATEGORY?REPAYMENT_LOAN_CATEGORY:'Loan Affiliate',source_label:'Bank Ledger import',
           source_ledger_id:r.savedLedgerId||null}));
         await adminAddBatch('intercompany_transactions',icRows);
         const freshIc=await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date');
@@ -8569,11 +8569,11 @@ function mkIcTx(r){
     desc:r.description||'',amt:+r.amount_idr,category:r.category||'Loan Affiliate',source:r.source_label,
     createdBy:r.created_by,createdAt:r.created_at,sourceLedgerId:r.source_ledger_id||null};
 }
-// A "Repayment Loan" row nets OFF its Type's balance instead of adding to it (e.g. an AP row
-// categorized as Repayment Loan means this PT paid down what it owes, not that it owes more) —
+// A "Repayment Loan Afiliate" row nets OFF its Type's balance instead of adding to it (e.g. an AP row
+// categorized as Repayment Loan Afiliate means this PT paid down what it owes, not that it owes more) —
 // every AR/AP total and running balance reads through this instead of raw r.amt so Category can
 // never drift out of sync with what the numbers actually show.
-function icRowAmt(r){ return r.category==='Repayment Loan'?-r.amt:r.amt; }
+function icRowAmt(r){ return r.category===REPAYMENT_LOAN_CATEGORY?-r.amt:r.amt; }
 // Other Receivable — money advanced to / refunded by an individual (shareholder or other related
 // party), kept separate from Loan Affiliate (PT-to-PT, intercompany_transactions) and Capital
 // Deposit (loan_flows, flow_type='Capital deposit') since neither of those fit a person as the
@@ -8889,7 +8889,7 @@ async function openBlEntryEdit(id,backCall){
     +opeField('Description',`<input id="ble-desc" value="${escH(r.desc||'')}" style="${inp}">`);
   if(r.code==='opex') h+=opeField('Category',categorySelectHtml('ble-cat',OPEX_CATS_G||[],r.category||'',inp))+opeField('Vendor',vendorSelectHtml('ble-vendor',r.vendor||'',inp));
   else if(r.code==='revenue') h+=opeField('Category',categorySelectHtml('ble-cat',CATS_BY_KIND_G.revenue||[],r.category||'',inp));
-  else if(r.code==='ar'||r.code==='ap') h+=opeField('Counterparty',icCounterpartySelectHtml('ble-cp',r.cp||'',inp))+opeField('Category',`<select id="ble-cat" style="${inp}"><option value="Loan Affiliate"${r.category!=='Repayment Loan'?' selected':''}>Loan Affiliate — a new loan</option><option value="Repayment Loan"${r.category==='Repayment Loan'?' selected':''}>Repayment Loan — paying down an existing one</option></select>`);
+  else if(r.code==='ar'||r.code==='ap') h+=opeField('Counterparty',icCounterpartySelectHtml('ble-cp',r.cp||'',inp))+opeField('Category',`<select id="ble-cat" style="${inp}"><option value="Loan Affiliate"${r.category!==REPAYMENT_LOAN_CATEGORY?' selected':''}>Loan Affiliate — a new loan</option><option value="${REPAYMENT_LOAN_CATEGORY}"${r.category===REPAYMENT_LOAN_CATEGORY?' selected':''}>${REPAYMENT_LOAN_CATEGORY} — paying down an existing one</option></select>`);
   else if(r.code==='orec') h+=opeField('Counterparty',`<input id="ble-cp" value="${escH(r.cp||'')}" style="${inp}">`);
   else if(r.code==='capital') h+=opeField('Shareholder name',`<input id="ble-vendor" value="${escH(r.vendor||'')}" style="${inp}">`);
   else if(r.code==='financing') h+=opeField('Lender name',`<input id="ble-vendor" value="${escH(r.vendor||'')}" style="${inp}">`);
@@ -10048,7 +10048,7 @@ async function renderEntryBody(){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px">'
     +'<select id="tx1-ic-type" style="'+inp+'"><option value="AP">AP — this PT owes the counterparty</option><option value="AR">AR — the counterparty owes this PT</option></select>'
     +icCounterpartySelectHtml('tx1-ic-cp','',inp)
-    +'<select id="tx1-ic-cat" style="'+inp+'"><option value="Loan Affiliate">Loan Affiliate — a new loan</option><option value="Repayment Loan">Repayment Loan — paying down an existing one</option></select>'
+    +'<select id="tx1-ic-cat" style="'+inp+'"><option value="Loan Affiliate">Loan Affiliate — a new loan</option><option value="'+REPAYMENT_LOAN_CATEGORY+'">'+REPAYMENT_LOAN_CATEGORY+' — paying down an existing one</option></select>'
     +'</div>'
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Repayment Loan nets OFF the AP/AR balance instead of adding to it — pick it when this transaction is settling a loan already recorded, not creating a new one.</div>'
     +'</div>'
