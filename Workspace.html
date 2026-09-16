@@ -6176,9 +6176,16 @@ function opdCatCell(r,i){
 function opdVendorCell(r,i){
   return r.vendorMatch?escH(r.vendorMatch):fixPickCellHtml('opd-fix-vendor-'+i,`fixOpdField(${i},'vendor',this.value)`,VENDORS_G||[],'— pick vendor —','vendor');
 }
+// Fixing one flagged row (Category/Vendor/Entity/etc.) in an import preview rebuilds the whole
+// table via innerHTML, which would otherwise snap the internal .table-scroll box back to row 1 —
+// forcing a re-scroll after every single fix on a large import. Capture/restore its scrollTop
+// around the rebuild instead, same idea as the modal's own MODAL_SCROLL_BY_TITLE.
+function captureTableScroll(el){ const t=el.querySelector('.table-scroll'); return t?t.scrollTop:null; }
+function restoreTableScroll(el,scrollTop){ const t=el.querySelector('.table-scroll'); if(t&&scrollTop!=null) t.scrollTop=scrollTop; }
 function renderOpdPreview(){
   const el=document.getElementById('opd-preview'); if(!el) return;
   if(!OPD_ROWS.length){ el.innerHTML=''; return; }
+  const _scrollTop=captureTableScroll(el);
   const valid=OPD_ROWS.filter(r=>!r.error);
   let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Invoice #</th><th>Vendor</th><th>Category</th><th>Frequency</th><th>Invoice</th><th>Due</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
   OPD_ROWS.forEach((r,i)=>{
@@ -6205,6 +6212,7 @@ function renderOpdPreview(){
   h+='<button id="opd-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' outstanding '+(valid.length===1?'liability':'liabilities')+'</button>';
   h+='<div id="opd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
+  restoreTableScroll(el,_scrollTop);
   const impBtn=document.getElementById('opd-import');
   if(impBtn) impBtn.onclick=async()=>{
     impBtn.disabled=true; impBtn.textContent='Importing…';
@@ -6854,6 +6862,7 @@ function blToImportRows(){
 }
 function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
+  const _scrollTop=captureTableScroll(el);
   const skippedNote=BL_SKIPPED_OUT_OF_RANGE?'<div style="font-size:12.5px;background:#eef2f7;border:1px solid #d7dae3;color:#3a4254;border-radius:10px;padding:10px 12px;margin-bottom:10px">'+BL_SKIPPED_OUT_OF_RANGE+' row'+(BL_SKIPPED_OUT_OF_RANGE===1?'':'s')+' outside the selected date range '+(BL_ROWS.length?'left out of this preview':'— nothing in this file falls inside it')+'.</div>':'';
   if(!BL_ROWS.length){ el.innerHTML=skippedNote; return; }
   const valid=BL_ROWS.filter(r=>!r.error&&!r.saldoError);
@@ -6895,6 +6904,7 @@ function renderBlPreview(){
   h+='<button id="bl-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'></button>';
   h+='<div id="bl-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
+  restoreTableScroll(el,_scrollTop);
   window.updateBlImportBtn=()=>{
     const btn=document.getElementById('bl-import'); if(!btn) return;
     const n=blToImportRows().length;
@@ -7067,6 +7077,7 @@ function fcdVendorCell(r,i){
 function renderFcdPreview(){
   const el=document.getElementById('fcd-preview'); if(!el) return;
   if(!FCD_ROWS.length){ el.innerHTML=''; return; }
+  const _scrollTop=captureTableScroll(el);
   const valid=FCD_ROWS.filter(r=>!r.error);
   let h='<div class="table-scroll" style="max-height:280px"><table><thead><tr><th>Row</th><th>Mode</th><th>Entity</th><th>Category</th><th>Vendor</th><th class="num" style="text-align:right">Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>';
   FCD_ROWS.forEach((r,i)=>{
@@ -7089,6 +7100,7 @@ function renderFcdPreview(){
   h+='<button id="fcd-import" type="button" style="border:0;border-radius:12px;background:#d9a92c;color:#2a1c02;font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer;margin-top:8px"'+(valid.length?'':' disabled')+'>Import '+valid.length+' fixed cost item'+(valid.length===1?'':'s')+'</button>';
   h+='<div id="fcd-import-msg" style="font-size:12px;margin-top:8px;min-height:1px"></div>';
   el.innerHTML=h;
+  restoreTableScroll(el,_scrollTop);
   const impBtnFc=document.getElementById('fcd-import');
   if(impBtnFc) impBtnFc.onclick=async()=>{
     impBtnFc.disabled=true; impBtnFc.textContent='Importing…';
