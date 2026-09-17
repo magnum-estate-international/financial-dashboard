@@ -6637,21 +6637,31 @@ function findDuplicateBl(list,r){
 // required (plus month, for AR/AP/Other Receivable) since those are what people get right
 // consistently on both sides, and together are still specific enough to rarely false-positive on two
 // genuinely different transactions.
+// Same fallback rule as sourceTagHtml's "Historical" tag: anything that isn't Bank Ledger import,
+// Manual entry, or a Daily Payment Plan payout (including no source_label at all) counts as
+// Historical. Cross-path duplicate matching below deliberately excludes Historical rows as a
+// reference — they're slated for full deletion, so flagging a fresh Ledger/Manual-entry import as a
+// "duplicate" of a Historical row would only block real data with a false positive that's about to
+// be deleted anyway. Ledger and Manual entry stay in the reference set so a genuine re-import of
+// either still gets caught.
+function isHistoricalSource(srcLabel){
+  return !(srcLabel==='Bank Ledger import' || srcLabel==='Manual entry' || (srcLabel&&srcLabel.indexOf('Daily Payment Plan')===0));
+}
 function findLooseDuplicateTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
-  return list.find(o=>o.e===r.entityMatch && o.mo===r.period && o.type===r.flowKey
+  return list.find(o=>!isHistoricalSource(o.srcLabel) && o.e===r.entityMatch && o.mo===r.period && o.type===r.flowKey
     && norm(o.k)===norm(r.category) && norm(o.vendor)===norm(r.vendor||'')
     && Math.round(Math.abs(o.amt))===Math.round(r.amt||0));
 }
 function findLooseDuplicateIcTx(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
-  return list.find(o=>norm(o.owner)===norm(r.owner) && norm(o.cp)===norm(r.cp) && o.type===r.type
+  return list.find(o=>!isHistoricalSource(o.source) && norm(o.owner)===norm(r.owner) && norm(o.cp)===norm(r.cp) && o.type===r.type
     && norm(o.category||'Loan Affiliate')===norm(r.category||'Loan Affiliate')
     && (o.date||'').slice(0,7)===(r.date||'').slice(0,7) && Math.round(o.amt)===Math.round(r.amt||0));
 }
 function findLooseDuplicateOrec(list,r){
   const norm=v=>String(v||'').trim().toLowerCase();
-  return list.find(o=>o.e===r.e && norm(o.cp)===norm(r.cp) && o.dir===r.dir
+  return list.find(o=>!isHistoricalSource(o.source) && o.e===r.e && norm(o.cp)===norm(r.cp) && o.dir===r.dir
     && (o.date||'').slice(0,7)===(r.date||'').slice(0,7) && Math.round(o.amt)===Math.round(r.amt||0));
 }
 function findCrossPathDup(r){
