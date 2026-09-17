@@ -6662,7 +6662,7 @@ function findCrossPathDup(r){
     if(!o) return null;
     return {date:r.date,code:r.code,category:o.k,vendor:o.vendor,cp:'',
       debit:flowKey==='rev'?Math.abs(o.amt):0,kredit:flowKey==='opex'?Math.abs(o.amt):0,
-      desc:o.desc,source:o.srcLabel||'Add a Transaction',crossPath:true};
+      desc:o.desc,source:o.srcLabel||'Add a Transaction',crossPath:true,id:o.id,table:'transactions'};
   }
   if(r.code==='ar'||r.code==='ap'){
     const owner=ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity;
@@ -6671,14 +6671,14 @@ function findCrossPathDup(r){
     if(!o) return null;
     return {date:r.date,code:r.code,category:o.category,vendor:'',cp:o.cp,
       debit:r.code==='ap'?o.amt:0,kredit:r.code==='ar'?o.amt:0,
-      desc:o.desc,source:o.source||'Add a Transaction',crossPath:true};
+      desc:o.desc,source:o.source||'Add a Transaction',crossPath:true,id:o.id,table:'intercompany_transactions'};
   }
   if(r.code==='orec'){
     const o=findLooseDuplicateOrec(OTHER_RECV,{e:r.acctMatch.entity,cp:r.cp,dir:r.dir,date:r.date,amt:r.amt});
     if(!o) return null;
     return {date:r.date,code:'orec',category:'',vendor:'',cp:o.cp,
       debit:o.dir==='in'?o.amt:0,kredit:o.dir==='out'?o.amt:0,
-      desc:o.desc,source:o.source||'Add a Transaction',crossPath:true};
+      desc:o.desc,source:o.source||'Add a Transaction',crossPath:true,id:o.id,table:'other_receivables'};
   }
   return null;
 }
@@ -6706,8 +6706,9 @@ function blDupCompareRowHtml(i,dup){
     +`<td style="color:var(--muted)">${escH(dup.desc||'—')}</td>`
     +`</tr></table>`
     +`<div style="font-size:11px;color:var(--muted);margin-top:6px">Source: ${escH(dup.source||'—')} · ${dup.crossPath?'found in Add a Transaction’s own record, not this account’s ledger — matched on entity/counterparty, month, category &amp; amount (description often reads differently between a bank statement and a manual entry, so it isn’t required to match)':'matched on account, date, code, amount &amp; description — all identical to the row above'}</div>`
-    +`<div style="margin-top:10px;display:flex;gap:8px">`
+    +`<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">`
     +`<button type="button" onclick="toggleBlDupKeep(${i})" style="border:0;border-radius:8px;background:var(--green);color:#fff;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer">✓ Not a duplicate — include this row</button>`
+    +(dup.crossPath&&dup.id!=null?`<button type="button" onclick="toggleBlDupLink(${i})" title="Records this bank line in the ledger (so the account balance stays complete) but re-points ${escH(dup.source||'the existing record')}'s link here instead of counting it again" style="border:0;border-radius:8px;background:var(--blue-300);color:#fff;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer">↔ Real, but already booked via ${escH(dup.source||'another entry')} — add to ledger only</button>`:'')
     +`<button type="button" onclick="toggleBlDupCheck(${i})" style="border:1px solid #e4e7ef;background:#fff;color:#3a4254;border-radius:8px;font-size:11.5px;padding:6px 12px;cursor:pointer">It is a duplicate — hide</button>`
     +`</div>`
     +`</div></td></tr>`;
@@ -6851,14 +6852,35 @@ function blCpCell(r,i){
 // bank fees the same month, same amount) doesn't force an all-or-nothing choice.
 let BL_DUP_KEEP=new Set();
 function toggleBlDupKeep(i){
-  if(BL_DUP_KEEP.has(i)) BL_DUP_KEEP.delete(i); else { BL_DUP_KEEP.add(i); BL_DUP_OPEN.delete(i); }
+  if(BL_DUP_KEEP.has(i)) BL_DUP_KEEP.delete(i); else { BL_DUP_KEEP.add(i); BL_DUP_OPEN.delete(i); BL_DUP_LINK.delete(i); }
+  renderBlPreview();
+}
+// Third resolution for a cross-path duplicate (findCrossPathDup only — a same-path match against
+// this account's own already-saved ledger has nothing to link to): the bank statement line is real
+// and belongs in this account's ledger for balance purposes, but its P&L effect (Opex/Revenue/Loan
+// Affiliate/Other Receivable) was already booked elsewhere — typically a Daily Payment Plan marked
+// Paid, which writes straight to `transactions` and never touches bank_ledger_entries, or an "Add a
+// Transaction" manual entry. Skipping the row entirely (the old binary choice) kept the ledger's own
+// running balance permanently short by this amount; importing it in full would double-count the
+// P&L. This records the row in bank_ledger_entries only and re-points the ALREADY-SAVED record's
+// source_ledger_id at that new row (see the import handler), so View Ledger becomes its edit surface
+// going forward without a second copy ever landing in transactions/intercompany_transactions/
+// other_receivables.
+let BL_DUP_LINK=new Set();
+function toggleBlDupLink(i){
+  if(BL_DUP_LINK.has(i)) BL_DUP_LINK.delete(i); else { BL_DUP_LINK.add(i); BL_DUP_OPEN.delete(i); BL_DUP_KEEP.delete(i); }
   renderBlPreview();
 }
 // Single source of truth for which rows actually get imported — reused by the summary line, the
 // button's enabled/count state, and the import handler itself, so all three always agree.
 function blToImportRows(){
   const skipDup=document.getElementById('bl-skip-dup')?.checked!==false;
-  return BL_ROWS.filter((r,i)=>!r.error&&!r.saldoError&&(!r.dup||BL_DUP_KEEP.has(i)||!skipDup));
+  return BL_ROWS.filter((r,i)=>{
+    if(r.error||r.saldoError) return false;
+    if(!r.dup){ r.linkOnly=false; return true; }
+    r.linkOnly=BL_DUP_LINK.has(i);
+    return BL_DUP_KEEP.has(i)||r.linkOnly||!skipDup;
+  });
 }
 function renderBlPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
@@ -6869,12 +6891,14 @@ function renderBlPreview(){
   let h=skippedNote+'<div class="table-scroll" style="max-height:300px"><table><thead><tr><th>Row</th><th>Date</th><th>Code</th><th>Category</th><th>Vendor</th><th>CP</th><th class="num" style="text-align:right">Debit</th><th class="num" style="text-align:right">Credit</th><th class="num" style="text-align:right">Balance</th><th>Doc?</th><th>Status</th></tr></thead><tbody>';
   BL_ROWS.forEach((r,i)=>{
     const kept=r.dup&&BL_DUP_KEEP.has(i);
-    const rowBg=(r.error||r.saldoError)?'#fbe9e7':((r.dup&&!kept)?'#fff4e0':'');
+    const linked=r.dup&&BL_DUP_LINK.has(i);
+    const rowBg=(r.error||r.saldoError)?'#fbe9e7':((r.dup&&!kept&&!linked)?'#fff4e0':'');
     const open=BL_DUP_OPEN.has(i);
     const status=r.error?escH(r.error)
       :(r.saldoError?escH(r.saldoError)
       :(kept?`<span style="color:var(--green)">✓ Confirmed unique</span> <button type="button" onclick="toggleBlDupKeep(${i})" style="border:0;background:none;color:var(--blue-300);font-size:11px;cursor:pointer;padding:0">↺ re-flag</button>`
-      :(r.dup?`<button type="button" onclick="toggleBlDupCheck(${i})" style="border:1px solid #f0cb87;background:#fff8ec;color:#8a5a1e;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">⚠ Possible duplicate — ${open?'hide':'check'}</button>`:'OK')));
+      :(linked?`<span style="color:var(--blue-300)" title="Added to this account's ledger only, so its balance stays complete — not recounted in Opex/Revenue">↔ Ledger only (linked)</span> <button type="button" onclick="toggleBlDupLink(${i})" style="border:0;background:none;color:var(--blue-300);font-size:11px;cursor:pointer;padding:0">↺ re-flag</button>`
+      :(r.dup?`<button type="button" onclick="toggleBlDupCheck(${i})" style="border:1px solid #f0cb87;background:#fff8ec;color:#8a5a1e;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">⚠ Possible duplicate — ${open?'hide':'check'}</button>`:'OK'))));
     h+='<tr style="'+(rowBg?'background:'+rowBg:'')+'"><td style="font-size:11px;color:#3a4254">'+(i+2)+'</td>'
       +'<td style="font-size:12px;white-space:nowrap">'+(r.date||'—')+'</td>'
       +'<td style="font-size:12px">'+blCodeCell(r,i)+'</td>'
@@ -6885,15 +6909,17 @@ function renderBlPreview(){
       +'<td class="num" style="text-align:right;font-size:12px">'+(r.kredit?fmtIDR(r.kredit):'')+'</td>'
       +'<td class="num" style="text-align:right;font-size:12px;font-weight:700">'+(r.expectedSaldo!=null?fmtIDR(r.expectedSaldo):'—')+'</td>'
       +'<td style="font-size:12px;text-align:center">'+(r.docLink?'📎':'—')+'</td>'
-      +'<td style="font-size:11px;color:'+((r.error||r.saldoError)?'#b3261e':((r.dup&&!kept)?'#8a5a1e':'#2b7a4b'))+'">'+status+'</td></tr>';
-    if(r.dup && open && !kept) h+=blDupCompareRowHtml(i,r.dup);
+      +'<td style="font-size:11px;color:'+((r.error||r.saldoError)?'#b3261e':((r.dup&&!kept&&!linked)?'#8a5a1e':(linked?'#2f6fb0':'#2b7a4b')))+'">'+status+'</td></tr>';
+    if(r.dup && open && !kept && !linked) h+=blDupCompareRowHtml(i,r.dup);
   });
   h+='</tbody></table></div>';
-  const dupN=BL_ROWS.filter((r,i)=>!r.error&&!r.saldoError&&r.dup&&!BL_DUP_KEEP.has(i)).length;
+  const dupN=BL_ROWS.filter((r,i)=>!r.error&&!r.saldoError&&r.dup&&!BL_DUP_KEEP.has(i)&&!BL_DUP_LINK.has(i)).length;
   const keptN=BL_ROWS.filter((r,i)=>!r.error&&!r.saldoError&&r.dup&&BL_DUP_KEEP.has(i)).length;
+  const linkedN=BL_ROWS.filter((r,i)=>!r.error&&!r.saldoError&&r.dup&&BL_DUP_LINK.has(i)).length;
   h+='<div style="font-size:12.5px;background:#fff4e0;border:1px solid #f0cb87;color:#8a5a1e;border-radius:10px;padding:10px 12px;margin:10px 0"><b>This will add '+valid.length+' new</b> ledger entr'+(valid.length===1?'y':'ies')+' — '+valid.length+' of '+BL_ROWS.length+' row(s) ready'
     +(dupN?', including <b>'+dupN+' flagged as a possible duplicate</b> of an already-saved entry — click "check" on a flagged row to see what it matched, then confirm it\'s unique or leave it skipped':'')
     +(keptN?(dupN?' ('+keptN+' other'+(keptN===1?'':'s')+' already confirmed unique)':', including <b>'+keptN+'</b> confirmed unique after review'):'')
+    +(linkedN?' ('+linkedN+' more will be added to the ledger only, re-linked to an entry already booked elsewhere, without affecting Opex/Revenue again)':'')
     +(BL_ROWS.length>valid.length?'. Fix the flagged rows above and they\'ll be included automatically':'')+'.</div>';
   // Re-uploading an edited "Export current data" file re-includes every unchanged row too — those
   // all land here flagged as possible duplicates, so defaulting this checked (only shown when there
@@ -6938,6 +6964,19 @@ function renderBlPreview(){
       // (already assumed above for the document-link matching), which a plain PostgREST bulk insert
       // does.
       toImport.forEach((r,i)=>{ r.savedLedgerId=savedLedgerRows[i]&&savedLedgerRows[i].id; });
+      // 1a) "Link only" rows (see toggleBlDupLink): the bank statement line just saved above is real
+      // and now sits in this account's ledger, but its P&L effect (Opex/Revenue/Loan Affiliate/Other
+      // Receivable) was already booked elsewhere — most often a Daily Payment Plan marked Paid, which
+      // writes straight to `transactions` and never creates a bank_ledger_entries row of its own. Re-
+      // point that ALREADY-SAVED record's source_ledger_id at the row just created instead of also
+      // inserting a fresh transactions/intercompany_transactions/other_receivables row for it below —
+      // one real event, one P&L entry, but a complete ledger.
+      const linkOnlyRows=toImport.filter(r=>r.linkOnly&&r.dup&&r.dup.table&&r.dup.id!=null);
+      for(const r of linkOnlyRows){
+        await adminUpdateOne(r.dup.table,r.dup.id,{source_ledger_id:r.savedLedgerId});
+        const store=r.dup.table==='transactions'?TX:(r.dup.table==='intercompany_transactions'?IC_TX:OTHER_RECV);
+        const rec=store.find(x=>x.id===r.dup.id); if(rec) rec.sourceLedgerId=r.savedLedgerId;
+      }
       // 1b) Rows with a document link get that link pulled into secure storage and attached —
       // relies on the insert response preserving submission order (true for a plain PostgREST
       // bulk insert) to match each saved row back to its source row's Document Link.
@@ -6954,7 +6993,9 @@ function renderBlPreview(){
       }
       // 2) Revenue/Opex rows also land in `transactions`, same row shape as Import Transactions,
       // and patch entity_period_totals additively (never overwrite) so headline KPIs stay in sync.
-      const revOpex=toImport.filter(r=>r.code==='revenue'||r.code==='opex');
+      // linkOnly rows are excluded — their P&L effect is already booked on the record 1a) just
+      // re-pointed at this import, so adding a second transactions row here would double-count it.
+      const revOpex=toImport.filter(r=>(r.code==='revenue'||r.code==='opex')&&!r.linkOnly);
       if(revOpex.length){
         const baseOrd=Math.floor(Date.now()/1000);
         const batchId=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
@@ -6989,8 +7030,9 @@ function renderBlPreview(){
         }
       }
       // 3) AR/AP rows also land in `intercompany_transactions`, same row shape as Import Loan
-      // Affiliate Transactions, using this account's own PT as the owner.
-      const arAp=toImport.filter(r=>r.code==='ar'||r.code==='ap');
+      // Affiliate Transactions, using this account's own PT as the owner. linkOnly excluded, same
+      // reasoning as 2) above.
+      const arAp=toImport.filter(r=>(r.code==='ar'||r.code==='ap')&&!r.linkOnly);
       if(arAp.length){
         const icRows=arAp.map(r=>({owner_label:(ENT[r.acctMatch.entity]?ENT[r.acctMatch.entity].name:r.acctMatch.entity),counterparty_label:r.cp,
           type:r.code.toUpperCase(),tx_date:r.date,description:r.desc||null,amount_idr:r.amt,
@@ -7015,7 +7057,8 @@ function renderBlPreview(){
       }
       // 5) Other Receivable rows book straight into other_receivables — same table as Update
       // Transaction's Other Receivable flow, never entity_period_totals (it's its own card).
-      const orec=toImport.filter(r=>r.code==='orec');
+      // linkOnly excluded, same reasoning as 2) above.
+      const orec=toImport.filter(r=>r.code==='orec'&&!r.linkOnly);
       if(orec.length){
         const orecRows=orec.map(r=>({entity_code:r.acctMatch.entity,period_code:periodFromDateG(r.date).code,
           day_label:dayLbl(r.date),tx_date:r.date,counterparty:r.cp,direction:r.dir,
@@ -7026,7 +7069,7 @@ function renderBlPreview(){
         if(!orecResp.ok) throw new Error((await orecResp.text())||('HTTP '+orecResp.status));
         (await orecResp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
       }
-      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set();
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); BL_DUP_LINK=new Set();
       document.getElementById('bl-import-msg').style.color='#2b7a4b';
       document.getElementById('bl-import-msg').textContent='✓ Added '+toImport.length+' ledger entr'+(toImport.length===1?'y':'ies')
         +(docOk?', '+docOk+' document'+(docOk===1?'':'s')+' attached':'')
@@ -10303,7 +10346,7 @@ async function renderEntryBody(){
       if(blExpBtn) blExpBtn.disabled=!has;
       if(blFileInp) blFileInp.disabled=!has;
       if(blFileLabel){ blFileLabel.style.background=has?'#f5e8c8':'#e4e7ef'; blFileLabel.style.color=has?'#9a6f0a':'#9aa1b1'; blFileLabel.style.cursor=has?'pointer':'not-allowed'; }
-      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); renderBlPreview();
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); BL_DUP_LINK=new Set(); renderBlPreview();
       document.getElementById('bl-filename').textContent='';
     };
     if(blAcctSel) blAcctSel.onchange=setBlAcctEnabled;
@@ -10412,7 +10455,7 @@ async function renderEntryBody(){
       const rows=aoa.slice(headerRowIdx+1)
         .filter(r=>r.some(c=>String(c).trim()!==''))
         .map(r=>{ const o={}; headerArr.forEach((h,i)=>{ if(h!=='') o[h]=r[i]!=null?r[i]:''; }); return o; });
-      if(!rows.length){ BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); renderBlPreview(); return; }
+      if(!rows.length){ BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); BL_DUP_LINK=new Set(); renderBlPreview(); return; }
       const keyByLower={}; Object.keys(rows[0]).forEach(k=>{ keyByLower[String(k).trim().toLowerCase()]=k; });
       const col=names=>{ for(const n of names){ if(keyByLower[n]!=null) return keyByLower[n]; } return null; };
       const kDate=col(['date','tanggal']),
@@ -10428,7 +10471,7 @@ async function renderEntryBody(){
         kVendorOld=kVendorCp==null?col(['vendor']):null,
         kCpOld=kVendorCp==null?col(['counterparty (pt)','counterparty']):null,
         kDocLink=col(['link dokumen','dokumen','document link','link']);
-      BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set();
+      BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); BL_DUP_LINK=new Set();
       BL_ROWS_ALL=rows.filter(r=>Object.values(r).some(v=>v!=='')).map(r=>{
         const date=kDate!=null?parseFlexDate(r[kDate]):null;
         const codeRaw=kCode!=null?String(r[kCode]||'').trim().toLowerCase():'';
