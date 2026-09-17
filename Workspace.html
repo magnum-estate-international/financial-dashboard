@@ -515,7 +515,7 @@ a{color:#9a6f0a}
 
 <div class="overlay" id="overlay">
   <div class="modal" id="modalBox">
-    <div class="modal-head"><h3 id="mTitle">Detail</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-head"><div style="display:flex;align-items:center;gap:10px;min-width:0"><button class="x" id="mBack" onclick="modalBack()" style="display:none;flex:none;font-size:18px" title="Back to the previous view">‹</button><h3 id="mTitle">Detail</h3></div><button class="x" onclick="closeModal()">×</button></div>
     <div class="modal-body" id="mBody"></div>
   </div>
 </div>
@@ -4458,21 +4458,38 @@ function renderOpexChart(a){
 // Two scroll positions are tracked per title: the outer modal box, and each inner .table-scroll
 // div (long tables scroll independently of the modal itself) by document order.
 let MODAL_SCROLL_BY_TITLE={}, MODAL_CUR_TITLE=null;
+// Generic back-stack, on top of the per-title scroll memory above — every individual screen's own
+// "‹ Back"/Save/Delete handler still does whatever it always did (a hand-threaded backCall, a
+// hardcoded parent, or nothing at all), but since showModal() is the one choke point every one of
+// them goes through anyway, this pushes the view being navigated AWAY from here, once, centrally —
+// so "‹ Back" in the modal's own header always has somewhere correct to return to, however deep the
+// drill-down went and regardless of whether the screen that opened the current view got its own
+// backCall right (several didn't — see Outstanding Liability's category/vendor/frequency views and
+// Daily Payment Plan's Edit, which used to always dump back to the dashboard). Stores a snapshot of
+// the previous view's rendered HTML rather than "how to regenerate it" — simpler and safe for pure
+// browsing; the one tradeoff is that stepping back two-or-more levels after editing something can
+// show a stale snapshot of an intermediate list until it's reopened, same as any browser back button.
+let MODAL_STACK=[];
 // Set whenever a modal temporarily overrides the global MONTH filter to drill into one specific
 // month from a multi-month view (e.g. Cash In vs Cash Out) — closeModal() restores it so the
 // dashboard behind the modal never ends up silently stuck on a different period.
 let MONTH_DRILL_RESTORE=null;
-function showModal(title,html,wide){
+function showModal(title,html,wide,opts){
   const box=document.getElementById('modalBox');
+  const isBack=!!(opts&&opts.isBack);
   if(MODAL_CUR_TITLE!=null && box){
     const tables=[...document.querySelectorAll('#mBody .table-scroll')].map(el=>el.scrollTop);
     MODAL_SCROLL_BY_TITLE[MODAL_CUR_TITLE]={box:box.scrollTop,tables};
+    // Don't re-push when THIS call is itself modalBack() popping the stack — otherwise going back
+    // would immediately push the view being left right back on top of itself.
+    if(!isBack) MODAL_STACK.push({title:MODAL_CUR_TITLE,html:document.getElementById('mBody').innerHTML,wide:document.getElementById('modalBox').style.maxWidth==='1180px'});
   }
   document.getElementById('mTitle').textContent=title;
   document.getElementById('mBody').innerHTML=html;
   document.getElementById('modalBox').style.maxWidth=wide?'1180px':'';
   document.getElementById('overlay').classList.add('show');
   MODAL_CUR_TITLE=title;
+  const backBtn=document.getElementById('mBack'); if(backBtn) backBtn.style.display=MODAL_STACK.length?'':'none';
   const saved=MODAL_SCROLL_BY_TITLE[title];
   const applyRestore=()=>{
     if(box) box.scrollTop=saved?saved.box:0;
@@ -4487,9 +4504,15 @@ function showModal(title,html,wide){
   applyRestore();
   requestAnimationFrame(applyRestore);
 }
+function modalBack(){
+  if(!MODAL_STACK.length) return;
+  const prev=MODAL_STACK.pop();
+  showModal(prev.title,prev.html,prev.wide,{isBack:true});
+}
 function closeModal(){
   document.getElementById('overlay').classList.remove('show');
-  MODAL_SCROLL_BY_TITLE={}; MODAL_CUR_TITLE=null;
+  MODAL_SCROLL_BY_TITLE={}; MODAL_CUR_TITLE=null; MODAL_STACK=[];
+  const backBtn=document.getElementById('mBack'); if(backBtn) backBtn.style.display='none';
   if(MONTH_DRILL_RESTORE!=null){ MONTH=MONTH_DRILL_RESTORE; MONTH_DRILL_RESTORE=null; }
 }
 // Opex categories rolled up into a handful of parent cost groups for the breakdown modal —
