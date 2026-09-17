@@ -4114,7 +4114,11 @@ async function saveEditApprovedAmount(id,backCall){
   if(Math.round(amt)===Math.round(oldAmt)) return void(err.textContent='That\'s already the current Amount Approve.');
   btn.disabled=true; btn.textContent='Saving…';
   try{
-    await adminUpdateOne('daily_payment_plans',id,{approved_amount_idr:amt});
+    // approved_amount_manual tells recompute_payment_plan_status() to leave this figure alone from
+    // now on — without it, the next approval-table event (a changed vote, or anything else that
+    // fires the trigger for this plan) would silently recompute it back to the raw per-approver
+    // minimum, discarding this negotiated override.
+    await adminUpdateOne('daily_payment_plans',id,{approved_amount_idr:amt,approved_amount_manual:true});
     p.approvedAmt=amt;
     // Posted as a real Discussion comment (not just an in-memory note) — same table/RLS as a normal
     // comment, so it's a permanent, attributed record of who changed the approved figure and when,
