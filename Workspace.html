@@ -7417,16 +7417,29 @@ async function promptAddIcCounterparty(selectId){
 function categorySelectHtml(id,options,current,extraStyle){
   return searchableSelectHtml(id,options,current||'',{placeholder:'Search or add category…',style:extraStyle||'',allowCreate:'category'});
 }
+// `vendors.name` is the primary key, so this covers two different cases: a pure rename (newName
+// doesn't exist yet — update the vendors row itself) and a merge (newName is already a separate
+// vendor — e.g. "Bujangga Consulting" and "KKP Santana Bujangga & Rekan" turning out to be the same
+// real vendor entered under two names). Renaming the old row to an already-existing name would
+// violate that primary key, so a merge instead re-points every referencing table at newName and
+// deletes the now-redundant old vendors row rather than renaming it.
 async function renameVendor(oldName,newName){
   newName=(newName||'').trim();
   if(!newName || newName===oldName) return;
   const patch=(path,body)=>authedFetch(SB_URL+'/rest/v1/'+path,{method:'PATCH',headers:{'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(body)});
-  const r=await patch('vendors?name=eq.'+encodeURIComponent(oldName),{name:newName});
-  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+  const existing=await sbFetch('vendors?select=name&name=eq.'+encodeURIComponent(newName));
+  const isMerge=existing.length>0;
+  if(isMerge){
+    await adminDel('vendors?name=eq.'+encodeURIComponent(oldName));
+  } else {
+    const r=await patch('vendors?name=eq.'+encodeURIComponent(oldName),{name:newName});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+  }
   await Promise.all([
     patch('transactions?vendor=eq.'+encodeURIComponent(oldName),{vendor:newName}),
     patch('outstanding_payables?vendor_name=eq.'+encodeURIComponent(oldName),{vendor_name:newName}),
     patch('entity_fixed_costs?vendor=eq.'+encodeURIComponent(oldName),{vendor:newName}),
+    patch('daily_payment_plans?vendor=eq.'+encodeURIComponent(oldName),{vendor:newName}),
   ]);
   invalidateVendorCache();
 }
