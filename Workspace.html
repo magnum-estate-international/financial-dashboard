@@ -6988,6 +6988,26 @@ function renderBlPreview(){
     impBtn.disabled=true; impBtn.textContent='Importing…';
     try{
       const toImport=blToImportRows();
+      const {docOk,docFail}=await commitBlRows(toImport);
+      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); BL_DUP_LINK=new Set();
+      document.getElementById('bl-import-msg').style.color='#2b7a4b';
+      document.getElementById('bl-import-msg').textContent='✓ Added '+toImport.length+' ledger entr'+(toImport.length===1?'y':'ies')
+        +(docOk?', '+docOk+' document'+(docOk===1?'':'s')+' attached':'')
+        +(docFail?', '+docFail+' document link'+(docFail===1?'':'s')+' failed to import (check they\'re shared "Anyone with the link")':'')+'.';
+      impBtn.textContent='Imported ✓';
+    }catch(e){
+      document.getElementById('bl-import-msg').style.color='#b3261e';
+      document.getElementById('bl-import-msg').textContent='Import failed: '+e.message;
+      impBtn.disabled=false; updateBlImportBtn();
+    }
+  };
+}
+// Shared row-commit logic for both the bulk "Import Bank Ledger" button above and the single-entry
+// "+ Add missing entry" form in View Ledger (see openAddLedgerEntry) — one real insert path so a fix
+// to how any code type lands in its downstream table (transactions/intercompany_transactions/
+// other_receivables/loan_flows) never needs to be made twice. Every row in `toImport` must already
+// be a validated (computeBlRow'd), acctMatch-resolved row exactly like blToImportRows() produces.
+async function commitBlRows(toImport){
       // 1) Every row becomes its own bank_ledger_entries row, regardless of Code.
       const ledgerRows=toImport.map(r=>({
         bank_account_id:r.acctMatch.id,entity_code:r.acctMatch.entity,tx_date:r.date,code:r.code,
@@ -7114,20 +7134,9 @@ function renderBlPreview(){
         if(!orecResp.ok) throw new Error((await orecResp.text())||('HTTP '+orecResp.status));
         (await orecResp.json()).forEach(saved=>OTHER_RECV.push(mkOrec(saved)));
       }
-      BL_ROWS=[]; BL_ROWS_ALL=[]; BL_SKIPPED_OUT_OF_RANGE=0; BL_DUP_OPEN=new Set(); BL_DUP_KEEP=new Set(); BL_DUP_LINK=new Set();
-      document.getElementById('bl-import-msg').style.color='#2b7a4b';
-      document.getElementById('bl-import-msg').textContent='✓ Added '+toImport.length+' ledger entr'+(toImport.length===1?'y':'ies')
-        +(docOk?', '+docOk+' document'+(docOk===1?'':'s')+' attached':'')
-        +(docFail?', '+docFail+' document link'+(docFail===1?'':'s')+' failed to import (check they\'re shared "Anyone with the link")':'')+'.';
-      impBtn.textContent='Imported ✓';
-      renderKpiCash(agg());
-      ENTRY_DIRTY=true;
-    }catch(e){
-      document.getElementById('bl-import-msg').style.color='#b3261e';
-      document.getElementById('bl-import-msg').textContent='Import failed: '+e.message;
-      impBtn.disabled=false; updateBlImportBtn();
-    }
-  };
+  renderKpiCash(agg());
+  ENTRY_DIRTY=true;
+  return {docOk,docFail};
 }
 let FCD_ROWS=[];
 function computeFcdRow(r){
@@ -8912,6 +8921,11 @@ function openBankAccountLedger(id){
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const backCall=encodeURIComponent(`openBankAccountLedger(${id})`);
   const acctLbl=bankAccountLabelFull(a);
+  // For a single transaction that never made it into this account's ledger — cheaper than the
+  // "Export current data, add the row, re-upload" workaround Import Bank Ledger's own hint text
+  // suggests, which forces re-reviewing every already-saved row as a possible duplicate just to add
+  // the one that's actually missing (see openAddLedgerEntry).
+  if(canEdit) h+=`<button type="button" onclick="openAddLedgerEntry(${id},'${backCall}')" style="border:1px solid #f0cb87;background:#fff8ec;color:#8a5a1e;border-radius:8px;padding:6px 14px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:12px">+ Add missing entry</button>`;
   h+=`<div class="table-scroll" style="max-height:400px"><table><thead><tr><th>Bank Account</th><th>Date</th><th>Code</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th><th></th></tr></thead><tbody>`;
   let saldo=a.opening;
   h+=`<tr style="background:#f7f8fb"><td style="font-size:12px;color:var(--muted)">${escH(acctLbl)}</td><td colspan="5" style="font-size:12px;color:var(--muted)">Opening Balance (${a.openingDate||'—'})</td><td class="num" style="font-weight:700">${fmt(saldo)}</td><td></td><td></td></tr>`;
@@ -8954,6 +8968,124 @@ function openBankAccountLedger(id){
   }
   h+=`</tbody></table></div>`;
   showModal(eName(a.entity)+' — '+a.bank,h,true);
+}
+// Single-transaction alternative to "Export current data, add the missing row, re-upload" — that
+// workaround (still the way to add several missing rows at once) forces re-reviewing every already-
+// saved row as a possible duplicate just to add the one that's actually missing. This reuses the
+// exact same validation (computeBlRow) and insert path (commitBlRows) as a real Import Bank Ledger
+// batch of one row, so it can never drift out of sync with what a bulk import would have produced —
+// only the duplicate check runs against just this one new row, never the account's whole history.
+async function openAddLedgerEntry(acctId,backCall){
+  const a=BANK_ACCOUNTS.find(x=>x.id===acctId); if(!a) return;
+  await Promise.all([ensureOpexCatsG(),ensureCatsByKind('revenue'),ensureCatsByKind('financing'),ensureVendorsG(),refreshIcCounterparties()]);
+  const eName=eid=>(ENT[eid]?ENT[eid].name:eid);
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="${backCall}">‹ Back</button>`;
+  h+=`<h4 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--blue-900);margin:4px 0 4px">Add Missing Entry</h4>`;
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${escH(eName(a.entity))} — ${escH(a.bank)}${a.label?' ('+escH(a.label)+')':''}</div>`;
+  h+=`<div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">For one transaction that never made it into this account's ledger — same fields as Import Bank Ledger, just for a single row. Checked against existing data for a possible duplicate before saving.</div>`;
+  h+=opeField('Date',`<input id="ale-date" type="date" style="${inp}">`)
+    +opeField('Code',`<select id="ale-code" style="${inp}" onchange="updateAleFields()"><option value="">— pick —</option>${BL_CODES.map(c=>`<option value="${c}">${BL_CODE_LBL[c]}</option>`).join('')}</select>`)
+    +`<div id="ale-dyn-fields"></div>`
+    +opeField('Direction',`<select id="ale-dir" style="${inp}"><option value="debit">Debit — cash in</option><option value="kredit">Credit — cash out</option></select>`)
+    +opeField('Amount (IDR)',`<input id="ale-amt" type="number" min="0" step="1" style="${inp}">`)
+    +opeField('Description',`<input id="ale-desc" style="${inp}">`)
+    +opeField('Balance after this transaction (optional — verifies against the running balance)',`<input id="ale-bal" type="number" style="${inp}" placeholder="Leave blank to skip verification">`)
+    +opeField('Document Link (optional)',`<input id="ale-doc" style="${inp}" placeholder="Google Drive link shared “Anyone with the link”">`)
+    +`<button id="ale-send" class="btn" style="background:#d9a92c;color:#2a1c02;border:0;margin-top:4px" onclick="saveAddLedgerEntry(${acctId},'${backCall}')">Save entry</button>`
+    +`<span id="ale-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`
+    +`<div id="ale-confirm" style="margin-top:10px"></div>`;
+  showModal('Add Ledger Entry',h,true);
+  updateAleFields();
+}
+function updateAleFields(){
+  const code=document.getElementById('ale-code').value;
+  const wrap=document.getElementById('ale-dyn-fields'); if(!wrap) return;
+  const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
+  let h='';
+  if(code==='revenue') h+=opeField('Category',categorySelectHtml('ale-cat',CATS_BY_KIND_G.revenue||[],'',inp));
+  else if(code==='opex') h+=opeField('Category',categorySelectHtml('ale-cat',OPEX_CATS_G||[],'',inp));
+  else if(code==='ar'||code==='ap'||code==='pinbuk'||code==='capital'||code==='orec'||code==='financing') h+=opeField('Category',categorySelectHtml('ale-cat',CATS_BY_KIND_G.financing||[],'',inp));
+  if(code==='opex') h+=opeField('Vendor',vendorSelectHtml('ale-vendor','',inp));
+  else if(code==='capital') h+=opeField('Shareholder name',`<input id="ale-vendor" style="${inp}">`);
+  else if(code==='financing') h+=opeField('Lender name',`<input id="ale-vendor" style="${inp}">`);
+  if(code==='ar'||code==='ap') h+=opeField('Counterparty',icCounterpartySelectHtml('ale-cp','',inp));
+  else if(code==='orec') h+=opeField('Counterparty (person\'s name)',`<input id="ale-cp" style="${inp}">`);
+  wrap.innerHTML=h;
+}
+// Replays this account's existing ledger in date order with the new row spliced in at its correct
+// chronological position (same running-balance idea as recomputeBlSaldos, but against already-saved
+// data instead of a batch of new rows) — a missing transaction is very often backdated, so simply
+// adding its amount to today's live balance would check the wrong thing entirely.
+function computeAleExpectedSaldo(acctId,newRow){
+  const acct=BANK_ACCOUNTS.find(x=>x.id===acctId); if(!acct) return null;
+  const existing=BANK_LEDGER.filter(r=>r.acctId===acctId).map(r=>({date:r.date||'',amt:(r.debit||0)-(r.kredit||0),isNew:false}));
+  const all=[...existing,{date:newRow.date||'',amt:(newRow.debit||0)-(newRow.kredit||0),isNew:true}];
+  all.sort((x,y)=>(x.date||'').localeCompare(y.date||'')||(x.isNew?1:-1));
+  let running=acct.opening, result=null;
+  all.forEach(item=>{ running+=item.amt; if(item.isNew) result=running; });
+  return result;
+}
+async function saveAddLedgerEntry(acctId,backCall,forceMode){
+  const err=document.getElementById('ale-err'); err.textContent='';
+  document.getElementById('ale-confirm').innerHTML='';
+  const a=BANK_ACCOUNTS.find(x=>x.id===acctId); if(!a) return;
+  const code=document.getElementById('ale-code').value;
+  const date=document.getElementById('ale-date').value;
+  const dir=document.getElementById('ale-dir').value;
+  const amt=Number(document.getElementById('ale-amt').value);
+  const desc=document.getElementById('ale-desc').value.trim();
+  const catEl=document.getElementById('ale-cat');
+  const vendorEl=document.getElementById('ale-vendor');
+  const cpEl=document.getElementById('ale-cp');
+  const balRaw=document.getElementById('ale-bal').value;
+  const docLink=document.getElementById('ale-doc').value.trim();
+  if(!code) return void(err.textContent='Pick a Code.');
+  if(!date) return void(err.textContent='Pick a date.');
+  if(!amt||amt<=0||!isFinite(amt)) return void(err.textContent='Amount must be a positive number.');
+  const catVal=catEl?catEl.value.trim():'';
+  const vendorVal=vendorEl?vendorEl.value.trim():'';
+  const cpVal=cpEl?cpEl.value.trim():'';
+  const row={
+    code,date,acctMatch:{id:a.id,entity:a.entity},
+    debitRaw:dir==='debit'?amt:0,kreditRaw:dir==='kredit'?amt:0,
+    desc,docLink,saldoRaw:balRaw,
+    catMatch:catVal||null,catRaw:catVal||null,
+    vendorMatch:vendorVal||null,vendorRaw:vendorVal||null,
+    cpRaw:cpVal||null
+  };
+  computeBlRow(row);
+  if(row.error) return void(err.textContent=row.error);
+  if(balRaw!==''&&!isNaN(Number(balRaw))){
+    const expected=computeAleExpectedSaldo(acctId,row);
+    if(expected!=null&&Math.abs(Number(balRaw)-expected)>=1) return void(err.textContent='Balance mismatch — should be '+fmt(expected)+', entered as '+fmt(Number(balRaw))+'.');
+  }
+  row.linkOnly=forceMode==='link';
+  if(forceMode!=='unique'&&forceMode!=='link'){
+    row.dup=findDuplicateBl(BANK_LEDGER,row)||findCrossPathDup(row);
+    if(row.dup){
+      const dup=row.dup;
+      const cpOrVendor=dup.vendor||dup.cp||'—';
+      let ch=`<div style="border:1px solid #f0cb87;border-radius:8px;padding:10px 12px;background:#fff8ec">`
+        +`<div style="font-weight:700;color:#8a5a1e;margin-bottom:6px;font-size:12.5px">⚠ This looks like it might already be recorded as:</div>`
+        +`<div style="font-size:12px;color:#3a4254">${escH(dup.date||'—')} · ${escH(dup.category||'—')} · ${escH(cpOrVendor)} · ${fmt(dup.debit||dup.kredit||0)} · ${escH(dup.desc||'—')}</div>`
+        +`<div style="font-size:11px;color:var(--muted);margin-top:4px">Source: ${escH(dup.source||'—')}</div>`
+        +`<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">`
+        +`<button type="button" onclick="saveAddLedgerEntry(${acctId},'${backCall}','unique')" style="border:0;border-radius:8px;background:var(--green);color:#fff;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer">✓ Not a duplicate — save as new</button>`
+        +(dup.crossPath&&dup.id!=null?`<button type="button" onclick="saveAddLedgerEntry(${acctId},'${backCall}','link')" style="border:0;border-radius:8px;background:var(--blue-300);color:#fff;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer">↔ Same transaction — add to ledger only</button>`:'')
+        +`</div></div>`;
+      document.getElementById('ale-confirm').innerHTML=ch;
+      return;
+    }
+  }
+  const btn=document.getElementById('ale-send'); btn.disabled=true; btn.textContent='Saving…';
+  try{
+    await commitBlRows([row]);
+    eval(backCall);
+  }catch(e){
+    btn.disabled=false; btn.textContent='Save entry';
+    err.textContent='Failed to save: '+e.message;
+  }
 }
 // Finds the row a bank_ledger_entries row was mirrored into (populated at import time — see
 // source_ledger_id in the Import Bank Ledger handler), if any. A row imported before that linking
