@@ -3536,6 +3536,28 @@ function paymentPlanProgressText(p){
   }
   return base;
 }
+// ── Who a pending plan is actually waiting on ─────────────────────────────────
+// Only people who can still move the plan forward belong on this list. Under the fast
+// track that is the fast-track pair alone — naming Stan/Igor on a small plan reads as
+// though it were blocked on them when their signature isn't needed. At or above the
+// limit it's every eligible approver for the PT who hasn't recorded a decision yet.
+// Reads decisions from DPP_APPROVALS, the same source paymentPlanProgressText() counts
+// from, so the "X/4" and this list can never disagree on screen.
+// Short names keep the cell readable in a narrow column; the title carries the full ones.
+function approverShortName(a){ return String((a&&a.name)||(a&&a.email)||'').trim().split(/\s+/)[0]; }
+function approverByEmail(email){ return PAYMENT_APPROVERS.find(a=>a.email===email)||{email,name:email}; }
+function pendingApproversFor(p){
+  const decided=new Set(DPP_APPROVALS.filter(a=>a.planId===p.id).map(a=>a.email));
+  if(p.amt<DPP_FAST_TRACK_LIMIT) return DPP_FAST_TRACK_EMAILS.filter(e=>!decided.has(e)).map(approverByEmail);
+  return approversForEntity(p.e).filter(a=>!decided.has(a.email));
+}
+function pendingApproversHtml(p){
+  if(p.status!=='pending') return '';
+  const pend=pendingApproversFor(p);
+  if(!pend.length) return '';
+  const hint=p.amt<DPP_FAST_TRACK_LIMIT?' — under Rp'+fmt(DPP_FAST_TRACK_LIMIT)+' only they need to sign':'';
+  return '<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px" title="'+escH(pend.map(a=>a.name||a.email).join(', ')+hint)+'">Pending: '+escH(pend.map(approverShortName).join(', '))+'</div>';
+}
 function paymentPlansInScope(){
   const ids=new Set(scopeIds());
   return DPP.filter(p=>ids.has(p.e));
@@ -3695,11 +3717,7 @@ function paymentPlanRowHtml(p){
     <td class="num">${fmt(p.amt)}</td>
     <td class="num">${(p.status!=='approved'||p.approvedAmt==null)?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
-    <td style="font-size:12px">${paymentPlanProgressText(p)}${(()=>{
-      if(p.status!=='pending') return '';
-      const pendingNames=approversForEntity(p.e).filter(a=>!DPP_APPROVALS.some(d=>d.planId===p.id&&d.email===a.email)).map(a=>a.name);
-      return pendingNames.length?`<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Pending: ${escH(pendingNames.join(', '))}</div>`:'';
-    })()}</td>
+    <td style="font-size:12px;min-width:132px">${paymentPlanProgressText(p)}${pendingApproversHtml(p)}</td>
     <td>${paymentPlanStatusBadge(p)}</td>
     <td style="white-space:nowrap"><a href="#" onclick="event.preventDefault();openPlanThread(${p.id})" style="font-size:12px;color:var(--blue-300);text-decoration:none;font-weight:600">${commentN} comment${commentN===1?'':'s'}</a>${unreadN?` <span style="display:inline-block;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px">${unreadN} new</span>`:''}</td>
     <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:1px solid #f0cb87;background:#fff4e0;border-radius:999px;cursor:pointer;padding:4px 10px;font-size:16px;font-weight:800;color:#9a6f0a;line-height:1">⋮</button>
