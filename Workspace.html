@@ -3694,7 +3694,7 @@ function paymentPlanRowHtml(p){
     })()}</td>
     <td>${(p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision)
       ?(`<div style="display:flex;gap:6px;align-items:center">`
-        +`<button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" title="Approve the full amount — for a partial amount or a note, use the ⋮ menu instead" style="border:0;border-radius:8px;background:var(--green);color:#fff;font-size:11.5px;font-weight:700;padding:5px 10px;cursor:pointer;white-space:nowrap">✓ Approve</button>`
+        +`<button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" title="Approve the full amount — for a partial amount or a note, use the ⋮ menu instead" style="border:0;border-radius:8px;background:var(--blue-300);color:#fff;font-size:11.5px;font-weight:700;padding:5px 10px;cursor:pointer;white-space:nowrap">✓ Approve</button>`
         +`<button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" title="Reject" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:11.5px;font-weight:700;padding:5px 8px;border-radius:8px;cursor:pointer">✕</button>`
         +`</div>`)
       :paymentPlanStatusBadge(p)}</td>
