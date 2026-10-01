@@ -3796,7 +3796,10 @@ function openPaymentPlans(){
     +`<select style="${selStyle}" onchange="setDppFilter('status',this.value)"><option value="">All Status (excl. Paid)</option>${statusOpts.map(([v,lab])=>`<option value="${v}"${DPP_FILTER.status===v?' selected':''}>${lab}</option>`).join('')}</select>`
     +(DPP_FILTER.status==='paid'?`<span style="font-size:11px;color:var(--muted)">Paid from</span><input type="date" value="${DPP_FILTER.paidFrom||''}" style="${selStyle}" onchange="setDppFilter('paidFrom',this.value)"><span style="font-size:11px;color:var(--muted)">to</span><input type="date" value="${DPP_FILTER.paidTo||''}" style="${selStyle}" onchange="setDppFilter('paidTo',this.value)">`:'')
     +(anyFilter?`<button type="button" onclick="clearDppFilters()" style="border:0;background:none;color:var(--blue-300);font-size:12px;font-weight:700;cursor:pointer">Clear filters</button>`:'')
-    +(mine.length?`<button class="btn" style="background:#2b7a4b;color:#fff;border:0;margin-left:auto" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button>`:'')
+    +(mine.length?`<span style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap">`
+      +`<span style="font-size:12px;color:var(--muted)">Needs approval: <b style="color:var(--ink)">${fmt(mine.reduce((s,p)=>s+p.amt,0))}</b></span>`
+      +`<button class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button>`
+      +`</span>`:'')
     +`</div>`;
   // Phone + approver gets a stacked card list instead of the wide table — the table's 13 columns
   // don't fit a phone screen at all, and an approver opening this on their phone is almost always
