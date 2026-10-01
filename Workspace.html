@@ -3692,7 +3692,12 @@ function paymentPlanRowHtml(p){
       const pendingNames=approversForEntity(p.e).filter(a=>!DPP_APPROVALS.some(d=>d.planId===p.id&&d.email===a.email)).map(a=>a.name);
       return pendingNames.length?`<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Pending: ${escH(pendingNames.join(', '))}</div>`:'';
     })()}</td>
-    <td>${paymentPlanStatusBadge(p)}</td>
+    <td>${(p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision)
+      ?(`<div style="display:flex;gap:6px;align-items:center">`
+        +`<button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" title="Approve the full amount — for a partial amount or a note, use the ⋮ menu instead" style="border:0;border-radius:8px;background:var(--green);color:#fff;font-size:11.5px;font-weight:700;padding:5px 10px;cursor:pointer;white-space:nowrap">✓ Approve</button>`
+        +`<button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" title="Reject" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:11.5px;font-weight:700;padding:5px 8px;border-radius:8px;cursor:pointer">✕</button>`
+        +`</div>`)
+      :paymentPlanStatusBadge(p)}</td>
     <td style="white-space:nowrap"><a href="#" onclick="event.preventDefault();openPlanThread(${p.id})" style="font-size:12px;color:var(--blue-300);text-decoration:none;font-weight:600">${commentN} comment${commentN===1?'':'s'}</a>${unreadN?` <span style="display:inline-block;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px">${unreadN} new</span>`:''}</td>
     <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:1px solid #f0cb87;background:#fff4e0;border-radius:999px;cursor:pointer;padding:4px 10px;font-size:16px;font-weight:800;color:#9a6f0a;line-height:1">⋮</button>
       <div id="plan-menu-${p.id}" class="plan-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>
@@ -3956,6 +3961,27 @@ async function doDecidePlan(id,decision){
     renderKpiCash(agg());
     openPaymentPlans();
   }catch(e){ err.textContent='Failed to save: '+e.message; }
+}
+// One-click Approve/Reject straight from the Status column (see paymentPlanRowHtml) — same
+// decision-recording path as doDecidePlan, minus the modal, for the overwhelmingly common case of
+// approving the full purposed amount with no note. An approver who wants a partial amount or a note
+// still has the ⋮ menu's "Approve"/"Reject" (or "Change to …" once a decision exists, which this
+// quick path can also be used to set in the first place).
+async function quickDecidePlan(id,decision,btnEl){
+  if(btnEl) btnEl.disabled=true;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_approvals?on_conflict=plan_id,approver_email',{method:'POST',
+      headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify([{plan_id:id,approver_email:MY_EMAIL,decision,note:null,approved_amount_idr:null,decided_at:new Date().toISOString()}])});
+    if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+    const [freshPlans,freshApprovals]=await Promise.all([
+      sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
+      sbFetchAll('daily_payment_plan_approvals?select=*')
+    ]);
+    DPP=freshPlans.map(mkDpp); DPP_APPROVALS=freshApprovals.map(mkDppApproval);
+    renderKpiCash(agg());
+    openPaymentPlans();
+  }catch(e){ if(btnEl) btnEl.disabled=false; alert('Failed to save: '+e.message); }
 }
 async function cancelPaymentPlan(id){
   if(!confirm('Cancel this payment plan? This cannot be undone.')) return;
