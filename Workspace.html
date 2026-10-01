@@ -3835,17 +3835,13 @@ function isMobileViewport(){ return window.innerWidth<=640; }
 // renders all of it. Mirrors the desktop Status column's own condition for when to show quick
 // action buttons instead of a status badge (see paymentPlanRowHtml).
 function paymentPlanMobileCardHtml(p){
-  const eNm=ENT[p.e]?ENT[p.e].name:p.e;
   const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
   const canQuickDecide=p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision;
   const who=p.planType==='loan_affiliate'?((p.icType?p.icType+' — ':'')+(p.counterparty||'—')):(p.vendor||'—');
-  const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
-  const unreadN=unreadCommentsFor(p.id);
+  // Deliberately just vendor, description, amount and the action — entity/category/comments/doc/
+  // due date are all one tap away via Discussion, not shown here by default (see how this was asked for).
   return `<div style="border:1px solid #eef2f7;border-radius:12px;padding:12px 14px;margin-bottom:10px;background:#fff" onclick="openPlanThread(${p.id})">
-    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between;gap:8px">
-      <span>${escH(eNm)} · ${escH(who)}${p.category?' · '+escH(p.category):''}</span>
-      ${unreadN?`<span style="flex:none;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px">${unreadN} new</span>`:''}
-    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${escH(who)}</div>
     <div style="font-size:13.5px;color:var(--ink);line-height:1.4;margin-bottom:8px">${escH(p.desc||'—')}</div>
     <div style="font-size:19px;font-weight:800;color:var(--ink);margin-bottom:10px">${fmt(p.amt)}</div>
     ${canQuickDecide
@@ -3853,7 +3849,7 @@ function paymentPlanMobileCardHtml(p){
           <button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" style="flex:1;border:0;border-radius:10px;background:#2f6fb0;color:#fff;font-size:13.5px;font-weight:700;padding:10px;cursor:pointer">✓ Approve</button>
           <button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:13.5px;font-weight:700;padding:10px 14px;border-radius:10px;cursor:pointer">✕</button>
         </div>`
-      :`<div style="display:flex;justify-content:space-between;align-items:center">${paymentPlanStatusBadge(p)}<span style="font-size:11px;color:var(--blue-300)">${commentN} comment${commentN===1?'':'s'} ›</span></div>`}
+      :paymentPlanStatusBadge(p)}
   </div>`;
 }
 function openApproveAllModal(){
