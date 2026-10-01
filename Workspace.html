@@ -3798,7 +3798,7 @@ function openPaymentPlans(){
     +(anyFilter?`<button type="button" onclick="clearDppFilters()" style="border:0;background:none;color:var(--blue-300);font-size:12px;font-weight:700;cursor:pointer">Clear filters</button>`:'')
     +`</div>`;
   h+=(mine.length?`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">`
-    +`<span style="font-size:16px;color:var(--ink)">Needs approval: <b>${fmt(mine.reduce((s,p)=>s+p.amt,0))}</b></span>`
+    +`<span style="font-size:16px;color:var(--ink);text-transform:uppercase;letter-spacing:.3px">Needs approval: <b>${fmt(mine.reduce((s,p)=>s+p.amt,0))}</b></span>`
     +`<button class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button>`
     +`</div>`:'');
   // Phone + approver gets a stacked card list instead of the wide table — the table's 13 columns
