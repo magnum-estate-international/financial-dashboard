@@ -3798,6 +3798,15 @@ function openPaymentPlans(){
     +(anyFilter?`<button type="button" onclick="clearDppFilters()" style="border:0;background:none;color:var(--blue-300);font-size:12px;font-weight:700;cursor:pointer">Clear filters</button>`:'')
     +(mine.length?`<button class="btn" style="background:#2b7a4b;color:#fff;border:0;margin-left:auto" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button>`:'')
     +`</div>`;
+  // Phone + approver gets a stacked card list instead of the wide table — the table's 13 columns
+  // don't fit a phone screen at all, and an approver opening this on their phone is almost always
+  // here to do exactly one thing (read what it's for, see the amount, decide), not audit every
+  // column. Anyone else (desktop, or a non-approver on a phone) keeps the normal table.
+  if(isMobileViewport()&&isApproverAnywhere(MY_EMAIL)){
+    h+=rows.length?rows.map(p=>paymentPlanMobileCardHtml(p)).join(''):`<div style="text-align:center;color:var(--muted);padding:20px">${scoped.length?'No payment plans match these filters — note Paid ones are hidden by default, pick "Paid" from the Status filter to see them.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</div>`;
+    showModal(DPP_FILTER.status==='paid'?'Payment History':'Daily Payment Plan',h,true);
+    return;
+  }
   h+='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead><tbody>';
   h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):`<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">${scoped.length?'No payment plans match these filters — note Paid ones are hidden by default, pick "Paid" from the Status filter to see them.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</td></tr>`;
   if(rows.length){
@@ -3818,6 +3827,34 @@ function openPaymentPlans(){
     const dateTh=scrollEl&&scrollEl.querySelector('thead th');
     if(scrollEl&&dateTh) scrollEl.scrollLeft=dateTh.getBoundingClientRect().width;
   });
+}
+function isMobileViewport(){ return window.innerWidth<=640; }
+// Phone card for one plan, approver view — Description, Amount and the Approve/Reject buttons are
+// the only things shown by default (per how this was asked for); everything else the table has
+// (due date, doc, approvals list, full status) is one tap away via Discussion, which already
+// renders all of it. Mirrors the desktop Status column's own condition for when to show quick
+// action buttons instead of a status badge (see paymentPlanRowHtml).
+function paymentPlanMobileCardHtml(p){
+  const eNm=ENT[p.e]?ENT[p.e].name:p.e;
+  const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
+  const canQuickDecide=p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision;
+  const who=p.planType==='loan_affiliate'?((p.icType?p.icType+' — ':'')+(p.counterparty||'—')):(p.vendor||'—');
+  const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
+  const unreadN=unreadCommentsFor(p.id);
+  return `<div style="border:1px solid #eef2f7;border-radius:12px;padding:12px 14px;margin-bottom:10px;background:#fff" onclick="openPlanThread(${p.id})">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between;gap:8px">
+      <span>${escH(eNm)} · ${escH(who)}${p.category?' · '+escH(p.category):''}</span>
+      ${unreadN?`<span style="flex:none;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px">${unreadN} new</span>`:''}
+    </div>
+    <div style="font-size:13.5px;color:var(--ink);line-height:1.4;margin-bottom:8px">${escH(p.desc||'—')}</div>
+    <div style="font-size:19px;font-weight:800;color:var(--ink);margin-bottom:10px">${fmt(p.amt)}</div>
+    ${canQuickDecide
+      ?`<div style="display:flex;gap:8px" onclick="event.stopPropagation()">
+          <button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" style="flex:1;border:0;border-radius:10px;background:#2f6fb0;color:#fff;font-size:13.5px;font-weight:700;padding:10px;cursor:pointer">✓ Approve</button>
+          <button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:13.5px;font-weight:700;padding:10px 14px;border-radius:10px;cursor:pointer">✕</button>
+        </div>`
+      :`<div style="display:flex;justify-content:space-between;align-items:center">${paymentPlanStatusBadge(p)}<span style="font-size:11px;color:var(--blue-300)">${commentN} comment${commentN===1?'':'s'} ›</span></div>`}
+  </div>`;
 }
 function openApproveAllModal(){
   const list=pendingForMe();
