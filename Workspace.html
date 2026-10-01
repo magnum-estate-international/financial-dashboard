@@ -3596,7 +3596,7 @@ function paymentPlanCard(){
   const rightStats=[
     stat(ICON.check(14),fmt(paidThisMonthTotal),'Paid this month','#2f6fb0','',`openPaymentPlanHistory()`,paidThisMonth.length+' payment'+(paidThisMonth.length===1?'':'s')),
   ];
-  return `<div class="pcard boxed clickable" onclick="openPaymentPlans()">
+  return `<div class="pcard boxed clickable" onclick="openPaymentPlansDefault()">
       <span style="position:absolute;top:12px;right:14px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--blue-300)">Details ›</span>
       <div class="kpi-head"><div class="kpi-ic">${ICON.check(17)}</div><div class="lab">Daily Payment Plan</div></div>
       <div class="big" style="${outstanding.length?'':'color:var(--muted)'}">${outstanding.length?fmt(tot):'—'}</div>
@@ -3744,6 +3744,15 @@ function openPaymentPlanHistory(){
   DPP_FILTER={entity:'',vendor:'',category:'',status:'paid',paidFrom:from,paidTo:to};
   openPaymentPlans();
 }
+// Entry point for the Daily Payment Plan card itself (as opposed to every other way back into
+// this view — the ⋮ menu, a stat chip, "Clear filters", etc., which all call openPaymentPlans()
+// directly and must leave whatever filter the user already has set alone). An approver's most
+// common reason to open this at all is to clear their own queue, so landing here defaults straight
+// to "Needs My Approval" instead of the full list — a non-approver still gets the old default.
+function openPaymentPlansDefault(){
+  DPP_FILTER={entity:'',vendor:'',category:'',status:isApproverAnywhere(MY_EMAIL)?'mine':'',paidFrom:'',paidTo:''};
+  openPaymentPlans();
+}
 function openPaymentPlans(){
   const scoped=paymentPlansInScope();
   let rows=scoped.slice();
@@ -3759,6 +3768,9 @@ function openPaymentPlans(){
     if(DPP_FILTER.paidTo) rows=rows.filter(p=>p.paidAt.slice(0,10)<=DPP_FILTER.paidTo);
   }
   else if(DPP_FILTER.status==='approved') rows=rows.filter(p=>p.status==='approved'&&!p.paidAt);
+  // Same definition as pendingForMe() (and the "Approve All" button it drives) — pending, in scope,
+  // this viewer is an active approver for that entity, and hasn't recorded a decision yet.
+  else if(DPP_FILTER.status==='mine') rows=rows.filter(p=>p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL));
   else if(DPP_FILTER.status) rows=rows.filter(p=>p.status===DPP_FILTER.status);
   // Default view (no status picked): a plan already paid belongs in Payment History, not cluttering
   // the working list of what still needs attention — pick "Paid" from the Status filter, or "Paid
@@ -3774,7 +3786,7 @@ function openPaymentPlans(){
   const entOpts=[...new Set(scoped.map(p=>p.e))].sort((a,b)=>(ENT[a]?ENT[a].name:a).localeCompare(ENT[b]?ENT[b].name:b));
   const vendorOpts=[...new Set(scoped.map(p=>p.vendor).filter(Boolean))].sort();
   const catOpts=[...new Set(scoped.map(p=>p.category).filter(Boolean))].sort();
-  const statusOpts=[['pending','Pending'],['approved','Approved'],['paid','Paid'],['rejected','Rejected'],['cancelled','Cancelled']];
+  const statusOpts=[...(isApproverAnywhere(MY_EMAIL)?[['mine','Needs My Approval']]:[]),['pending','Pending'],['approved','Approved'],['paid','Paid'],['rejected','Rejected'],['cancelled','Cancelled']];
   const selStyle='padding:6px 10px;border:1px solid #e4e7ef;border-radius:8px;font-size:12px;background:#fff;color:#3a4254';
   const anyFilter=DPP_FILTER.entity||DPP_FILTER.vendor||DPP_FILTER.category||DPP_FILTER.status;
   let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">`
