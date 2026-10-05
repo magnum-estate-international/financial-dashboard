@@ -6,11 +6,11 @@
 <title data-id="th-modified">Group Consolidated Financial Dashboard · May 2026 · 17 Entities</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- SheetJS (xlsx) can't write Excel dropdown data validation — used only for the template
      downloads below (Outstanding Liability / Fixed Cost), which need in-cell Entity/Category/
      Vendor dropdowns so filling the sheet doesn't require checking the dashboard first. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
 :root{
   --blue-900:#141b2d;--blue-700:#3a4358;--blue-500:#9a6f0a;--blue-300:#9a6f0a;--blue-100:#f5e8c8;--blue-50:#faf3e2;
@@ -8812,11 +8812,29 @@ async function sbFetch(p){
   return r.json();
 }
 async function sbFetchAll(base){
-  let out=[],from=0,page=1000;
-  for(;;){
-    const r=await authedFetch(SB_URL+'/rest/v1/'+base,{headers:{'Range':from+'-'+(from+page-1),'Range-Unit':'items'}});
+  const page=1000;
+  const pageReq=(from)=>authedFetch(SB_URL+'/rest/v1/'+base,{headers:{'Range':from+'-'+(from+page-1),'Range-Unit':'items','Prefer':'count=exact'}});
+  const first=await pageReq(0);
+  if(!first.ok) throw new Error('Supabase '+base+' -> '+first.status);
+  let out=await first.json();
+  if(out.length<page) return out;
+  // The first page reports the table's total row count (Content-Range: 0-999/4718), so every
+  // remaining page can be requested at once instead of one round trip after another — this was the
+  // slowest part of opening the dashboard (Transactions alone is 5+ pages).
+  const m=(first.headers.get('Content-Range')||'').match(/\/(\d+)$/);
+  if(m){
+    const starts=[]; for(let f=page; f<+m[1]; f+=page) starts.push(f);
+    const rest=await Promise.all(starts.map(async f=>{
+      const r=await pageReq(f);
+      if(!r.ok) throw new Error('Supabase '+base+' -> '+r.status);
+      return r.json();
+    }));
+    return out.concat(...rest);
+  }
+  for(let from=page;;from+=page){
+    const r=await pageReq(from);
     if(!r.ok) throw new Error('Supabase '+base+' -> '+r.status);
-    const c=await r.json(); out=out.concat(c); if(c.length<page) break; from+=page;
+    const c=await r.json(); out=out.concat(c); if(c.length<page) break;
   }
   return out;
 }
@@ -9477,7 +9495,24 @@ async function deleteBlEntry(id,encBackCall){
   }catch(e){ alert('Failed to delete: '+e.message); }
 }
 async function runDashboard(){
-  const D=await loadFromSupabase();
+  // Every request is fired at once and awaited together. They used to run one after another
+  // (a dozen+ sequential round trips after the main batch), which is what made the dashboard sit
+  // empty for several seconds on open. A failure in any secondary fetch falls back to the same
+  // empty value the old per-fetch try/catch used; only the core load (loadFromSupabase) can fail the boot.
+  const soft=(p)=>p.then(x=>x,()=>null);
+  const [D,pers,balRows,cashRows,icRows,icTxRows,orecRows,acctRows,ledgerRows]=await Promise.all([
+    loadFromSupabase(),
+    soft(sbFetch('periods?select=code,label&order=sort_order')),
+    soft(sbFetch('entity_period_balances?select=entity_code,period_code,opening_idr,closing_idr')),
+    soft(sbFetch('entity_cash_position?select=entity_code,cash_idr,updated_at')),
+    soft(sbFetch('intercompany_ar_ap?select=*&order=owner_label,type,amount_idr.desc')),
+    soft(sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date')),
+    soft(sbFetchAll('other_receivables?select=*&order=entity_code,tx_date')),
+    soft(sbFetch('bank_accounts?select=*&order=entity_code,bank_name')),
+    soft(sbFetchAll('bank_ledger_entries?select=*&order=bank_account_id,tx_date')),
+    refreshIcCounterparties(),
+    checkAdmin().catch(()=>{})
+  ]);
   ENT=D.ENT;MULTI=D.MULTI;LOANS_MAY=D.LOANS_MAY;LOANS_APR=D.LOANS_APR;LOANS_JUN=D.LOANS_JUN;LOAN_FLOWS_ALL=D.LOAN_FLOWS_ALL;
   HIGHLIGHTS=D.HIGHLIGHTS;TX=D.TX;TX_MULTI=D.TX_MULTI;TX_MS=D.TX_MS;TX_ICG_OPEX=D.TX_ICG_OPEX;
   OUTSTANDING=D.OUTSTANDING;
@@ -9493,9 +9528,8 @@ async function runDashboard(){
   LOANS_BY_MONTH={APR:LOANS_APR,MAY:LOANS_MAY,JUN:LOANS_JUN,Q2:[...LOANS_APR,...LOANS_MAY,...LOANS_JUN]};
   // months approved after the original Q2 export appear automatically
   try{
-    const pers=await sbFetch('periods?select=code,label&order=sort_order');
     const sel=document.getElementById('monthSel');
-    pers.forEach(p=>{
+    (pers||[]).forEach(p=>{
       if(MONTHS[p.code]) return;
       MONTHS[p.code]=p.label; Q2_MONTHS.push(p.code); LOANS_BY_MONTH[p.code]=[];
       if(sel){ const o=document.createElement('option'); o.value=p.code; o.textContent=p.label;
@@ -9504,57 +9538,36 @@ async function runDashboard(){
   }catch(e){}
   updateYtdLabel();
   // opening / closing balances per entity+month (reconciliation benchmark)
-  try{
-    BAL={};
-    (await sbFetch('entity_period_balances?select=entity_code,period_code,opening_idr,closing_idr')).forEach(b=>{
-      (BAL[b.entity_code]=BAL[b.entity_code]||{})[b.period_code]={
-        open:b.opening_idr==null?null:Number(b.opening_idr),
-        close:b.closing_idr==null?null:Number(b.closing_idr)};
-    });
-  }catch(e){ BAL={}; }
+  BAL={};
+  (balRows||[]).forEach(b=>{
+    (BAL[b.entity_code]=BAL[b.entity_code]||{})[b.period_code]={
+      open:b.opening_idr==null?null:Number(b.opening_idr),
+      close:b.closing_idr==null?null:Number(b.closing_idr)};
+  });
   // per-entity cash position — a single current-value snapshot (not tied to any month), meant to
   // be refreshed daily; deliberately a separate table from entity_period_balances (that one is the
   // monthly open/close reconciliation benchmark, this one is just "what's in the bank right now").
-  try{
-    CASHPOS={};
-    (await sbFetch('entity_cash_position?select=entity_code,cash_idr,updated_at')).forEach(c=>{
-      CASHPOS[c.entity_code]={cash:Number(c.cash_idr),at:c.updated_at};
-    });
-  }catch(e){ CASHPOS={}; }
+  CASHPOS={};
+  (cashRows||[]).forEach(c=>{ CASHPOS[c.entity_code]={cash:Number(c.cash_idr),at:c.updated_at}; });
   // group-level inter-company AR/AP recap — not entity/month scoped (spans holding-company PTs
   // outside the 16 operating entities too), so it's fetched once and shown as-is, unaffected by
   // the entity/group/month filters that drive the rest of the dashboard.
-  try{
-    INTERCOMPANY=(await sbFetch('intercompany_ar_ap?select=*&order=owner_label,type,amount_idr.desc'))
-      .map(r=>({id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,amt:+r.amount_idr,
-        setoran:+(r.setoran_modal_idr||0),setoranNote:r.setoran_modal_note||null,source:r.source_file}));
-  }catch(e){ INTERCOMPANY=[]; }
+  INTERCOMPANY=(icRows||[]).map(r=>({id:r.id,owner:r.owner_label,cp:r.counterparty_label,type:r.type,amt:+r.amount_idr,
+    setoran:+(r.setoran_modal_idr||0),setoranNote:r.setoran_modal_note||null,source:r.source_file}));
   // Itemized inter-company transactions (owner/counterparty/type/date/description/amount), added
   // via Excel import — this is the live, growing ledger that replaced the one-time intercompany_ar_ap
   // summary snapshot above as the Inter-Company AR/AP screen's source of truth, per direction.
-  try{
-    IC_TX=(await sbFetchAll('intercompany_transactions?select=*&order=owner_label,tx_date'))
-      .map(mkIcTx);
-  }catch(e){ IC_TX=[]; }
+  IC_TX=(icTxRows||[]).map(mkIcTx);
   // Other Receivable ledger (individuals, not PTs) — same fetch-once-and-hold shape as IC_TX above.
-  try{
-    OTHER_RECV=(await sbFetchAll('other_receivables?select=*&order=entity_code,tx_date'))
-      .map(mkOrec);
-  }catch(e){ OTHER_RECV=[]; }
-  await refreshIcCounterparties();
+  OTHER_RECV=(orecRows||[]).map(mkOrec);
   // Bank accounts (master list) and their ledger entries (the unified Debit/Kredit recap that
   // routes into Revenue/Expenses/Loan Affiliate and also drives the per-account running balance
   // shown on Cash Position) — kept as two separate fetches since the ledger can grow large.
-  try{
-    BANK_ACCOUNTS=(await sbFetch('bank_accounts?select=*&order=entity_code,bank_name')).map(mkBankAccount);
-  }catch(e){ BANK_ACCOUNTS=[]; }
-  try{
-    BANK_LEDGER=(await sbFetchAll('bank_ledger_entries?select=*&order=bank_account_id,tx_date')).map(mkBankLedger);
-  }catch(e){ BANK_LEDGER=[]; }
+  BANK_ACCOUNTS=(acctRows||[]).map(mkBankAccount);
+  BANK_LEDGER=(ledgerRows||[]).map(mkBankLedger);
   rebuildScopeSelect();
   applyScopeChrome();
   renderAll();
-  try{ await checkAdmin(); }catch(e){}
   showUserBar();
 }
 
@@ -11250,8 +11263,15 @@ async function boot(){
   }
   if(!s || !s.access_token){ showLogin(); return; }
   SESSION=s; setSess(s);
+  // Thin animated bar under the top edge while the data loads, so the page doesn't read as stuck
+  // on empty cards. Removed in the finally below on success, failure and re-login alike.
+  const bar=document.createElement('div');
+  bar.id='mag-loadbar';
+  bar.style.cssText='position:fixed;top:0;left:0;right:0;height:3px;z-index:100000;overflow:hidden;background:rgba(200,154,74,.18);pointer-events:none';
+  bar.innerHTML='<div style="height:100%;width:35%;background:linear-gradient(90deg,#c89a4a,#e3c583);border-radius:3px;animation:magload 1.1s ease-in-out infinite"></div><style>@keyframes magload{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}</style>';
+  document.body.appendChild(bar);
   try{
-    await runDashboard();
+    try{ await runDashboard(); }finally{ bar.remove(); }
     openPendingSharedPlan();
   }catch(err){
     // one refresh+retry on auth error, else force re-login
