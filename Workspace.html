@@ -3666,6 +3666,7 @@ function paymentPlanRowHtml(p){
   const commentN=DPP_COMMENTS.filter(c=>c.planId===p.id).length;
   const unreadN=unreadCommentsFor(p.id);
   items.push(menuItem('💬 Discussion',`openPlanThread(${p.id})`));
+  items.push(menuItem('🔗 Copy Link',`copyPlanLink(${p.id})`));
   if(p.status==='pending'&&canEdit) items.push(menuItem(ICON.trash()+' Cancel',`cancelPaymentPlan(${p.id})`,'var(--red)'));
   if(canEdit&&p.status!=='approved') items.push(menuItem(ICON.edit()+' Edit',`openEditPlan(${p.id})`));
   if(canEdit&&!p.paidAt) items.push(menuItem(ICON.trash()+' Delete',`deletePaymentPlan(${p.id})`,'var(--red)'));
@@ -3753,7 +3754,44 @@ function openPaymentPlansDefault(){
   DPP_FILTER={entity:'',vendor:'',category:'',status:isApproverAnywhere(MY_EMAIL)?'mine':'',paidFrom:'',paidTo:''};
   openPaymentPlans();
 }
+const DPP_TABLE_HEAD='<tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead>';
+// Shareable per-plan link: ?plan=<id> on the dashboard URL. The id is parked in localStorage on page
+// load (the magic-link login redirects back to origin+pathname and drops the query string, and the
+// password login reloads the page) and consumed once the dashboard has loaded — see
+// openPendingSharedPlan. Only the plan id travels in the link; what the person can see or do is
+// still decided by their own login + RLS, exactly like opening the plan from the list.
+function copyPlanLink(id){
+  const url=location.origin+location.pathname+'?plan='+id;
+  const done=()=>alert('Link plan #'+id+' disalin:\n'+url);
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done,()=>prompt('Salin link plan ini:',url));
+  else prompt('Salin link plan ini:',url);
+}
+function openSharedPlan(id){
+  const p=DPP.find(x=>x.id===id);
+  const back=`<button type="button" onclick="openPaymentPlansDefault()" style="border:0;background:none;color:var(--blue-300);font-size:12px;font-weight:700;cursor:pointer">Lihat semua plan ›</button>`;
+  if(!p){
+    showModal('Daily Payment Plan',`<div style="color:var(--muted);padding:12px 0">Plan #${id} tidak ditemukan — kemungkinan sudah dihapus, atau Anda tidak punya akses ke PT-nya.</div>${back}`,true);
+    return;
+  }
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:12px;color:var(--muted)">Plan #${id} (dari link)</span>${back}</div>`;
+  if(isMobileViewport()&&isApproverAnywhere(MY_EMAIL)) h+=paymentPlanMobileCardHtml(p);
+  else h+='<div class="table-scroll"><table><thead>'+DPP_TABLE_HEAD+'<tbody>'+paymentPlanRowHtml(p)+'</tbody></table></div>';
+  showModal('Daily Payment Plan',h,true);
+}
+function openPendingSharedPlan(){
+  let id=null;
+  try{
+    const raw=JSON.parse(localStorage.getItem('mag_pending_plan')||'null');
+    localStorage.removeItem('mag_pending_plan');
+    if(raw&&raw.id&&Date.now()-raw.at<24*3600*1000) id=Number(raw.id);
+  }catch(e){}
+  if(!id||!EIDS.length) return;
+  // Never let a problem opening the shared plan bubble into boot()'s catch, which would treat it as an
+  // expired session and sign the person out.
+  try{ DPP_FILTER={entity:'',vendor:'',category:'',status:'',paidFrom:'',paidTo:'',planId:id}; openPaymentPlans(); }catch(e){ console.error(e); }
+}
 function openPaymentPlans(){
+  if(DPP_FILTER.planId) return openSharedPlan(DPP_FILTER.planId);
   const scoped=paymentPlansInScope();
   let rows=scoped.slice();
   if(DPP_FILTER.entity) rows=rows.filter(p=>p.e===DPP_FILTER.entity);
@@ -3810,7 +3848,7 @@ function openPaymentPlans(){
     showModal(DPP_FILTER.status==='paid'?'Payment History':'Daily Payment Plan',h,true);
     return;
   }
-  h+='<div class="table-scroll" style="max-height:460px"><table><thead><tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead><tbody>';
+  h+='<div class="table-scroll" style="max-height:460px"><table><thead>'+DPP_TABLE_HEAD+'<tbody>';
   h+=rows.length?rows.map(p=>paymentPlanRowHtml(p)).join(''):`<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">${scoped.length?'No payment plans match these filters — note Paid ones are hidden by default, pick "Paid" from the Status filter to see them.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</td></tr>`;
   if(rows.length){
     const totPurpose=rows.reduce((s,p)=>s+p.amt,0);
@@ -11214,13 +11252,23 @@ async function boot(){
   SESSION=s; setSess(s);
   try{
     await runDashboard();
+    openPendingSharedPlan();
   }catch(err){
     // one refresh+retry on auth error, else force re-login
-    if(s.refresh_token){ try{ SESSION=await refreshSess(s); setSess(SESSION); await runDashboard(); return; }catch(e){} }
+    if(s.refresh_token){ try{ SESSION=await refreshSess(s); setSess(SESSION); await runDashboard(); openPendingSharedPlan(); return; }catch(e){} }
     clearSess(); showLogin('Your session expired — please sign in again.');
   }
 }
 document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
+(function captureSharedPlanLink(){
+  try{
+    const id=new URLSearchParams(location.search).get('plan');
+    if(id&&/^\d+$/.test(id)){
+      localStorage.setItem('mag_pending_plan',JSON.stringify({id,at:Date.now()}));
+      history.replaceState(null,'',location.pathname+location.hash);
+    }
+  }catch(e){}
+})();
 boot();
 </script>
 </body>
