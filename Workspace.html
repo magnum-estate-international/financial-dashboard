@@ -348,6 +348,7 @@ a{color:#9a6f0a}
   </div>
   <div class="spacer"></div>
   <button class="btn btn-ghost" onclick="window.print()"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / PDF</button>
+  <button class="btn btn-ghost" onclick="openMonthlyReport()"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg> Monthly Report</button>
   <button class="btn btn-ghost" onclick="exportCSV()"><svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Summary CSV</button>
 </div>
 
@@ -5856,6 +5857,179 @@ function exportCSV(){
   const blob=new Blob([rows.map(r=>r.map(esc).join(',')).join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='Group_Consolidated_'+MONTH+'2026.csv';a.click();
+}
+
+// ─── MONTHLY REPORT ──────────────────────────────────────────────────────────
+// One-month report for the entity/group currently selected in "View": income and expense totals
+// with category breakdowns, plus Loan Affiliate (AR/AP) opening, movement and closing balance.
+// Income/expense come from the same sources as the dashboard (entity_period_totals headline +
+// transactions for the category split); Loan Affiliate comes from IC_TX by transaction date.
+let MR_MONTH=null;
+function mrScopeIds(){ return EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF)); }
+function mrScopeLabel(){
+  if(EF!=='all') return eName(EF);
+  if(GF!=='all') return GRPNAME[GF]||GF;
+  return 'All groups, consolidated';
+}
+function mrPeriodRange(code){
+  const m=/^([A-Z]{3})(\d{2})?$/.exec(code||''); if(!m) return null;
+  const mi=MCODES_G.indexOf(m[1]); if(mi<0) return null;
+  const y=m[2]?2000+(+m[2]):2026;
+  const pad=n=>String(n).padStart(2,'0');
+  const last=new Date(y,mi+1,0).getDate();
+  return {from:y+'-'+pad(mi+1)+'-01',to:y+'-'+pad(mi+1)+'-'+pad(last)};
+}
+function mrData(mo){
+  const base=mrScopeIds();
+  const ents=base.filter(id=>effMonth(id,mo));
+  const set=new Set(ents);
+  const byEnt=ents.map(id=>{const ef=effMonth(id,mo); return {id,rev:ef.rev,opex:ef.opex};});
+  const rev=byEnt.reduce((s,r)=>s+r.rev,0), opex=byEnt.reduce((s,r)=>s+r.opex,0);
+  // Category split: transaction rows tagged with this month; May entities without rows fall back to
+  // the raw May snapshot, same as the dashboard's own breakdown.
+  const revBD={}, opexBD={};
+  if(mo==='MAY'){
+    ents.forEach(id=>{
+      if(entHasTX(id,'MAY')){ txCatsInto(id,'MAY',opexBD,revBD); return; }
+      Object.entries(ENT[id].opex).forEach(([k,v])=>{const c=canon(k);opexBD[c]=(opexBD[c]||0)+v;});
+      Object.entries(ENT[id].rev).forEach(([k,v])=>{const c=canon(k);revBD[c]=(revBD[c]||0)+v;});
+    });
+  } else {
+    TX.filter(t=>(t.mo||'MAY')===mo&&set.has(t.e)).forEach(t=>{
+      const c=canon(t.k);
+      if(t.type==='opex') opexBD[c]=(opexBD[c]||0)+t.amt;
+      else if(t.type==='rev') revBD[c]=(revBD[c]||0)+t.amt;
+    });
+  }
+  // Entities whose month figure has no itemised rows would leave the split short of the headline;
+  // the remainder is shown as its own line so the breakdown always adds up to the total.
+  const sumOf=o=>Object.values(o).reduce((x,y)=>x+y,0);
+  const gapRev=Math.round(rev-sumOf(revBD)), gapOpex=Math.round(opex-sumOf(opexBD));
+  if(gapRev>0.5) revBD['Not itemised (month total only)']=gapRev;
+  if(gapOpex>0.5) opexBD['Not itemised (month total only)']=gapOpex;
+  // Expense categories roll up into their parent group (Manage Categories) where one is set.
+  const groups={}, loose=[];
+  Object.entries(opexBD).forEach(([k,v])=>{
+    const g=OPEX_CAT_TO_GROUP[k];
+    if(g) (groups[g]=groups[g]||[]).push([k,v]); else loose.push([k,v]);
+  });
+  const opexRows=Object.entries(groups).map(([name,items])=>({name,total:sumOf(Object.fromEntries(items)),items:items.sort((a,b)=>b[1]-a[1])}))
+    .concat(loose.map(([k,v])=>({name:k,total:v,items:null}))).sort((a,b)=>b.total-a.total);
+  const revRows=Object.entries(revBD).sort((a,b)=>b[1]-a[1]);
+  // Loan Affiliate: owner PTs inside the selected scope; closing = everything dated up to month end.
+  const rng=mrPeriodRange(mo);
+  const pairs={};
+  const t={arOpen:0,apOpen:0,arMove:0,apMove:0,arClose:0,apClose:0};
+  IC_TX.forEach(r=>{
+    const eid=findEntityByNameG(r.owner);
+    if(!eid||!base.includes(eid)) return;
+    if(rng&&r.date&&r.date>rng.to) return;
+    const v=icRowAmt(r), isAR=r.type==='AR', inMonth=!!(rng&&r.date&&r.date>=rng.from);
+    const p=pairs[r.owner+'␟'+r.cp]=pairs[r.owner+'␟'+r.cp]||{owner:r.owner,cp:r.cp,arClose:0,apClose:0,arMove:0,apMove:0};
+    if(isAR){ p.arClose+=v; t.arClose+=v; if(inMonth){p.arMove+=v;t.arMove+=v;} }
+    else { p.apClose+=v; t.apClose+=v; if(inMonth){p.apMove+=v;t.apMove+=v;} }
+  });
+  t.arOpen=t.arClose-t.arMove; t.apOpen=t.apClose-t.apMove;
+  const affiliate=Object.values(pairs).filter(p=>Math.round(p.arClose)||Math.round(p.apClose)||Math.round(p.arMove)||Math.round(p.apMove))
+    .map(p=>({...p,net:p.arClose-p.apClose})).sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+  return {mo,label:MONTHS[mo]||mo,scope:mrScopeLabel(),rng,byEnt,rev,opex,revRows,opexRows,affiliate,aff:t,
+    entCount:ents.length,hasTx:TX.some(x=>(x.mo||'MAY')===mo)};
+}
+function mrMonths(){ return Q2_MONTHS.filter(m=>m!=='Q2'&&m!=='CUSTOM'); }
+function mrBodyHtml(d){
+  const pct=(v,tot)=>tot>0?(v/tot*100).toFixed(1)+'%':'';
+  const card=(lab,val,col,bg)=>`<div style="flex:1;min-width:150px;background:${bg};border-radius:12px;padding:12px 16px"><div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:${col};text-transform:uppercase">${lab}</div><div style="font-size:19px;font-weight:800;color:${col};margin-top:3px;font-variant-numeric:tabular-nums">${val}</div></div>`;
+  const net=d.rev-d.opex;
+  let h='';
+  if(!d.entCount) return `<p style="color:var(--muted);font-size:13px;margin:18px 0">No figures for ${escH(d.label)} in this scope. Try another month or widen the View filter.</p>`;
+  h+=`<div style="display:flex;gap:12px;margin:4px 0 20px;flex-wrap:wrap">`
+    +card('Total income',fmt(d.rev),'#2b7a4b','#e3f2e8')
+    +card('Total expense',fmt(d.opex),'#b3261e','#fdeef1')
+    +card('Operating net',(net>=0?'':'−')+fmt(Math.abs(net)),net>=0?'#2b7a4b':'#b3261e',net>=0?'#e3f2e8':'#fdeef1')
+    +`</div>`;
+  const sec=(t,sub)=>`<h4 style="margin:22px 0 4px;font-size:14px;color:var(--blue-900)">${t}</h4>${sub?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${sub}</div>`:''}`;
+  // income
+  h+=sec('Total income: '+fmt(d.rev),'Breakdown by source');
+  h+=`<div class="table-scroll" style="max-height:none"><table><thead><tr><th>Source</th><th class="num">Amount</th><th class="num">%</th></tr></thead><tbody>`
+    +(d.revRows.length?d.revRows.map(([k,v])=>`<tr><td style="font-size:12.5px">${escH(k)}</td><td class="num pos">${fmt(v)}</td><td class="num">${pct(v,d.rev)}</td></tr>`).join(''):`<tr><td colspan="3" style="color:var(--muted);font-size:12.5px">No income recorded.</td></tr>`)
+    +`<tr style="background:var(--blue-50)"><td><strong>Total income</strong></td><td class="num"><strong>${fmt(d.rev)}</strong></td><td class="num"></td></tr></tbody></table></div>`;
+  // expense
+  h+=sec('Total expense: '+fmt(d.opex),'Breakdown by category; grouped categories show their parent group first');
+  h+=`<div class="table-scroll" style="max-height:none"><table><thead><tr><th>Category</th><th class="num">Amount</th><th class="num">%</th></tr></thead><tbody>`;
+  d.opexRows.forEach(g=>{
+    if(g.items){
+      h+=`<tr style="background:#f7f8fc;font-weight:700"><td style="font-size:12.5px">${escH(g.name)} <span style="font-weight:400;color:var(--muted);font-size:11px">(${g.items.length} ${g.items.length===1?'category':'categories'})</span></td><td class="num neg">${fmt(g.total)}</td><td class="num">${pct(g.total,d.opex)}</td></tr>`;
+      g.items.forEach(([k,v])=>{h+=`<tr><td style="font-size:12px;color:var(--muted);padding-left:28px">${escH(k)}</td><td class="num neg" style="font-weight:600">${fmt(v)}</td><td class="num" style="font-weight:600">${pct(v,d.opex)}</td></tr>`;});
+    } else h+=`<tr><td style="font-size:12.5px">${escH(g.name)}</td><td class="num neg">${fmt(g.total)}</td><td class="num">${pct(g.total,d.opex)}</td></tr>`;
+  });
+  h+=`<tr style="background:var(--blue-50)"><td><strong>Total expense</strong></td><td class="num"><strong>${fmt(d.opex)}</strong></td><td class="num"></td></tr></tbody></table></div>`;
+  // by entity (only worth showing when more than one PT is in scope)
+  if(d.byEnt.length>1){
+    h+=sec('By entity');
+    h+=`<div class="table-scroll" style="max-height:none"><table><thead><tr><th>Entity</th><th class="num">Income</th><th class="num">Expense</th><th class="num">Net</th></tr></thead><tbody>`
+      +d.byEnt.slice().sort((a,b)=>(b.rev+b.opex)-(a.rev+a.opex)).map(r=>`<tr><td style="font-size:12.5px">${escH(eName(r.id))}</td><td class="num pos">${fmt(r.rev)}</td><td class="num neg">${fmt(r.opex)}</td><td class="num ${r.rev-r.opex>=0?'pos':'neg'}">${r.rev-r.opex<0?'−':''}${fmt(Math.abs(r.rev-r.opex))}</td></tr>`).join('')
+      +`</tbody></table></div>`;
+  }
+  // loan affiliate
+  const a=d.aff, closeNet=a.arClose-a.apClose;
+  h+=sec('Loan Affiliate: receivable and payable',`Balance as of ${d.rng?d.rng.to:'month end'}. AR = affiliates owe this PT; AP = this PT owes affiliates. Repayments reduce the balance they belong to.`);
+  h+=`<div class="table-scroll" style="max-height:none"><table><thead><tr><th></th><th class="num">Receivable (AR)</th><th class="num">Payable (AP)</th></tr></thead><tbody>`
+    +`<tr><td style="font-size:12.5px">Opening balance</td><td class="num">${fmt(a.arOpen)}</td><td class="num">${fmt(a.apOpen)}</td></tr>`
+    +`<tr><td style="font-size:12.5px">Net movement in ${escH(d.label.replace(/\s*\(.*$/,''))}</td><td class="num">${a.arMove<0?'−':'+'}${fmt(Math.abs(a.arMove))}</td><td class="num">${a.apMove<0?'−':'+'}${fmt(Math.abs(a.apMove))}</td></tr>`
+    +`<tr style="background:var(--blue-50)"><td><strong>Closing balance</strong></td><td class="num pos"><strong>${fmt(a.arClose)}</strong></td><td class="num neg"><strong>${fmt(a.apClose)}</strong></td></tr>`
+    +`<tr><td style="font-size:12.5px"><strong>Net position (AR − AP)</strong></td><td class="num ${closeNet>=0?'pos':'neg'}" colspan="2" style="text-align:right">${closeNet<0?'−':'+'}${fmt(Math.abs(closeNet))}</td></tr></tbody></table></div>`;
+  if(d.affiliate.length){
+    h+=`<div style="font-size:12px;color:var(--muted);margin:14px 0 6px">By PT and counterparty (closing balance)</div>`
+      +`<div class="table-scroll" style="max-height:none"><table><thead><tr><th>PT</th><th>Counterparty</th><th class="num">Receivable (AR)</th><th class="num">Payable (AP)</th><th class="num">Net</th></tr></thead><tbody>`
+      +d.affiliate.map(p=>`<tr><td style="font-size:12.5px">${escH(p.owner)}</td><td style="font-size:12.5px">${escH(p.cp||'')}</td><td class="num pos">${fmt(p.arClose)}</td><td class="num neg">${fmt(p.apClose)}</td><td class="num ${p.net>=0?'pos':'neg'}">${p.net<0?'−':''}${fmt(Math.abs(p.net))}</td></tr>`).join('')
+      +`</tbody></table></div>`;
+  }
+  if(EF==='all'&&GF==='all') h+=`<p style="font-size:11.5px;color:var(--muted);margin-top:10px">Consolidated AR and AP are shown gross, as each PT records them; balances between PTs in the group are not eliminated.</p>`;
+  if(!d.hasTx) h+=`<p style="font-size:11.5px;color:var(--muted);margin-top:6px">Itemised transactions are not loaded for this month, so the category split is shown as a single line.</p>`;
+  return h;
+}
+function openMonthlyReport(mo){
+  const months=mrMonths(); if(!months.length) return;
+  if(!mo||!months.includes(mo)) mo=(MR_MONTH&&months.includes(MR_MONTH))?MR_MONTH:(MONTH&&months.includes(MONTH)?MONTH:months[months.length-1]);
+  MR_MONTH=mo;
+  const sel=`<select id="mr-month" onchange="mrChangeMonth(this.value)" style="padding:8px 12px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px;background:#fff">`
+    +months.map(m=>`<option value="${m}"${m===mo?' selected':''}>${escH(MONTHS[m]||m)}</option>`).join('')+`</select>`;
+  const head=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><label for="mr-month" style="font-size:12px;color:var(--muted)">Month</label>${sel}`
+    +`<span id="mr-scope" style="font-size:12.5px;color:var(--ink)"><b>${escH(mrScopeLabel())}</b> <span style="color:var(--muted)">(change under View)</span></span><span style="flex:1"></span>`
+    +`<button class="btn btn-ghost" onclick="downloadMonthlyReport()">Download Excel</button></div>`;
+  showModal('Monthly Report',head+`<div id="mr-body">${mrBodyHtml(mrData(mo))}</div>`,true);
+}
+function mrChangeMonth(mo){
+  MR_MONTH=mo;
+  const el=document.getElementById('mr-body'); if(el) el.innerHTML=mrBodyHtml(mrData(mo));
+}
+function downloadMonthlyReport(){
+  if(typeof XLSX==='undefined'){ alert('The Excel library is still loading. Try again in a moment.'); return; }
+  const d=mrData(MR_MONTH), R=v=>Math.round(v);
+  const wb=XLSX.utils.book_new();
+  const net=d.rev-d.opex, a=d.aff;
+  const sum=[['Monthly Report'],['Month',d.label],['Scope',d.scope],['Entities with figures',d.entCount],[],
+    ['Income and expense','Amount (IDR)'],['Total income',R(d.rev)],['Total expense',R(d.opex)],['Operating net',R(net)],[],
+    ['Loan Affiliate','Receivable (AR)','Payable (AP)'],
+    ['Opening balance',R(a.arOpen),R(a.apOpen)],['Net movement in month',R(a.arMove),R(a.apMove)],['Closing balance'+(d.rng?' as of '+d.rng.to:''),R(a.arClose),R(a.apClose)],
+    ['Net position (AR - AP)',R(a.arClose-a.apClose)]];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Summary');
+  const inc=[['Source','Amount (IDR)','% of income']].concat(d.revRows.map(([k,v])=>[k,R(v),d.rev>0?+(v/d.rev*100).toFixed(2):0]),[['Total income',R(d.rev),'']]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(inc),'Income');
+  const exp=[['Group','Category','Amount (IDR)','% of expense']];
+  d.opexRows.forEach(g=>{
+    if(g.items) g.items.forEach(([k,v])=>exp.push([g.name,k,R(v),d.opex>0?+(v/d.opex*100).toFixed(2):0]));
+    else exp.push(['',g.name,R(g.total),d.opex>0?+(g.total/d.opex*100).toFixed(2):0]);
+  });
+  exp.push(['','Total expense',R(d.opex),'']);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(exp),'Expense');
+  const aff=[['PT','Counterparty','Receivable (AR)','Payable (AP)','Net (AR - AP)','AR movement in month','AP movement in month']]
+    .concat(d.affiliate.map(p=>[p.owner,p.cp||'',R(p.arClose),R(p.apClose),R(p.net),R(p.arMove),R(p.apMove)]),[['Total','',R(a.arClose),R(a.apClose),R(a.arClose-a.apClose),R(a.arMove),R(a.apMove)]]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aff),'Loan Affiliate');
+  const ent=[['Entity','Income','Expense','Net']].concat(d.byEnt.map(r=>[eName(r.id),R(r.rev),R(r.opex),R(r.rev-r.opex)]),[['Total',R(d.rev),R(d.opex),R(net)]]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ent),'By Entity');
+  const slug=s=>String(s).replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'');
+  XLSX.writeFile(wb,'Monthly_Report_'+d.mo+'_'+slug(d.scope)+'.xlsx');
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
