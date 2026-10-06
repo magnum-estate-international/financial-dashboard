@@ -4089,7 +4089,7 @@ function onMppModeChange(){
 function openMarkPlanPaid(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
   const isIc=p.planType==='loan_affiliate';
-  const today=new Date().toISOString().slice(0,10);
+  const today=localTodayISO();
   const ceiling=p.approvedAmt!=null?p.approvedAmt:p.amt;
   const whoWhat=isIc?`${p.icType} — ${escH(p.counterparty||'—')}`:escH(p.vendor||'—');
   let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${whoWhat} — ${escH(p.desc||'')}<br>Approved amount: <b style="color:var(--ink)">${fmt(ceiling)}</b> · category <b style="color:var(--ink)">${escH(p.category||'—')}</b></div>`;
@@ -4200,7 +4200,7 @@ async function updateDppTypeFields(){
 async function openAddToPaymentPlan(outstandingId){
   const o=OUTSTANDING.find(x=>x.id===outstandingId); if(!o) return;
   await Promise.all([ensureVendorsG(),ensureOpexCatsG()]);
-  const today=new Date().toISOString().slice(0,10);
+  const today=localTodayISO();
   const inp='padding:8px 10px;box-sizing:border-box;width:100%;margin-bottom:10px';
   let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">From Outstanding Liability — ${escH(ENT[o.e]?ENT[o.e].name:o.e)}, remaining <b style="color:var(--ink)">${fmt(o.remaining)}</b> of ${fmt(o.amt)}.</div>`;
   h+=opeField('Plan date',`<input id="atp-date" type="date" value="${today}" style="${inp}">`)
@@ -6326,12 +6326,18 @@ function normalizeFreq(v){
   if(/^otp|one.?time/.test(s)) return 'OTP';
   return 'OTP';
 }
+// Today as YYYY-MM-DD in the browser's own time zone. new Date().toISOString() is UTC, so between
+// midnight and 08:00 WITA it returns yesterday.
+function localTodayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function parseFlexDate(v){
-  // A genuine Date-typed Excel cell parses (via the xlsx reader) to a Date at LOCAL midnight, same
-  // as the string-fallback path below — toISOString() converts to UTC first, which in WITA (UTC+8)
-  // silently shifted every such date back by one full day (e.g. an actual Date cell for 1 April
-  // became "2026-03-31"). Read it back with the local getters instead, exactly like the fallback.
-  if(v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+  // The xlsx reader (cellDates:true) turns an Excel date cell into a Date a few SECONDS BEFORE local
+  // midnight — 23:59:24 on the previous day in WITA, from a historical time-zone offset — so reading
+  // its day directly (UTC or local) lands on the day before. Reading from the middle of the day
+  // (+12h) gives the right date whether the Date sits just before, exactly at, or after local midnight.
+  if(v instanceof Date && !isNaN(v)){
+    const d=new Date(v.getTime()+12*3600*1000);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
   if(typeof v==='number') { const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?null:d.toISOString().slice(0,10); }
   if(typeof v==='string'){
     const s=v.trim();
@@ -7740,7 +7746,7 @@ function wireUsageExport(kind,selId,btnId){
     ws['!cols']=[{wch:28},{wch:30},{wch:26},{wch:12},{wch:16},{wch:12},{wch:12}];
     XLSX.utils.book_append_sheet(wb,ws,kind==='vendor'?'Vendors':'Categories');
     const suffix=entSel==='all'?'all_entities':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
-    XLSX.writeFile(wb,kind+'_usage_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    XLSX.writeFile(wb,kind+'_usage_'+suffix+'_'+localTodayISO()+'.xlsx');
   };
 }
 async function renderVendorsBody(){
@@ -8232,7 +8238,7 @@ function fixCostRowHtml(f){
 async function markFixCostTerminated(id){
   if(!confirm('Mark this fixed cost as terminated? It stops counting toward Monthly Fix Cost but stays visible in history under the Terminated tab.')) return;
   try{
-    const at=new Date().toISOString().slice(0,10);
+    const at=localTodayISO();
     const r=await authedFetch(SB_URL+'/rest/v1/entity_fixed_costs?id=eq.'+id,{method:'PATCH',
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
       body:JSON.stringify({status:'terminated',terminated_at:at})});
@@ -10900,7 +10906,7 @@ async function renderEntryBody(){
         const buf=await wb.xlsx.writeBuffer();
         const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
         const url=URL.createObjectURL(blob);
-        const rangeSuffix=(fromDate||toDate)?(fromDate||'start')+'_to_'+(toDate||'now'):new Date().toISOString().slice(0,10);
+        const rangeSuffix=(fromDate||toDate)?(fromDate||'start')+'_to_'+(toDate||'now'):localTodayISO();
         const a=document.createElement('a'); a.href=url; a.download='bank_ledger_'+acct.bank.replace(/[^a-z0-9]+/gi,'_')+'_'+(acct.acctNo||acct.id)+'_export_'+rangeSuffix+'.xlsx';
         document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
@@ -11030,7 +11036,7 @@ async function renderEntryBody(){
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Outstanding');
       const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
-      XLSX.writeFile(wb,'outstanding_payables_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+      XLSX.writeFile(wb,'outstanding_payables_export_'+suffix+'_'+localTodayISO()+'.xlsx');
     };
     // Bulk-migrates every Outstanding Liability still on the legacy "pasted Drive link" field (no
     // real upload yet) into the same private, always-viewable storage the upload feature uses —
@@ -11166,7 +11172,7 @@ async function renderEntryBody(){
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'FixedCost');
       const suffix=entSel==='all'?'all':eName(entSel).replace(/[^a-z0-9]+/gi,'_');
-      XLSX.writeFile(wb,'fixed_cost_export_'+suffix+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+      XLSX.writeFile(wb,'fixed_cost_export_'+suffix+'_'+localTodayISO()+'.xlsx');
     };
     const opexCatsFc2=cats.filter(c=>c.kind==='opex');
     const tplBtnFc=document.getElementById('fcd-template');
