@@ -4801,16 +4801,18 @@ function opexEntityBreakdown(id){
   }
   return catMap;
 }
-// Same shape as opexEntityBreakdown() but always reads May's raw ENT category labels, ignoring
-// whatever month is currently selected on the dashboard — used by the Fix Cost vs Actual comparison,
-// which always compares against May (the last full, stable month).
-function opexEntityBreakdownMay(id){
-  const catMap={};
-  if(effMonth(id,'MAY')!==null){
-    if(entHasTX(id,'MAY')){ TX.filter(t=>(t.mo||'MAY')==='MAY' && t.e===id && t.type==='opex').forEach(t=>{const c=canon(t.k); catMap[c]=(catMap[c]||0)+t.amt;}); }
+// Same shape as opexEntityBreakdown() but reads the month picked in the Fix Cost vs Actual
+// comparison (FCVA_MONTH, May by default), ignoring whatever month is selected on the dashboard.
+// May entities with no transaction rows fall back to the raw May snapshot; other months use rows only.
+let FCVA_MONTH='MAY';
+function fcvaLabel(){ return monthShort(FCVA_MONTH); }
+function opexEntityBreakdownFcva(id){
+  const mo=FCVA_MONTH, catMap={};
+  if(effMonth(id,mo)!==null){
+    if(mo!=='MAY'||entHasTX(id,'MAY')){ TX.filter(t=>(t.mo||'MAY')===mo && t.e===id && t.type==='opex').forEach(t=>{const c=canon(t.k); catMap[c]=(catMap[c]||0)+t.amt;}); }
     else Object.entries(ENT[id].opex).forEach(([k,v])=>{const c=canon(k); catMap[c]=(catMap[c]||0)+v;});
   }
-  const ef=effMonth(id,'MAY');
+  const ef=effMonth(id,mo);
   if(ef){
     const cur=Object.values(catMap).reduce((s,v)=>s+v,0);
     const gap=Math.round((ef.opex||0)-cur);
@@ -8032,9 +8034,10 @@ function openFixCost(view){
   const tabsRow=`<div style="display:flex;gap:8px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}${tabBtn('vendor','By Vendor')}${tabBtn('vsactual','Vs Actual')}</div>`;
   if(view==='vsactual'){
     let h=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">${tabsRow}</div>`;
-    h+=`<div class="pn-sub" style="margin-bottom:12px">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is always <b>May 2026</b>, the last full month, regardless of the dashboard's month filter. Red = over budget, green = under.</div>`;
+    h+=fcvaPickerHtml();
     h+=fixCostVsActualHtml();
     SORT_RERENDER['fcva']=()=>openFixCost('vsactual');
+    FCVA_RERENDER=()=>openFixCost('vsactual');
     showModal('Monthly Fix Cost',h);
     return;
   }
@@ -8084,16 +8087,27 @@ function setFcStatusTab(t){ FC_TAB=t; openFixCost(FC_VIEW); }
 function onFcSearchInput(v){ FC_SEARCH=v; FC_SEARCH_FOCUS=true; openFixCost(FC_VIEW); }
 // ── Fix Cost vs Actual — budget-vs-actual comparison, reusing fixCostInScope() (the flat monthly
 // baseline) against eff(id).opex / opexEntityBreakdown(id) (this month's real transactions) ──
-// Actual is always pinned to May — the last full, stable month — regardless of whichever month/
+// Actual defaults to May (the last full, stable month) but can be switched to any loaded period; independent of whichever month/
 // scope is currently selected on the dashboard, so this comparison doesn't shift under the reader
 // depending on a filter elsewhere, and doesn't compare fix cost against a partial April/June scope.
+let FCVA_RERENDER=null;
+// Month picker shared by both Fix Cost vs Actual entry points: any loaded period can be compared
+// against the flat monthly fix-cost baseline. Independent of the dashboard's own month filter.
+function fcvaPickerHtml(){
+  const opts=mrMonths().map(m=>`<option value="${m}"${m===FCVA_MONTH?' selected':''}>${escH(monthShort(m))}</option>`).join('');
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;color:var(--muted)">`
+    +`<label for="fcva-month" style="font-weight:600;color:var(--ink)">Actual month</label>`
+    +`<select id="fcva-month" onchange="setFcvaMonth(this.value)" style="padding:7px 12px;border:1px solid #e4e7ef;border-radius:10px;font-size:13px;background:#fff">${opts}</select>`
+    +`<span>Fix cost is a flat monthly baseline, compared with actual opex for the chosen month. Red = over budget, green = under.</span></div>`;
+}
+function setFcvaMonth(m){ FCVA_MONTH=m; if(FCVA_RERENDER) FCVA_RERENDER(); }
 const fcvaVarColor=v=>v>0?'var(--red)':(v<0?'#1f8a61':'var(--muted)');
 const fcvaPctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
 function fixCostVsActualHtml(){
   SORT_RERENDER['fcva']=()=>openFixCostVsActual('entity');
   const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
   const fcByEnt={}; FIXCOST.filter(f=>ids.includes(f.e)).forEach(f=>{fcByEnt[f.e]=(fcByEnt[f.e]||0)+f.amt;});
-  let rows=ids.map(id=>{const fc=fcByEnt[id]||0, act=(effMonth(id,'MAY')||{}).opex||0; return {id,fc,act,varr:act-fc};})
+  let rows=ids.map(id=>{const fc=fcByEnt[id]||0, act=(effMonth(id,FCVA_MONTH)||{}).opex||0; return {id,fc,act,varr:act-fc};})
     .filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
   const fcvaKeyFn={fc:r=>r.fc,act:r=>r.act,varr:r=>r.varr}[sortActiveKey('fcva')];
   if(fcvaKeyFn) rows=sortApply('fcva',rows,fcvaKeyFn);
@@ -8115,7 +8129,7 @@ function fixCostVsActualHtml(){
   return h;
 }
 // Group-wide category view: fix cost summed by category across every entity in scope, vs actual
-// opex per category summed the same way (opexEntityBreakdownMay per entity, merged). Clicking a
+// opex per category summed the same way (opexEntityBreakdownFcva per entity, merged). Clicking a
 // category drills into its per-entity breakdown (openFixCostVsActualCategoryAll), which in turn
 // drills into the existing single-entity/category detail view.
 function fixCostVsActualCategoryHtml(){
@@ -8123,7 +8137,7 @@ function fixCostVsActualCategoryHtml(){
   const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
   const fcByCat={}; FIXCOST.filter(f=>ids.includes(f.e)).forEach(f=>{const c=f.cat||'—'; fcByCat[c]=(fcByCat[c]||0)+f.amt;});
   const actByCat={};
-  ids.forEach(id=>{ Object.entries(opexEntityBreakdownMay(id)).forEach(([c,v])=>{actByCat[c]=(actByCat[c]||0)+v;}); });
+  ids.forEach(id=>{ Object.entries(opexEntityBreakdownFcva(id)).forEach(([c,v])=>{actByCat[c]=(actByCat[c]||0)+v;}); });
   let cats=Array.from(new Set(Object.keys(fcByCat).concat(Object.keys(actByCat))))
     .map(c=>({cat:c,fc:fcByCat[c]||0,act:actByCat[c]||0,varr:(actByCat[c]||0)-(fcByCat[c]||0)}))
     .filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
@@ -8149,11 +8163,12 @@ function fixCostVsActualCategoryHtml(){
 let FCVA_VIEW='entity';
 function openFixCostVsActual(view){
   view=FCVA_VIEW=view||FCVA_VIEW||'entity';
+  FCVA_RERENDER=()=>openFixCostVsActual(FCVA_VIEW);
   const tabBtn=(v,label)=>`<button class="btn ${view===v?'':'btn-ghost'}" style="font-size:12px;padding:6px 14px${view===v?';background:#d9a92c;color:#2a1c02;border:0':''}" onclick="openFixCostVsActual('${v}')">${label}</button>`;
   let h=`<div style="display:flex;gap:8px;margin-bottom:10px">${tabBtn('entity','By Entity')}${tabBtn('category','By Category')}</div>`;
-  h+=`<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Fix cost is a flat monthly baseline (not tied to a specific month) — actual is always <b>May 2026</b>, the last full month, regardless of the dashboard's month filter. Red = over budget, green = under.</div>`;
+  h+=fcvaPickerHtml();
   h+=view==='category'?fixCostVsActualCategoryHtml():fixCostVsActualHtml();
-  showModal('Fix Cost vs Actual (May)',h,true);
+  showModal('Fix Cost vs Actual ('+monthShort(FCVA_MONTH).split(' ')[0]+')',h,true);
 }
 function openFixCostVsActualCategoryAll(catEnc){
   const cat=decodeURIComponent(catEnc);
@@ -8161,7 +8176,7 @@ function openFixCostVsActualCategoryAll(catEnc){
   const ids=EF!=='all'?[EF]:EIDS.filter(id=>inG(id,GF));
   let rows=ids.map(id=>{
     const fc=FIXCOST.filter(f=>f.e===id&&(f.cat||'—')===cat).reduce((s,f)=>s+f.amt,0);
-    const act=opexEntityBreakdownMay(id)[cat]||0;
+    const act=opexEntityBreakdownFcva(id)[cat]||0;
     return {id,fc,act,varr:act-fc};
   }).filter(r=>r.fc>0.5||r.act>0.5).sort((a,b)=>b.act-a.act);
   const fcvaKeyFn={fc:r=>r.fc,act:r=>r.act,varr:r=>r.varr}[sortActiveKey('fcvacatall')];
@@ -8188,7 +8203,7 @@ function openFixCostVsActualCategoryAll(catEnc){
 function openFixCostVsActualEntity(id){
   SORT_RERENDER['fcvaent']=()=>openFixCostVsActualEntity(id);
   const fcByCat={}; FIXCOST.filter(f=>f.e===id).forEach(f=>{const c=f.cat||'—'; fcByCat[c]=(fcByCat[c]||0)+f.amt;});
-  const actByCat=opexEntityBreakdownMay(id);
+  const actByCat=opexEntityBreakdownFcva(id);
   const varColor=v=>v>0?'var(--red)':(v<0?'#1f8a61':'var(--muted)');
   const pctStr=(varr,base)=>base>0?((varr/base*100)>=0?'+':'')+(varr/base*100).toFixed(1)+'%':'—';
   let cats=Array.from(new Set(Object.keys(fcByCat).concat(Object.keys(actByCat))))
@@ -8220,10 +8235,10 @@ function openFixCostVsActualCategory(id,catEnc){
   const cat=decodeURIComponent(catEnc);
   const fcItems=FIXCOST.filter(f=>f.e===id&&(f.cat||'—')===cat).sort((a,b)=>b.amt-a.amt);
   const fcTotal=fcItems.reduce((s,f)=>s+f.amt,0);
-  // actual is always May — see fixCostVsActualHtml()/opexEntityBreakdownMay() for why
-  const tx=TX.filter(t=>(t.mo||'MAY')==='MAY'&&t.e===id&&t.type==='opex'&&canon(t.k)===cat);
+  // actual month is FCVA_MONTH (picked on the comparison screen)
+  const tx=TX.filter(t=>(t.mo||'MAY')===FCVA_MONTH&&t.e===id&&t.type==='opex'&&canon(t.k)===cat);
   const txSum=tx.reduce((s,t)=>s+t.amt,0);
-  const actTotal=opexEntityBreakdownMay(id)[cat]||0;
+  const actTotal=opexEntityBreakdownFcva(id)[cat]||0;
   const residual=actTotal-txSum;
   const cls='neg';
   let h=`<button class="btn btn-ghost" style="margin-bottom:12px" onclick="openFixCostVsActualEntity('${id}')">‹ Back to ${escH(ENT[id]?ENT[id].name:id)}</button>`;
@@ -8238,7 +8253,7 @@ function openFixCostVsActualCategory(id,catEnc){
   } else {
     h+=`<p style="color:var(--muted);font-size:12.5px">No fixed cost item for this category.</p>`;
   }
-  h+=`<h5 style="font-size:12.5px;font-weight:700;color:var(--blue-900);margin:18px 0 8px">Actual transactions — May 2026</h5>`;
+  h+=`<h5 style="font-size:12.5px;font-weight:700;color:var(--blue-900);margin:18px 0 8px">Actual transactions — ${escH(fcvaLabel())}</h5>`;
   if(tx.length||Math.abs(residual)>0.5){
     let s=0;
     const backCall=`openFixCostVsActualCategory('${id}','${catEnc}')`;
@@ -8260,13 +8275,13 @@ function openFixCostVsActualCategory(id,catEnc){
       // Carries the same data-* attributes as a real row (txRowHtml's contract) so it participates
       // in filtering/sorting instead of always sitting outside them.
       const neg=residual<0;
-      h+=`<tr data-tx-search="" data-date="May 2026" data-ent="${escH(id)}" data-cat="" data-vendor="" data-desc="" data-amt="${residual}"><td style="white-space:nowrap;color:var(--muted);font-size:12px">May 2026</td><td style="font-size:12px;color:var(--muted)">—</td><td style="font-size:12px;color:var(--muted)">—</td>`
-        +`<td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized transactions exceed the category\'s May total — investigate for a possible double-count':'Consolidated from the bank-report category total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td>`
+      h+=`<tr data-tx-search="" data-date="${escH(fcvaLabel())}" data-ent="${escH(id)}" data-cat="" data-vendor="" data-desc="" data-amt="${residual}"><td style="white-space:nowrap;color:var(--muted);font-size:12px">${escH(fcvaLabel())}</td><td style="font-size:12px;color:var(--muted)">—</td><td style="font-size:12px;color:var(--muted)">—</td>`
+        +`<td style="font-size:12.5px;color:${neg?'var(--red)':'var(--muted)'}">${neg?'⚠ Itemized transactions exceed the category\'s '+escH(fcvaLabel())+' total — investigate for a possible double-count':'Consolidated from the bank-report category total (per-transaction detail not yet loaded)'} <span class="tag" style="background:${neg?'#fde8e8':'var(--blue-50)'};color:${neg?'var(--red)':'var(--blue-700)'};font-size:9px;padding:2px 6px">${neg?'mismatch':'summary'}</span></td>`
         +`<td class="num ${cls}">${fmt(residual)}</td><td></td></tr>`;
     }
     h+=`<tr style="background:var(--blue-50);font-weight:700"><td colspan="4"><strong>TOTAL</strong></td><td class="num ${cls}"><strong id="txd-total-fcva">${fmt(s)}</strong></td><td></td><td></td></tr></tbody></table></div>`;
   } else {
-    h+=`<p style="color:var(--muted);font-size:12.5px">No actual transactions for this category in May.</p>`;
+    h+=`<p style="color:var(--muted);font-size:12.5px">No actual transactions for this category in ${escH(fcvaLabel())}.</p>`;
   }
   showModal(`${ENT[id]?ENT[id].name:id} — ${cat}`,h,true);
   if(tx.length||Math.abs(residual)>0.5){ TXD_SORT_DIR=null; TXD_APPLY_CTX={tableId:'txd-table-fcva',totalId:'txd-total-fcva'}; updateTxdFilterIndicators(); }
