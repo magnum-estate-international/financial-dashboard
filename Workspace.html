@@ -3889,12 +3889,13 @@ function paymentPlanMobileCardHtml(p){
   const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
   const canQuickDecide=p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision;
   const who=p.planType==='loan_affiliate'?((p.icType?p.icType+' — ':'')+(p.counterparty||'—')):(p.vendor||'—');
-  // Deliberately just vendor, description, amount and the action — entity/category/comments/doc/
+  // Vendor, description, amount, attached document(s) and the action — entity/category/comments/
   // due date are all one tap away via Discussion, not shown here by default (see how this was asked for).
   return `<div style="border:1px solid #eef2f7;border-radius:12px;padding:12px 14px;margin-bottom:10px;background:#fff" onclick="openPlanThread(${p.id})">
     <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${escH(who)}</div>
     <div style="font-size:13.5px;color:var(--ink);line-height:1.4;margin-bottom:8px">${escH(p.desc||'—')}</div>
     <div style="font-size:19px;font-weight:800;color:var(--ink);margin-bottom:10px">${fmt(p.amt)}</div>
+    ${(Array.isArray(p.attachments)?p.attachments:[]).length?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" onclick="event.stopPropagation()">${p.attachments.map(a=>`<button type="button" onclick="openDoc('payment-plan-docs','${encodeURIComponent(a.path)}')" title="${escH(a.name)}" style="display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid #f0cb87;background:#fff4e0;color:#9a6f0a;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer"><span style="display:inline-flex;flex:0 0 auto">${ICON.file(13)}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(a.name||'Document')}</span></button>`).join('')}</div>`:''}
     ${canQuickDecide
       ?`<div style="display:flex;gap:8px" onclick="event.stopPropagation()">
           <button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" style="flex:1;border:0;border-radius:10px;background:#2f6fb0;color:#fff;font-size:13.5px;font-weight:700;padding:10px;cursor:pointer">✓ Approve</button>
