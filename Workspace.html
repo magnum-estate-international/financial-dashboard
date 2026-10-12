@@ -3787,6 +3787,7 @@ function openSharedPlan(id){
   if(isMobileViewport()&&isApproverAnywhere(MY_EMAIL)) h+=paymentPlanMobileCardHtml(p);
   else h+='<div class="table-scroll"><table><thead>'+DPP_TABLE_HEAD+'<tbody>'+paymentPlanRowHtml(p)+'</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
+  hydrateDppAttachments();
 }
 function openPendingSharedPlan(){
   let id=null;
@@ -3856,6 +3857,7 @@ function openPaymentPlans(){
   if(isMobileViewport()&&isApproverAnywhere(MY_EMAIL)){
     h+=rows.length?rows.map(p=>paymentPlanMobileCardHtml(p)).join(''):`<div style="text-align:center;color:var(--muted);padding:20px">${scoped.length?'No payment plans match these filters — note Paid ones are hidden by default, pick "Paid" from the Status filter to see them.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</div>`;
     showModal(DPP_FILTER.status==='paid'?'Payment History':'Daily Payment Plan',h,true);
+    hydrateDppAttachments();
     return;
   }
   h+='<div class="table-scroll" style="max-height:460px"><table><thead>'+DPP_TABLE_HEAD+'<tbody>';
@@ -3885,6 +3887,30 @@ function isMobileViewport(){ return window.innerWidth<=640; }
 // (due date, doc, approvals list, full status) is one tap away via Discussion, which already
 // renders all of it. Mirrors the desktop Status column's own condition for when to show quick
 // action buttons instead of a status badge (see paymentPlanRowHtml).
+// Attachments on a phone card: images are shown inline (loaded lazily through a signed URL, since the
+// bucket is private), everything else (PDF, HEIC) is a tappable pill. Tapping either opens the file.
+const DPP_IMG_RE=/\.(jpe?g|png|webp|gif)$/i;
+function dppMobileAttachmentsHtml(p){
+  const atts=Array.isArray(p.attachments)?p.attachments:[];
+  if(!atts.length) return '';
+  const pill=a=>`<button type="button" onclick="openDoc('payment-plan-docs','${encodeURIComponent(a.path)}')" title="${escH(a.name)}" style="display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid #f0cb87;background:#fff4e0;color:#9a6f0a;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer"><span style="display:inline-flex;flex:0 0 auto">${ICON.file(13)}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(a.name||'Document')}</span></button>`;
+  const img=a=>`<button type="button" onclick="openDoc('payment-plan-docs','${encodeURIComponent(a.path)}')" title="${escH(a.name)}" style="display:block;width:100%;border:1px solid #eef2f7;background:#f7f8fc;border-radius:10px;padding:0;cursor:pointer;overflow:hidden;min-height:90px"><img data-sign-path="${encodeURIComponent(a.path)}" alt="${escH(a.name)}" style="display:block;width:100%;max-height:340px;object-fit:contain"></button>`;
+  return `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px" onclick="event.stopPropagation()">`
+    +atts.map(a=>DPP_IMG_RE.test(a.name||a.path||'')?img(a):`<div>${pill(a)}</div>`).join('')+`</div>`;
+}
+// Fills in the inline attachment images once the cards are on screen (only as they scroll into view).
+function hydrateDppAttachments(){
+  const imgs=[...document.querySelectorAll('#mBody img[data-sign-path]')].filter(i=>!i.src);
+  if(!imgs.length) return;
+  const load=async i=>{
+    try{ i.src=await signDocUrl('payment-plan-docs',decodeURIComponent(i.dataset.signPath)); }
+    catch(e){ i.parentElement.innerHTML='<span style="display:block;padding:14px;font-size:12px;color:var(--muted)">Could not load image. Tap to try opening it.</span>'; }
+  };
+  if('IntersectionObserver' in window){
+    const io=new IntersectionObserver(es=>es.forEach(en=>{ if(en.isIntersecting){ io.unobserve(en.target); load(en.target); } }),{root:null,rootMargin:'300px'});
+    imgs.forEach(i=>io.observe(i));
+  } else imgs.forEach(load);
+}
 function paymentPlanMobileCardHtml(p){
   const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
   const canQuickDecide=p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision;
@@ -3895,7 +3921,7 @@ function paymentPlanMobileCardHtml(p){
     <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${escH(who)}</div>
     <div style="font-size:13.5px;color:var(--ink);line-height:1.4;margin-bottom:8px">${escH(p.desc||'—')}</div>
     <div style="font-size:19px;font-weight:800;color:var(--ink);margin-bottom:10px">${fmt(p.amt)}</div>
-    ${(Array.isArray(p.attachments)?p.attachments:[]).length?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" onclick="event.stopPropagation()">${p.attachments.map(a=>`<button type="button" onclick="openDoc('payment-plan-docs','${encodeURIComponent(a.path)}')" title="${escH(a.name)}" style="display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid #f0cb87;background:#fff4e0;color:#9a6f0a;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer"><span style="display:inline-flex;flex:0 0 auto">${ICON.file(13)}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(a.name||'Document')}</span></button>`).join('')}</div>`:''}
+    ${dppMobileAttachmentsHtml(p)}
     ${canQuickDecide
       ?`<div style="display:flex;gap:8px" onclick="event.stopPropagation()">
           <button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" style="flex:1;border:0;border-radius:10px;background:#2f6fb0;color:#fff;font-size:13.5px;font-weight:700;padding:10px;cursor:pointer">✓ Approve</button>
@@ -5514,8 +5540,14 @@ async function signDocUrl(bucket,path,expiresIn){
 }
 async function openDoc(bucket,encPath){
   const path=decodeURIComponent(encPath);
-  try{ window.open(await signDocUrl(bucket,path),'_blank'); }
-  catch(e){ alert('Could not open document: '+e.message); }
+  // The tab has to be opened inside the tap itself, before the await: phone browsers block a
+  // window.open() that only happens after an async call, which silently killed document links on mobile.
+  const w=window.open('','_blank');
+  try{
+    const url=await signDocUrl(bucket,path);
+    if(w) w.location.href=url; else window.location.href=url;
+  }
+  catch(e){ if(w) w.close(); alert('Could not open document: '+e.message); }
 }
 function docViewChip(bucket,atts){
   atts=Array.isArray(atts)?atts:[];
