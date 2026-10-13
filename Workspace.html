@@ -4120,7 +4120,8 @@ async function doWithdrawApproval(id){
     if(!r.ok){ const t=await r.json().catch(()=>({})); throw new Error(t.message||('HTTP '+r.status)); }
     await reloadDppData();
     renderKpiCash(agg());
-    openPlanThread(id);
+    // Back to the approver's pending list, where the plan now sits again waiting for a decision.
+    openPaymentPlansDefault();
   }catch(e){ err.textContent='Failed: '+e.message; btn.disabled=false; btn.textContent='Cancel my approval'; }
 }
 async function quickDecidePlan(id,decision,btnEl){
