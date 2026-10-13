@@ -3621,7 +3621,16 @@ function paymentPlanStatusBadge(p){
     return `<span style="color:var(--red);font-weight:700">Rejected</span>${who}`;
   }
   if(p.status==='cancelled') return `<span style="color:var(--red);font-weight:700">Cancelled</span>`;
-  return `<span style="color:#9a6f0a;font-weight:700">Pending</span>`;
+  // A plan that went back to pending because an approver withdrew: say so, with who/when/why.
+  const evs=DPP_LOG.filter(l=>l.planId===p.id);
+  const last=evs[evs.length-1];
+  const wd=(last&&last.action==='withdrawn')?(()=>{
+    const nm=(PAYMENT_APPROVERS.find(a=>a.email===last.email)||{}).name||String(last.email||'').split('@')[0];
+    const day=new Date(last.at).toLocaleDateString('en-CA',{timeZone:'Asia/Makassar'});
+    return `<div style="font-size:11px;font-weight:600;color:var(--muted);white-space:normal;margin-top:2px" title="${escH(last.note||'')}">↩ ${escH(nm)} withdrew approval (${day})</div>`
+      +(last.note?`<div style="font-size:11px;font-weight:400;color:var(--muted);white-space:normal;margin-top:1px">“${escH(last.note)}”</div>`:'');
+  })():'';
+  return `<span style="color:#9a6f0a;font-weight:700">Pending</span>${wd}`;
 }
 // entityCode is required — an approver is only an approver for the PT(s) they're explicitly
 // assigned to (payment_plan_approver_entities), not every PT by default.
@@ -3665,6 +3674,7 @@ function paymentPlanRowHtml(p){
       }
     } else if(myDecision.decision==='approved'){
       items.push(menuItem('✕ Change to Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
+      if(!p.paidAt) items.push(menuItem('↩ Withdraw my approval',`openWithdrawApproval(${p.id})`,'#9a6f0a'));
     } else {
       items.push(menuItem('✓ Change to Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
     }
@@ -3928,6 +3938,7 @@ function paymentPlanMobileCardHtml(p){
           <button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:13.5px;font-weight:700;padding:10px 14px;border-radius:10px;cursor:pointer">✕</button>
         </div>`
       :paymentPlanStatusBadge(p)}
+    ${(myDecision&&myDecision.decision==='approved'&&!p.paidAt&&p.status!=='cancelled'&&isActiveApprover(MY_EMAIL,p.e))?`<div style="margin-top:8px" onclick="event.stopPropagation()"><button type="button" onclick="openWithdrawApproval(${p.id})" style="border:1px solid #f0cb87;background:#fff7e6;color:#9a6f0a;border-radius:10px;font-size:12.5px;font-weight:700;padding:8px 12px;cursor:pointer">↩ Withdraw my approval</button></div>`:''}
   </div>`;
 }
 function openApproveAllModal(){
@@ -3955,11 +3966,7 @@ async function doApproveAll(){
     const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_approvals?on_conflict=plan_id,approver_email',{method:'POST',
       headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rows)});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
-    const [freshPlans,freshApprovals]=await Promise.all([
-      sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
-      sbFetchAll('daily_payment_plan_approvals?select=*')
-    ]);
-    DPP=freshPlans.map(mkDpp); DPP_APPROVALS=freshApprovals.map(mkDppApproval);
+    await reloadDppData();
     renderKpiCash(agg());
     openPaymentPlans();
   }catch(e){ err.textContent='Failed to approve all: '+e.message; btn.disabled=false; btn.textContent='Approve All ('+list.length+')'; }
@@ -3982,7 +3989,12 @@ function openPlanThread(id){
     const time=d.toLocaleTimeString('en-GB',{timeZone:'Asia/Makassar',hour:'2-digit',minute:'2-digit'});
     return date+' '+time+' WITA';
   };
-  const decisions=DPP_APPROVALS.filter(a=>a.planId===id).map(d=>({ts:d.decidedAt,d}));
+  // The log carries every approve / reject / withdraw (with reasons); fall back to the current
+  // decisions only if the log could not be loaded.
+  const logEvents=DPP_LOG.filter(l=>l.planId===id);
+  const decisions=logEvents.length
+    ?logEvents.map(l=>({ts:l.at,d:{email:l.email,decision:l.action,note:l.note,decidedAt:l.at,approvedAmt:l.approvedAmt}}))
+    :DPP_APPROVALS.filter(a=>a.planId===id).map(d=>({ts:d.decidedAt,d}));
   const comments=DPP_COMMENTS.filter(c=>c.planId===id).map(c=>({ts:c.createdAt,c}));
   // A visible "Marked as Paid" record in the plan's own timeline, not just the status badge — so
   // it stays clear who booked it, for how much, and whether the linked Outstanding Liability was
@@ -3999,8 +4011,9 @@ function openPlanThread(id){
   h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
   h+=items.length?items.map(it=>{
     if(it.d){
-      const d=it.d, col=d.decision==='approved'?'var(--green)':'var(--red)';
+      const d=it.d, col=d.decision==='approved'?'var(--green)':(d.decision==='withdrawn'?'#9a6f0a':'var(--red)');
       const amtNote=(d.decision==='approved'&&d.approvedAmt!=null&&d.approvedAmt<p.amt)?` — approved amount ${fmt(d.approvedAmt)}`:'';
+      if(d.decision==='withdrawn') return `<div style="margin-bottom:10px;font-size:12.5px;background:#fff7e6;border-radius:10px;padding:8px 12px"><span style="font-weight:700;color:${col}">↩ ${escH(nameOf(d.email))} withdrew their approval</span> — plan back to pending${d.note?`<div style="margin-top:2px">Reason: “${escH(d.note)}”</div>`:''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
       return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:${col}">${escH(nameOf(d.email))} ${d.decision}</span> this plan${amtNote}${d.note?': “'+escH(d.note)+'”':''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
     }
     if(it.paid){
@@ -4076,11 +4089,7 @@ async function doDecidePlan(id,decision){
       headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
       body:JSON.stringify([{plan_id:id,approver_email:MY_EMAIL,decision,note,approved_amount_idr:approvedAmt,decided_at:new Date().toISOString()}])});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
-    const [freshPlans,freshApprovals]=await Promise.all([
-      sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
-      sbFetchAll('daily_payment_plan_approvals?select=*')
-    ]);
-    DPP=freshPlans.map(mkDpp); DPP_APPROVALS=freshApprovals.map(mkDppApproval);
+    await reloadDppData();
     renderKpiCash(agg());
     openPaymentPlans();
   }catch(e){ err.textContent='Failed to save: '+e.message; }
@@ -4090,6 +4099,30 @@ async function doDecidePlan(id,decision){
 // approving the full purposed amount with no note. An approver who wants a partial amount or a note
 // still has the ⋮ menu's "Approve"/"Reject" (or "Change to …" once a decision exists, which this
 // quick path can also be used to set in the first place).
+function openWithdrawApproval(id){
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  const h=`<div style="font-size:13px;color:var(--ink);margin-bottom:6px"><b>${escH(p.vendor||p.desc||'Plan #'+id)}</b> — ${fmt(p.amt)}</div>`
+    +`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Your approval is removed and the plan goes back to <b>Pending</b>. Who withdrew, when and why stays in the plan's Discussion history. Not possible once the plan is paid.</div>`
+    +`<textarea id="wd-reason" placeholder="Reason for withdrawing (required)" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d7dae3;border-radius:8px;font-size:13px;min-height:80px;margin-bottom:10px"></textarea>`
+    +`<button id="wd-send" class="btn" style="background:#9a6f0a;color:#fff;border:0" onclick="doWithdrawApproval(${id})">Withdraw approval</button>`
+    +`<span id="wd-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Withdraw approval',h);
+}
+async function doWithdrawApproval(id){
+  const err=document.getElementById('wd-err'), btn=document.getElementById('wd-send');
+  err.textContent='';
+  const reason=(document.getElementById('wd-reason').value||'').trim();
+  if(reason.length<3) return void(err.textContent='Please give a reason.');
+  btn.disabled=true; btn.textContent='Withdrawing…';
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/rpc/withdraw_plan_approval',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,reason})});
+    if(!r.ok){ const t=await r.json().catch(()=>({})); throw new Error(t.message||('HTTP '+r.status)); }
+    await reloadDppData();
+    renderKpiCash(agg());
+    openPlanThread(id);
+  }catch(e){ err.textContent='Failed: '+e.message; btn.disabled=false; btn.textContent='Withdraw approval'; }
+}
 async function quickDecidePlan(id,decision,btnEl){
   if(btnEl) btnEl.disabled=true;
   try{
@@ -4097,11 +4130,7 @@ async function quickDecidePlan(id,decision,btnEl){
       headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
       body:JSON.stringify([{plan_id:id,approver_email:MY_EMAIL,decision,note:null,approved_amount_idr:null,decided_at:new Date().toISOString()}])});
     if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
-    const [freshPlans,freshApprovals]=await Promise.all([
-      sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
-      sbFetchAll('daily_payment_plan_approvals?select=*')
-    ]);
-    DPP=freshPlans.map(mkDpp); DPP_APPROVALS=freshApprovals.map(mkDppApproval);
+    await reloadDppData();
     renderKpiCash(agg());
     openPaymentPlans();
   }catch(e){ if(btnEl) btnEl.disabled=false; alert('Failed to save: '+e.message); }
@@ -9084,7 +9113,7 @@ async function refreshOpexGroupMap(){
   return OPEX_CAT_TO_GROUP;
 }
 async function loadFromSupabase(){
-  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,approverEntities,dpp,dppApprovals,dppComments,dppReads]=await Promise.all([
+  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,approverEntities,dpp,dppApprovals,dppLog,dppComments,dppReads]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
     sbFetch('line_items?select=*&period_code=eq.MAY&limit=2000'),
     sbFetch('entity_period_totals?select=*&limit=2000'),
@@ -9098,6 +9127,7 @@ async function loadFromSupabase(){
     sbFetchAll('payment_plan_approver_entities?select=*').catch(()=>[]),
     sbFetch('daily_payment_plans?select=*&order=plan_date.desc').catch(()=>[]),
     sbFetchAll('daily_payment_plan_approvals?select=*').catch(()=>[]),
+    sbFetchAll('daily_payment_plan_approval_log?select=*&order=at').catch(()=>[]),
     sbFetchAll('daily_payment_plan_comments?select=*&order=created_at').catch(()=>[]),
     sbFetchAll('daily_payment_plan_reads?select=*').catch(()=>[]),
     refreshOpexGroupMap()
@@ -9127,6 +9157,7 @@ async function loadFromSupabase(){
     PAYMENT_APPROVERS:(approvers||[]).map(a=>mkApprover(a,approverEntities)),
     DPP:(dpp||[]).map(mkDpp),
     DPP_APPROVALS:(dppApprovals||[]).map(mkDppApproval),
+    DPP_LOG:(dppLog||[]).map(mkDppLog),
     DPP_COMMENTS:(dppComments||[]).map(mkDppComment),
     DPP_READS:(dppReads||[]).map(r=>({planId:r.plan_id,email:r.email,lastReadAt:r.last_read_at})),
     TX:Object.values(bs).flat(),
@@ -9164,6 +9195,7 @@ let FIXCOST=[];
 let PAYMENT_APPROVERS=[];
 let DPP=[];
 let DPP_APPROVALS=[];
+let DPP_LOG=[];   // every approve / reject / withdraw event, oldest first
 let DPP_COMMENTS=[];
 let DPP_READS=[];
 function mkApprover(r,approverEntities){
@@ -9172,6 +9204,16 @@ function mkApprover(r,approverEntities){
 }
 function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[],paidAt:r.paid_at||null,paidBy:r.paid_by||null,paidTxId:r.paid_tx_id||null,paidAmountIdr:r.paid_amount_idr==null?null:+r.paid_amount_idr,sourceOutstandingId:r.source_outstanding_id||null,planType:r.plan_type||'opex',counterparty:r.counterparty||null,icType:r.ic_type||null,paidIcTxId:r.paid_ic_tx_id||null}; }
 function mkDppComment(r){ return {id:r.id,planId:r.plan_id,email:r.author_email,body:r.body,createdAt:r.created_at}; }
+function mkDppLog(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,action:r.action,note:r.note,at:r.at,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr}; }
+async function reloadDppData(){
+  const [freshPlans,freshApprovals,freshLog]=await Promise.all([
+    sbFetch('daily_payment_plans?select=*&order=plan_date.desc'),
+    sbFetchAll('daily_payment_plan_approvals?select=*'),
+    sbFetchAll('daily_payment_plan_approval_log?select=*&order=at').catch(()=>null)
+  ]);
+  DPP=freshPlans.map(mkDpp); DPP_APPROVALS=freshApprovals.map(mkDppApproval);
+  if(freshLog) DPP_LOG=freshLog.map(mkDppLog);
+}
 function mkDppApproval(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,decision:r.decision,note:r.note,decidedAt:r.decided_at,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr}; }
 let INTERCOMPANY=[];
 let IC_TX=[];
@@ -9758,6 +9800,7 @@ async function runDashboard(){
   PAYMENT_APPROVERS=D.PAYMENT_APPROVERS;
   DPP=D.DPP;
   DPP_APPROVALS=D.DPP_APPROVALS;
+  DPP_LOG=D.DPP_LOG||[];
   DPP_COMMENTS=D.DPP_COMMENTS;
   DPP_READS=D.DPP_READS;
   EIDS=Object.keys(ENT);
