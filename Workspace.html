@@ -3756,6 +3756,18 @@ function pendingForMe(){
 // money actually went out, for reviewing Payment History over a period rather than the single
 // undifferentiated list of every plan ever paid.
 let DPP_FILTER={entity:'',vendor:'',category:'',status:'',paidFrom:'',paidTo:''};
+let DPP_SEARCH_FOCUS=false, DPP_SEARCH_TIMER=null;
+// Re-rendering the list rebuilds the search box, so remember it had focus and put the cursor back.
+function onDppSearchInput(v){
+  clearTimeout(DPP_SEARCH_TIMER);
+  DPP_SEARCH_TIMER=setTimeout(()=>{ if(!document.getElementById('dpp-search')) return; DPP_FILTER.q=v; DPP_SEARCH_FOCUS=true; openPaymentPlans(); },250);
+}
+function restoreDppSearchFocus(){
+  if(!DPP_SEARCH_FOCUS) return;
+  DPP_SEARCH_FOCUS=false;
+  const el=document.getElementById('dpp-search');
+  if(el){ el.focus(); try{ el.setSelectionRange(el.value.length,el.value.length); }catch(e){} }
+}
 function setDppFilter(key,val){ DPP_FILTER[key]=val; openPaymentPlans(); }
 function clearDppFilters(){ DPP_FILTER={entity:'',vendor:'',category:'',status:'',paidFrom:'',paidTo:''}; openPaymentPlans(); }
 // Used by the clickable stats on the Daily Payment Plan card — always starts from a clean slate
@@ -3844,6 +3856,17 @@ function openPaymentPlans(){
   // the working list of what still needs attention — pick "Paid" from the Status filter, or "Paid
   // this month" on the card, to see it.
   else rows=rows.filter(p=>!(p.status==='approved'&&p.paidAt));
+  // Keyword search: every word must appear somewhere in the plan (vendor, description, category,
+  // entity, counterparty, plan number, amount). Amounts match with or without thousand dots.
+  const dppQ=(DPP_FILTER.q||'').trim().toLowerCase();
+  if(dppQ){
+    const toks=dppQ.split(/\s+/);
+    rows=rows.filter(p=>{
+      const hay=[p.vendor,p.desc,p.category,p.counterparty,p.icType,ENT[p.e]?ENT[p.e].name:p.e,'#'+p.id,String(p.id)].join(' ').toLowerCase();
+      const nums=[p.amt,p.approvedAmt,p.paidAmountIdr].filter(v=>v!=null).map(v=>String(Math.round(v))+' '+fmt(v)).join(' ');
+      return toks.every(t=>hay.includes(t)||nums.includes(t)||(/^[\d.,]+$/.test(t)&&nums.includes(t.replace(/[.,]/g,''))));
+    });
+  }
   // Payment History (status=Paid) reads newest-first by when it was actually paid, not by plan_date
   // — that's the timeline this view is for.
   if(DPP_FILTER.status==='paid') rows.sort((a,b)=>(b.paidAt||'').localeCompare(a.paidAt||''));
@@ -3856,7 +3879,7 @@ function openPaymentPlans(){
   const catOpts=[...new Set(scoped.map(p=>p.category).filter(Boolean))].sort();
   const statusOpts=[...(isApproverAnywhere(MY_EMAIL)?[['mine','Needs My Approval']]:[]),['pending','Pending'],['approved','Approved'],['paid','Paid'],['rejected','Rejected'],['cancelled','Cancelled']];
   const selStyle='padding:6px 10px;border:1px solid #e4e7ef;border-radius:8px;font-size:12px;background:#fff;color:#3a4254';
-  const anyFilter=DPP_FILTER.entity||DPP_FILTER.vendor||DPP_FILTER.category||DPP_FILTER.status;
+  const anyFilter=DPP_FILTER.entity||DPP_FILTER.vendor||DPP_FILTER.category||DPP_FILTER.status||dppQ;
   let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">`
     +`<select style="${selStyle}" onchange="setDppFilter('entity',this.value)"><option value="">All Entities</option>${entOpts.map(id=>`<option value="${id}"${DPP_FILTER.entity===id?' selected':''}>${escH(ENT[id]?ENT[id].name:id)}</option>`).join('')}</select>`
     +`<select style="${selStyle}" onchange="setDppFilter('vendor',this.value)"><option value="">All Vendors</option>${vendorOpts.map(v=>`<option value="${escH(v)}"${DPP_FILTER.vendor===v?' selected':''}>${escH(v)}</option>`).join('')}</select>`
@@ -3865,6 +3888,8 @@ function openPaymentPlans(){
     +(DPP_FILTER.status==='paid'?`<span style="font-size:11px;color:var(--muted)">Paid from</span><input type="date" value="${DPP_FILTER.paidFrom||''}" style="${selStyle}" onchange="setDppFilter('paidFrom',this.value)"><span style="font-size:11px;color:var(--muted)">to</span><input type="date" value="${DPP_FILTER.paidTo||''}" style="${selStyle}" onchange="setDppFilter('paidTo',this.value)">`:'')
     +(anyFilter?`<button type="button" onclick="clearDppFilters()" style="border:0;background:none;color:var(--blue-300);font-size:12px;font-weight:700;cursor:pointer">Clear filters</button>`:'')
     +`</div>`;
+  // Search sits right under the filters: type a vendor, description, amount or plan number.
+  h+=`<div style="margin-bottom:12px"><input id="dpp-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder="🔍 Search vendor, description, amount, plan #…" value="${escH(DPP_FILTER.q||'')}" oninput="onDppSearchInput(this.value)" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #e4e7ef;border-radius:12px;font-size:14px;background:#fff;color:#141b2d"></div>`;
   h+=(mine.length?`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">`
     +`<span style="font-size:16px;color:var(--ink);text-transform:uppercase;letter-spacing:.3px">Needs approval: <b>${fmt(mine.reduce((s,p)=>s+p.amt,0))}</b></span>`
     +`<button class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button>`
@@ -3876,6 +3901,7 @@ function openPaymentPlans(){
   if(isMobileViewport()&&isApproverAnywhere(MY_EMAIL)){
     h+=rows.length?rows.map(p=>paymentPlanMobileCardHtml(p)).join(''):`<div style="text-align:center;color:var(--muted);padding:20px">${scoped.length?'No payment plans match these filters — note Paid ones are hidden by default, pick "Paid" from the Status filter to see them.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</div>`;
     showModal(DPP_FILTER.status==='paid'?'Payment History':'Daily Payment Plan',h,true);
+    restoreDppSearchFocus();
     hydrateDppAttachments();
     return;
   }
@@ -3892,6 +3918,7 @@ function openPaymentPlans(){
   }
   h+='</tbody></table></div>';
   showModal(DPP_FILTER.status==='paid'?'Payment History':'Daily Payment Plan',h,true);
+  restoreDppSearchFocus();
   // Default the horizontal scroll past the Date column, so Status/Approvals/Comment — what
   // approvers actually need to act on — are visible without scrolling right first.
   requestAnimationFrame(()=>{
