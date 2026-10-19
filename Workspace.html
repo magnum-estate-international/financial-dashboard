@@ -3610,6 +3610,15 @@ function paymentPlanCard(){
       </div>`:''}
     </div>`;
 }
+// Inline controls for an approver who has already decided on a plan: cancel that decision (back to
+// waiting for approval) or flip it. Hidden once the plan is Paid or cancelled.
+function myDecisionButtons(p,big){
+  const mine=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
+  if(!mine||p.paidAt||p.status==='cancelled'||!isActiveApprover(MY_EMAIL,p.e)) return '';
+  const b=(label,fn,col)=>`<button type="button" onclick="event.stopPropagation();${fn}" style="border:1px solid #e4e7ef;background:#fff;color:${col};border-radius:${big?10:8}px;font-size:${big?12.5:11}px;font-weight:700;padding:${big?'8px 12px':'3px 8px'};cursor:pointer;white-space:nowrap">${label}</button>`;
+  const other=mine.decision==='approved'?b('✕ Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'):b('✓ Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)');
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:${big?8:6}px" onclick="event.stopPropagation()">${b('↩ Cancel my '+(mine.decision==='approved'?'approval':'rejection'),`openWithdrawApproval(${p.id})`,'#9a6f0a')}${other}</div>`;
+}
 function paymentPlanStatusBadge(p){
   if(p.status==='approved') return p.paidAt?`<span style="color:#2f6fb0;font-weight:700">Paid</span>`:`<span style="color:var(--green);font-weight:700">Approved</span>`;
   if(p.status==='rejected'){
@@ -3666,12 +3675,11 @@ function paymentPlanRowHtml(p){
   const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const items=[];
-  if(isActiveApprover(MY_EMAIL,p.e)&&p.status!=='cancelled'){
+  // An approver can decide, change or cancel their decision at any status; only Paid (and a cancelled plan) is locked.
+  if(isActiveApprover(MY_EMAIL,p.e)&&p.status!=='cancelled'&&!p.paidAt){
     if(!myDecision){
-      if(p.status==='pending'){
-        items.push(menuItem('✓ Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
-        items.push(menuItem('✕ Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
-      }
+      items.push(menuItem('✓ Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
+      items.push(menuItem('✕ Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
     } else if(myDecision.decision==='approved'){
       items.push(menuItem('✕ Change to Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
       if(!p.paidAt) items.push(menuItem('↩ Cancel my approval',`openWithdrawApproval(${p.id})`,'#9a6f0a'));
@@ -3714,12 +3722,12 @@ function paymentPlanRowHtml(p){
       const pendingNames=approversForEntity(p.e).filter(a=>!DPP_APPROVALS.some(d=>d.planId===p.id&&d.email===a.email)).map(a=>a.name);
       return pendingNames.length?`<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Pending: ${escH(pendingNames.join(', '))}</div>`:'';
     })()}</td>
-    <td>${(p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision)
+    <td>${(p.status!=='cancelled'&&!p.paidAt&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision)
       ?(`<div style="display:flex;gap:6px;align-items:center">`
         +`<button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" title="Approve the full amount — for a partial amount or a note, use the ⋮ menu instead" style="border:0;border-radius:8px;background:#2f6fb0;color:#fff;font-size:11.5px;font-weight:700;padding:5px 10px;cursor:pointer;white-space:nowrap">✓ Approve</button>`
         +`<button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" title="Reject" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:11.5px;font-weight:700;padding:5px 8px;border-radius:8px;cursor:pointer">✕</button>`
         +`</div>`)
-      :paymentPlanStatusBadge(p)}</td>
+      :paymentPlanStatusBadge(p)+myDecisionButtons(p)}</td>
     <td style="white-space:nowrap"><a href="#" onclick="event.preventDefault();openPlanThread(${p.id})" style="font-size:12px;color:var(--blue-300);text-decoration:none;font-weight:600">${commentN} comment${commentN===1?'':'s'}</a>${unreadN?` <span style="display:inline-block;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px">${unreadN} new</span>`:''}</td>
     <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:1px solid #f0cb87;background:#fff4e0;border-radius:999px;cursor:pointer;padding:4px 10px;font-size:16px;font-weight:800;color:#9a6f0a;line-height:1">⋮</button>
       <div id="plan-menu-${p.id}" class="plan-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>
@@ -3924,7 +3932,7 @@ function hydrateDppAttachments(){
 }
 function paymentPlanMobileCardHtml(p){
   const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
-  const canQuickDecide=p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision;
+  const canQuickDecide=p.status!=='cancelled'&&!p.paidAt&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision;
   const who=p.planType==='loan_affiliate'?((p.icType?p.icType+' — ':'')+(p.counterparty||'—')):(p.vendor||'—');
   // Vendor, description, amount, attached document(s) and the action — entity/category/comments/
   // due date are all one tap away via Discussion, not shown here by default (see how this was asked for).
@@ -3939,7 +3947,7 @@ function paymentPlanMobileCardHtml(p){
           <button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:13.5px;font-weight:700;padding:10px 14px;border-radius:10px;cursor:pointer">✕</button>
         </div>`
       :paymentPlanStatusBadge(p)}
-    ${(myDecision&&!p.paidAt&&p.status!=='cancelled'&&isActiveApprover(MY_EMAIL,p.e))?`<div style="margin-top:8px" onclick="event.stopPropagation()"><button type="button" onclick="openWithdrawApproval(${p.id})" style="border:1px solid #f0cb87;background:#fff7e6;color:#9a6f0a;border-radius:10px;font-size:12.5px;font-weight:700;padding:8px 12px;cursor:pointer">${myDecision.decision==='approved'?'↩ Cancel my approval':'↩ Cancel my rejection'}</button></div>`:''}
+    ${myDecisionButtons(p,true)}
   </div>`;
 }
 function openApproveAllModal(){
