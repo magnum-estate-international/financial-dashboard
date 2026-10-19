@@ -3624,10 +3624,10 @@ function paymentPlanStatusBadge(p){
   // A plan that went back to pending because an approver withdrew: say so, with who/when/why.
   const evs=DPP_LOG.filter(l=>l.planId===p.id);
   const last=evs[evs.length-1];
-  const wd=(last&&last.action==='withdrawn')?(()=>{
+  const wd=(last&&(last.action==='withdrawn'||last.action==='rejection_cancelled'))?(()=>{
     const nm=(PAYMENT_APPROVERS.find(a=>a.email===last.email)||{}).name||String(last.email||'').split('@')[0];
     const day=new Date(last.at).toLocaleDateString('en-CA',{timeZone:'Asia/Makassar'});
-    return `<div style="font-size:11px;font-weight:600;color:var(--muted);white-space:normal;margin-top:2px" title="${escH(last.note||'')}">↩ ${escH(nm)} cancelled their approval (${day})</div>`
+    return `<div style="font-size:11px;font-weight:600;color:var(--muted);white-space:normal;margin-top:2px" title="${escH(last.note||'')}">↩ ${escH(nm)} cancelled their ${last.action==='withdrawn'?'approval':'rejection'} (${day})</div>`
       +(last.note?`<div style="font-size:11px;font-weight:400;color:var(--muted);white-space:normal;margin-top:1px">“${escH(last.note)}”</div>`:'');
   })():'';
   return `<span style="color:#9a6f0a;font-weight:700">Pending</span>${wd}`;
@@ -3677,6 +3677,7 @@ function paymentPlanRowHtml(p){
       if(!p.paidAt) items.push(menuItem('↩ Cancel my approval',`openWithdrawApproval(${p.id})`,'#9a6f0a'));
     } else {
       items.push(menuItem('✓ Change to Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
+      items.push(menuItem('↩ Cancel my rejection',`openWithdrawApproval(${p.id})`,'#9a6f0a'));
     }
   }
   if(p.status==='approved'&&!p.paidAt&&canEdit) items.push(menuItem('💰 Mark Paid',`openMarkPlanPaid(${p.id})`,'#2b7a4b'));
@@ -3938,7 +3939,7 @@ function paymentPlanMobileCardHtml(p){
           <button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:13.5px;font-weight:700;padding:10px 14px;border-radius:10px;cursor:pointer">✕</button>
         </div>`
       :paymentPlanStatusBadge(p)}
-    ${(myDecision&&myDecision.decision==='approved'&&!p.paidAt&&p.status!=='cancelled'&&isActiveApprover(MY_EMAIL,p.e))?`<div style="margin-top:8px" onclick="event.stopPropagation()"><button type="button" onclick="openWithdrawApproval(${p.id})" style="border:1px solid #f0cb87;background:#fff7e6;color:#9a6f0a;border-radius:10px;font-size:12.5px;font-weight:700;padding:8px 12px;cursor:pointer">↩ Cancel my approval</button></div>`:''}
+    ${(myDecision&&!p.paidAt&&p.status!=='cancelled'&&isActiveApprover(MY_EMAIL,p.e))?`<div style="margin-top:8px" onclick="event.stopPropagation()"><button type="button" onclick="openWithdrawApproval(${p.id})" style="border:1px solid #f0cb87;background:#fff7e6;color:#9a6f0a;border-radius:10px;font-size:12.5px;font-weight:700;padding:8px 12px;cursor:pointer">${myDecision.decision==='approved'?'↩ Cancel my approval':'↩ Cancel my rejection'}</button></div>`:''}
   </div>`;
 }
 function openApproveAllModal(){
@@ -4011,8 +4012,9 @@ function openPlanThread(id){
   h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
   h+=items.length?items.map(it=>{
     if(it.d){
-      const d=it.d, col=d.decision==='approved'?'var(--green)':(d.decision==='withdrawn'?'#9a6f0a':'var(--red)');
+      const d=it.d, col=d.decision==='approved'?'var(--green)':((d.decision==='withdrawn'||d.decision==='rejection_cancelled')?'#9a6f0a':'var(--red)');
       const amtNote=(d.decision==='approved'&&d.approvedAmt!=null&&d.approvedAmt<p.amt)?` — approved amount ${fmt(d.approvedAmt)}`:'';
+      if(d.decision==='rejection_cancelled') return `<div style="margin-bottom:10px;font-size:12.5px;background:#fff7e6;border-radius:10px;padding:8px 12px"><span style="font-weight:700;color:${col}">↩ ${escH(nameOf(d.email))} cancelled their rejection</span> — plan back to waiting for approval${d.note?`<div style="margin-top:2px">Reason: “${escH(d.note)}”</div>`:''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
       if(d.decision==='withdrawn') return `<div style="margin-bottom:10px;font-size:12.5px;background:#fff7e6;border-radius:10px;padding:8px 12px"><span style="font-weight:700;color:${col}">↩ ${escH(nameOf(d.email))} cancelled their approval</span> — plan back to pending${d.note?`<div style="margin-top:2px">Reason: “${escH(d.note)}”</div>`:''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
       return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:${col}">${escH(nameOf(d.email))} ${d.decision}</span> this plan${amtNote}${d.note?': “'+escH(d.note)+'”':''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
     }
@@ -4101,28 +4103,31 @@ async function doDecidePlan(id,decision){
 // quick path can also be used to set in the first place).
 function openWithdrawApproval(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
+  const mine=DPP_APPROVALS.find(a=>a.planId===id&&a.email===MY_EMAIL);
+  const what=mine&&mine.decision==='rejected'?'rejection':'approval';
   const h=`<div style="font-size:13px;color:var(--ink);margin-bottom:6px"><b>${escH(p.vendor||p.desc||'Plan #'+id)}</b> — ${fmt(p.amt)}</div>`
-    +`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Your approval is removed and the plan goes back to <b>Pending</b>. Who cancelled, when and why stays in the plan's Discussion history. Not possible once the plan is paid.</div>`
-    +`<textarea id="wd-reason" placeholder="Reason for cancelling your approval (required)" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d7dae3;border-radius:8px;font-size:13px;min-height:80px;margin-bottom:10px"></textarea>`
-    +`<button id="wd-send" class="btn" style="background:#9a6f0a;color:#fff;border:0" onclick="doWithdrawApproval(${id})">Cancel my approval</button>`
+    +`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Your ${what} is removed and the plan goes back to <b>Pending</b> (waiting for approval). Who cancelled, when and why stays in the plan's Discussion history. Not possible once the plan is paid.</div>`
+    +`<textarea id="wd-reason" placeholder="Reason for cancelling your ${what} (required)" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d7dae3;border-radius:8px;font-size:13px;min-height:80px;margin-bottom:10px"></textarea>`
+    +`<button id="wd-send" class="btn" style="background:#9a6f0a;color:#fff;border:0" onclick="doWithdrawApproval(${id})">Cancel my ${what}</button>`
     +`<span id="wd-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
-  showModal('Cancel my approval',h);
+  showModal('Cancel my '+what,h);
 }
 async function doWithdrawApproval(id){
   const err=document.getElementById('wd-err'), btn=document.getElementById('wd-send');
   err.textContent='';
+  const label=btn.textContent;
   const reason=(document.getElementById('wd-reason').value||'').trim();
   if(reason.length<3) return void(err.textContent='Please give a reason.');
   btn.disabled=true; btn.textContent='Cancelling…';
   try{
-    const r=await authedFetch(SB_URL+'/rest/v1/rpc/withdraw_plan_approval',{method:'POST',
+    const r=await authedFetch(SB_URL+'/rest/v1/rpc/cancel_plan_decision',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,reason})});
     if(!r.ok){ const t=await r.json().catch(()=>({})); throw new Error(t.message||('HTTP '+r.status)); }
     await reloadDppData();
     renderKpiCash(agg());
     // Back to the approver's pending list, where the plan now sits again waiting for a decision.
     openPaymentPlansDefault();
-  }catch(e){ err.textContent='Failed: '+e.message; btn.disabled=false; btn.textContent='Cancel my approval'; }
+  }catch(e){ err.textContent='Failed: '+e.message; btn.disabled=false; btn.textContent=label; }
 }
 async function quickDecidePlan(id,decision,btnEl){
   if(btnEl) btnEl.disabled=true;
