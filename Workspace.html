@@ -3593,7 +3593,7 @@ function paymentPlanCard(){
     // For an approver, what needs their own action sits right after the headline count — before
     // Pending/Approved/Rejected, which are whole-scope totals, not personal to-dos.
     ...(needsMe!==null?[needsMeStat]:[]),
-    ...(checkList?[stat(ICON.bell(14),checkList.length,'Awaiting Check','var(--blue-300)','','openCheckAllModal()','Total: '+fmt(checkList.reduce((s,p)=>s+p.amt,0)))]:[]),
+    ...(checkList?[stat(ICON.bell(14),checkList.length,'Awaiting Check','var(--blue-300)','tocheck',null,'Total: '+fmt(checkList.reduce((s,p)=>s+p.amt,0)))]:[]),
     stat(clockIcon(14),pend.length,'Pending','#9a6f0a','pending',null,'Total: '+fmt(pendSum)),
     stat(ICON.check(14),approved.length,'Approved','var(--green)','approved',null,'Total: '+fmt(approvedSum)),
     stat(xIcon(14),rejected.length,'Rejected','var(--red)','rejected',null,'Total: '+fmt(rejectedSum)),
@@ -3691,27 +3691,6 @@ async function doCheckPlan(id){
   err.textContent=''; btn.disabled=true; btn.textContent='Saving…';
   try{ await rpcPlanCheck('check_plans',{pids:[id],note:(document.getElementById('chk-note').value||'').trim()||null}); await afterCheckChange(); }
   catch(e){ err.textContent='Failed to check: '+e.message; btn.disabled=false; btn.textContent='✓ Mark as Checked'; }
-}
-function openCheckAllModal(){
-  const list=pendingCheckForMe();
-  if(!list.length) return;
-  const tot=list.reduce((s,p)=>s+p.amt,0);
-  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">This marks <b>${list.length}</b> plan${list.length===1?'':'s'} as checked (total <b style="color:var(--ink)">${fmt(tot)}</b>). They then appear in Stan's and Igor's approval list.</div>`
-    +'<div style="max-height:200px;overflow-y:auto;border:1px solid #eef2f7;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px">'
-    +list.map(p=>`<div style="padding:3px 0;display:flex;justify-content:space-between;gap:10px"><span>${escH(p.vendor||p.counterparty||p.desc||'—')}</span><span style="white-space:nowrap">${fmt(p.amt)}</span></div>`).join('')
-    +'</div>'
-    +opeField('Note (optional, applied to all)',`<input id="chk-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
-    +`<button id="chk-send" class="btn" style="background:#2f6fb0;color:#fff;border:0" onclick="doCheckAll()">Check All (${list.length})</button><span id="chk-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
-  showModal('Check All Awaiting Plans',h,true);
-}
-async function doCheckAll(){
-  const err=document.getElementById('chk-err'), btn=document.getElementById('chk-send');
-  err.textContent='';
-  const list=pendingCheckForMe();
-  if(!list.length) return void closeModal();
-  btn.disabled=true; btn.textContent='Checking…';
-  try{ await rpcPlanCheck('check_plans',{pids:list.map(p=>p.id),note:(document.getElementById('chk-note').value||'').trim()||null}); await afterCheckChange(); }
-  catch(e){ err.textContent='Failed to check: '+e.message; btn.disabled=false; btn.textContent='Check All ('+list.length+')'; }
 }
 function openUncheckPlan(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
@@ -3982,7 +3961,7 @@ function openPaymentPlans(){
     +`</div>`;
   // Search sits right under the filters: type a vendor, description, amount or plan number.
   h+=`<div style="margin-bottom:12px"><input id="dpp-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder="🔍 Search vendor, description, amount, plan #…" value="${escH(DPP_FILTER.q||'')}" oninput="onDppSearchInput(this.value)" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #e4e7ef;border-radius:12px;font-size:14px;background:#fff;color:#141b2d"></div>`;
-  h+=(mine.length?`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">`
+  h+=((mine.length&&DPP_FILTER.status!=='tocheck')?`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">`
     +`<span style="font-size:16px;color:var(--ink);text-transform:uppercase;letter-spacing:.3px">Needs approval: <b>${fmt(mine.reduce((s,p)=>s+p.amt,0))}</b></span>`
     +`<button class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="openApproveAllModal()">✓ Approve All (${mine.length})</button>`
     +`</div>`:'');
@@ -4071,14 +4050,34 @@ function paymentPlanMobileCardHtml(p){
     ${checkButtonsHtml(p,true)}
   </div>`;
 }
+// "Approve All": every plan starts ticked; untick the ones to leave out. The count, the total and the
+// button always follow what is ticked.
+function approveListHtml(list){
+  return `<label style="display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;cursor:pointer"><input type="checkbox" id="apa-all" checked onchange="approveToggleAll(this.checked)" style="width:16px;height:16px;cursor:pointer"> Select all</label>`
+    +'<div style="max-height:260px;overflow-y:auto;border:1px solid #eef2f7;border-radius:8px;padding:4px 10px;margin-bottom:12px;font-size:12px">'
+    +list.map(p=>`<label style="display:flex;align-items:center;gap:10px;padding:5px 0;cursor:pointer;border-bottom:1px solid #f4f6fa"><input type="checkbox" class="apa-cb" value="${p.id}" data-amt="${p.amt}" checked onchange="approveRecount()" style="width:16px;height:16px;flex:0 0 auto;cursor:pointer">`
+      +`<span style="flex:1;min-width:0"><span style="color:var(--ink)">${escH(p.vendor||p.counterparty||p.desc||'—')}</span>${p.desc&&p.vendor?`<span style="display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(p.desc)}</span>`:''}</span>`
+      +`<span style="white-space:nowrap">${fmt(p.amt)}</span></label>`).join('')
+    +'</div>';
+}
+function approveSelectedIds(){ return [...document.querySelectorAll('.apa-cb:checked')].map(c=>+c.value); }
+function approveToggleAll(on){ document.querySelectorAll('.apa-cb').forEach(c=>c.checked=on); approveRecount(); }
+function approveRecount(){
+  const all=[...document.querySelectorAll('.apa-cb')], on=all.filter(c=>c.checked);
+  const n=on.length, tot=on.reduce((s,c)=>s+(+c.dataset.amt||0),0);
+  const set=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
+  set('apa-count',n); set('apa-plural',n===1?'':'s'); set('apa-total',fmt(tot));
+  const allBox=document.getElementById('apa-all');
+  if(allBox){ allBox.checked=n===all.length; allBox.indeterminate=n>0&&n<all.length; }
+  const btn=document.getElementById('apa-send');
+  if(btn&&!btn.dataset.busy){ btn.disabled=n===0; btn.textContent='Approve '+(n===all.length?'All':'Selected')+' ('+n+')'; }
+}
 function openApproveAllModal(){
   const list=pendingForMe();
   if(!list.length) return;
   const tot=list.reduce((s,p)=>s+p.amt,0);
-  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">This approves <b>${list.length}</b> plan${list.length===1?'':'s'} awaiting your decision, each at its full purposed amount (total <b style="color:var(--ink)">${fmt(tot)}</b>). Plans you've already decided on, or don't have approval rights for, aren't affected.</div>`;
-  h+='<div style="max-height:200px;overflow-y:auto;border:1px solid #eef2f7;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px">'
-    +list.map(p=>`<div style="padding:3px 0;display:flex;justify-content:space-between;gap:10px"><span>${escH(p.vendor||p.desc||'—')}</span><span style="white-space:nowrap">${fmt(p.amt)}</span></div>`).join('')
-    +'</div>';
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">This approves <b id="apa-count">${list.length}</b> plan<span id="apa-plural">${list.length===1?'':'s'}</span> awaiting your decision, each at its full purposed amount (total <b id="apa-total" style="color:var(--ink)">${fmt(tot)}</b>). Untick any plan you want to leave out. Plans you've already decided on, or don't have approval rights for, aren't affected.</div>`;
+  h+=approveListHtml(list);
   h+=opeField('Note (optional, applied to all)',`<input id="apa-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
     +`<button id="apa-send" class="btn" style="background:#2b7a4b;color:#fff;border:0" onclick="doApproveAll()">Approve All (${list.length})</button>`
     +`<span id="apa-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
@@ -4088,9 +4087,10 @@ async function doApproveAll(){
   const err=document.getElementById('apa-err'), btn=document.getElementById('apa-send');
   err.textContent='';
   const note=(document.getElementById('apa-note').value||'').trim()||null;
-  const list=pendingForMe();
-  if(!list.length) return void closeModal();
-  btn.disabled=true; btn.textContent='Approving…';
+  const sel=new Set(approveSelectedIds());
+  const list=pendingForMe().filter(p=>sel.has(p.id));
+  if(!list.length){ err.textContent='Tick at least one plan.'; return; }
+  btn.dataset.busy='1'; btn.disabled=true; btn.textContent='Approving…';
   try{
     const rows=list.map(p=>({plan_id:p.id,approver_email:MY_EMAIL,decision:'approved',note,decided_at:new Date().toISOString()}));
     const r=await authedFetch(SB_URL+'/rest/v1/daily_payment_plan_approvals?on_conflict=plan_id,approver_email',{method:'POST',
@@ -4099,7 +4099,7 @@ async function doApproveAll(){
     await reloadDppData();
     renderKpiCash(agg());
     openPaymentPlans();
-  }catch(e){ err.textContent='Failed to approve all: '+e.message; btn.disabled=false; btn.textContent='Approve All ('+list.length+')'; }
+  }catch(e){ err.textContent='Failed to approve all: '+e.message; delete btn.dataset.busy; approveRecount(); }
 }
 // Merges approve/reject decisions and free-text comments into one shared, chronological
 // timeline — anyone who can view this plan (any role, not just approvers) can read it, and
