@@ -3560,8 +3560,9 @@ function paymentPlanCard(){
   const paidThisMonth=paid.filter(p=>isThisCalendarMonth(p.paidAt));
   const paidThisMonthTotal=paidThisMonth.reduce((s,p)=>s+(p.paidAmountIdr!=null?p.paidAmountIdr:p.amt),0);
   const iAmApprover=isApproverAnywhere(MY_EMAIL);
-  const needsMeList=iAmApprover?pend.filter(p=>isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL)):null;
+  const needsMeList=iAmApprover?pend.filter(p=>p.checkedAt&&isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL)):null;
   const needsMe=needsMeList?needsMeList.length:null;
+  const checkList=isChecker(MY_EMAIL)?pend.filter(dppAwaitingCheck):null;
   const clockIcon=(s=14)=>svgOpen(s)+`<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>`;
   const xIcon=(s=14)=>svgOpen(s)+`<circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
   // Each stat is its own clickable jump to the matching filter on the full list — stopPropagation
@@ -3592,6 +3593,7 @@ function paymentPlanCard(){
     // For an approver, what needs their own action sits right after the headline count — before
     // Pending/Approved/Rejected, which are whole-scope totals, not personal to-dos.
     ...(needsMe!==null?[needsMeStat]:[]),
+    ...(checkList?[stat(ICON.bell(14),checkList.length,'Awaiting Check','var(--blue-300)','','openCheckAllModal()','Total: '+fmt(checkList.reduce((s,p)=>s+p.amt,0)))]:[]),
     stat(clockIcon(14),pend.length,'Pending','#9a6f0a','pending',null,'Total: '+fmt(pendSum)),
     stat(ICON.check(14),approved.length,'Approved','var(--green)','approved',null,'Total: '+fmt(approvedSum)),
     stat(xIcon(14),rejected.length,'Rejected','var(--red)','rejected',null,'Total: '+fmt(rejectedSum)),
@@ -3630,6 +3632,7 @@ function paymentPlanStatusBadge(p){
     return `<span style="color:var(--red);font-weight:700">Rejected</span>${who}`;
   }
   if(p.status==='cancelled') return `<span style="color:var(--red);font-weight:700">Cancelled</span>`;
+  if(!p.checkedAt) return `<span style="color:#2f6fb0;font-weight:700">Awaiting check</span><div style="font-size:11px;font-weight:600;color:var(--muted);white-space:normal;margin-top:2px">by ${escH(checkerNames())}</div>`;
   // A plan that went back to pending because an approver withdrew: say so, with who/when/why.
   const evs=DPP_LOG.filter(l=>l.planId===p.id);
   const last=evs[evs.length-1];
@@ -3639,7 +3642,82 @@ function paymentPlanStatusBadge(p){
     return `<div style="font-size:11px;font-weight:600;color:var(--muted);white-space:normal;margin-top:2px" title="${escH(last.note||'')}">↩ ${escH(nm)} cancelled their ${last.action==='withdrawn'?'approval':'rejection'} (${day})</div>`
       +(last.note?`<div style="font-size:11px;font-weight:400;color:var(--muted);white-space:normal;margin-top:1px">“${escH(last.note)}”</div>`:'');
   })():'';
-  return `<span style="color:#9a6f0a;font-weight:700">Pending</span>${wd}`;
+  const chk=dppHasRealCheck(p)?`<div style="font-size:11px;font-weight:600;color:var(--muted);white-space:normal;margin-top:2px" title="${escH(p.checkNote||'')}">✓ Checked by ${escH(checkedByName(p))}</div>`:'';
+  return `<span style="color:#9a6f0a;font-weight:700">Pending</span>${chk}${wd}`;
+}
+// ---- Checker step: finance uploads a plan -> the checker (Diana) checks it -> only then does it show up
+// for Stan and Igor to approve. The database enforces this (plans are hidden from them and their
+// decisions are refused until checked_at is set); this block is just the matching screens.
+function isChecker(email){ return PLAN_CHECKERS.some(c=>c.email===email&&c.active); }
+const dppAwaitingCheck=p=>p.status==='pending'&&!p.checkedAt;
+const dppHasRealCheck=p=>!!p.checkedAt&&String(p.checkedBy||'').includes('@');
+function checkedByName(p){ return (PLAN_CHECKERS.find(c=>c.email===p.checkedBy)||PAYMENT_APPROVERS.find(a=>a.email===p.checkedBy)||{}).name||String(p.checkedBy||'').split('@')[0]; }
+function checkerNames(){ const n=PLAN_CHECKERS.filter(c=>c.active).map(c=>c.name); return n.length?n.join(', '):'the checker'; }
+function pendingCheckForMe(){ return isChecker(MY_EMAIL)?paymentPlansInScope().filter(dppAwaitingCheck):[]; }
+function checkButtonsHtml(p,big){
+  if(!isChecker(MY_EMAIL)||!dppAwaitingCheck(p)) return '';
+  return `<div style="display:flex;gap:6px;margin-top:${big?8:6}px" onclick="event.stopPropagation()"><button type="button" onclick="quickCheckPlan(${p.id},this)" title="Mark as checked, so it appears in the approvers' list. To add a note, use the ⋮ menu" style="border:0;border-radius:${big?10:8}px;background:#2f6fb0;color:#fff;font-size:${big?13.5:11.5}px;font-weight:700;padding:${big?'10px 14px':'5px 10px'};cursor:pointer;white-space:nowrap">✓ Check</button></div>`;
+}
+async function rpcPlanCheck(fn,body){
+  const r=await authedFetch(SB_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok){ let m=await r.text(); try{ m=JSON.parse(m).message||m; }catch(e){} throw new Error(m||('HTTP '+r.status)); }
+  return r.json();
+}
+async function afterCheckChange(){ await reloadDppData(); renderKpiCash(agg()); openPaymentPlans(); }
+async function quickCheckPlan(id,btn){
+  if(btn) btn.disabled=true;
+  try{ await rpcPlanCheck('check_plans',{pids:[id],note:null}); await afterCheckChange(); }
+  catch(e){ if(btn) btn.disabled=false; alert('Failed to check: '+e.message); }
+}
+function openCheckPlan(id){
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  const who=p.planType==='loan_affiliate'?((p.icType?p.icType+' — ':'')+(p.counterparty||'—')):(p.vendor||'—');
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${escH(who)} — ${escH(p.desc||'')}<br>Amount <b style="color:var(--ink)">${fmt(p.amt)}</b>. Once checked, this plan appears in Stan's and Igor's approval list.</div>`
+    +opeField('Note (optional)',`<input id="chk-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button id="chk-send" class="btn" style="background:#2f6fb0;color:#fff;border:0" onclick="doCheckPlan(${id})">✓ Mark as Checked</button><span id="chk-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Check Payment Plan',h,true);
+}
+async function doCheckPlan(id){
+  const err=document.getElementById('chk-err'), btn=document.getElementById('chk-send');
+  err.textContent=''; btn.disabled=true; btn.textContent='Saving…';
+  try{ await rpcPlanCheck('check_plans',{pids:[id],note:(document.getElementById('chk-note').value||'').trim()||null}); await afterCheckChange(); }
+  catch(e){ err.textContent='Failed to check: '+e.message; btn.disabled=false; btn.textContent='✓ Mark as Checked'; }
+}
+function openCheckAllModal(){
+  const list=pendingCheckForMe();
+  if(!list.length) return;
+  const tot=list.reduce((s,p)=>s+p.amt,0);
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">This marks <b>${list.length}</b> plan${list.length===1?'':'s'} as checked (total <b style="color:var(--ink)">${fmt(tot)}</b>). They then appear in Stan's and Igor's approval list.</div>`
+    +'<div style="max-height:200px;overflow-y:auto;border:1px solid #eef2f7;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px">'
+    +list.map(p=>`<div style="padding:3px 0;display:flex;justify-content:space-between;gap:10px"><span>${escH(p.vendor||p.counterparty||p.desc||'—')}</span><span style="white-space:nowrap">${fmt(p.amt)}</span></div>`).join('')
+    +'</div>'
+    +opeField('Note (optional, applied to all)',`<input id="chk-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button id="chk-send" class="btn" style="background:#2f6fb0;color:#fff;border:0" onclick="doCheckAll()">Check All (${list.length})</button><span id="chk-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Check All Awaiting Plans',h,true);
+}
+async function doCheckAll(){
+  const err=document.getElementById('chk-err'), btn=document.getElementById('chk-send');
+  err.textContent='';
+  const list=pendingCheckForMe();
+  if(!list.length) return void closeModal();
+  btn.disabled=true; btn.textContent='Checking…';
+  try{ await rpcPlanCheck('check_plans',{pids:list.map(p=>p.id),note:(document.getElementById('chk-note').value||'').trim()||null}); await afterCheckChange(); }
+  catch(e){ err.textContent='Failed to check: '+e.message; btn.disabled=false; btn.textContent='Check All ('+list.length+')'; }
+}
+function openUncheckPlan(id){
+  const p=DPP.find(x=>x.id===id); if(!p) return;
+  let h=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Your check is removed and the plan goes back to <b>Awaiting check</b>; Stan and Igor no longer see it. Possible only until an approver has decided on it. Who cancelled, when and why stays in the plan's Discussion history.</div>`
+    +opeField('Reason (required)',`<input id="chk-note" style="width:100%;padding:8px 10px;box-sizing:border-box;margin-bottom:10px">`)
+    +`<button id="chk-send" class="btn" style="background:#9a6f0a;color:#fff;border:0" onclick="doUncheckPlan(${id})">↩ Cancel my check</button><span id="chk-err" style="color:var(--red);font-size:12px;margin-left:10px"></span>`;
+  showModal('Cancel Check',h,true);
+}
+async function doUncheckPlan(id){
+  const err=document.getElementById('chk-err'), btn=document.getElementById('chk-send');
+  const reason=(document.getElementById('chk-note').value||'').trim();
+  if(!reason){ err.textContent='A reason is required.'; return; }
+  err.textContent=''; btn.disabled=true;
+  try{ await rpcPlanCheck('uncheck_plan',{pid:id,reason}); await afterCheckChange(); }
+  catch(e){ err.textContent=e.message; btn.disabled=false; }
 }
 // entityCode is required — an approver is only an approver for the PT(s) they're explicitly
 // assigned to (payment_plan_approver_entities), not every PT by default.
@@ -3676,7 +3754,7 @@ function paymentPlanRowHtml(p){
   const canEdit=IS_ADMIN||MY_ROLE==='editor';
   const items=[];
   // An approver can decide, change or cancel their decision at any status; only Paid (and a cancelled plan) is locked.
-  if(isActiveApprover(MY_EMAIL,p.e)&&p.status!=='cancelled'&&!p.paidAt){
+  if(isActiveApprover(MY_EMAIL,p.e)&&p.checkedAt&&p.status!=='cancelled'&&!p.paidAt){
     if(!myDecision){
       items.push(menuItem('✓ Approve',`openDecidePlan(${p.id},'approved')`,'var(--green)'));
       items.push(menuItem('✕ Reject',`openDecidePlan(${p.id},'rejected')`,'var(--red)'));
@@ -3688,6 +3766,8 @@ function paymentPlanRowHtml(p){
       items.push(menuItem('↩ Cancel my rejection',`openWithdrawApproval(${p.id})`,'#9a6f0a'));
     }
   }
+  if(isChecker(MY_EMAIL)&&dppAwaitingCheck(p)) items.push(menuItem('✓ Mark as Checked',`openCheckPlan(${p.id})`,'var(--green)'));
+  if(isChecker(MY_EMAIL)&&p.status==='pending'&&dppHasRealCheck(p)&&!DPP_APPROVALS.some(a=>a.planId===p.id)) items.push(menuItem('↩ Cancel my check',`openUncheckPlan(${p.id})`,'#9a6f0a'));
   if(p.status==='approved'&&!p.paidAt&&canEdit) items.push(menuItem('💰 Mark Paid',`openMarkPlanPaid(${p.id})`,'#2b7a4b'));
   if(canEdit&&p.status==='approved'&&p.approvedAmt!=null&&!p.paidAt) items.push(menuItem('✏️ Edit Approved Amount',`openEditApprovedAmount(${p.id},'openPaymentPlans()')`));
   if(p.paidTxId) items.push(menuItem('🔎 View Opex Transaction',`openTxHistory(${p.paidTxId},'${encodeURIComponent('openPaymentPlans()').replace(/'/g,'%27')}')`));
@@ -3720,15 +3800,16 @@ function paymentPlanRowHtml(p){
     ${docCell}
     <td style="font-size:12px">${paymentPlanProgressText(p)}${(()=>{
       if(p.status!=='pending') return '';
+      if(!p.checkedAt) return `<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Awaiting check: ${escH(checkerNames())}</div>`;
       const pendingNames=approversForEntity(p.e).filter(a=>!DPP_APPROVALS.some(d=>d.planId===p.id&&d.email===a.email)).map(a=>a.name);
       return pendingNames.length?`<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Pending: ${escH(pendingNames.join(', '))}</div>`:'';
     })()}</td>
-    <td>${(p.status!=='cancelled'&&!p.paidAt&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision)
+    <td>${(p.status!=='cancelled'&&!p.paidAt&&p.checkedAt&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision)
       ?(`<div style="display:flex;gap:6px;align-items:center">`
         +`<button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" title="Approve the full amount — for a partial amount or a note, use the ⋮ menu instead" style="border:0;border-radius:8px;background:#2f6fb0;color:#fff;font-size:11.5px;font-weight:700;padding:5px 10px;cursor:pointer;white-space:nowrap">✓ Approve</button>`
         +`<button type="button" onclick="quickDecidePlan(${p.id},'rejected',this)" title="Reject" style="border:1px solid #e4e7ef;background:#fff;color:var(--red);font-size:11.5px;font-weight:700;padding:5px 8px;border-radius:8px;cursor:pointer">✕</button>`
         +`</div>`)
-      :paymentPlanStatusBadge(p)+myDecisionButtons(p)}</td>
+      :paymentPlanStatusBadge(p)+myDecisionButtons(p)+checkButtonsHtml(p)}</td>
     <td style="white-space:nowrap"><a href="#" onclick="event.preventDefault();openPlanThread(${p.id})" style="font-size:12px;color:var(--blue-300);text-decoration:none;font-weight:600">${commentN} comment${commentN===1?'':'s'}</a>${unreadN?` <span style="display:inline-block;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px">${unreadN} new</span>`:''}</td>
     <td style="white-space:nowrap"><button type="button" onclick="togglePlanRowMenu(${p.id},this)" title="Actions" style="border:1px solid #f0cb87;background:#fff4e0;border-radius:999px;cursor:pointer;padding:4px 10px;font-size:16px;font-weight:800;color:#9a6f0a;line-height:1">⋮</button>
       <div id="plan-menu-${p.id}" class="plan-row-menu" style="display:none;position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px -12px rgba(20,27,45,.35);padding:4px;z-index:100001;min-width:170px">${items.join('')}</div>
@@ -3749,7 +3830,7 @@ function togglePlanRowMenu(id,btnEl){
 // Plans still pending, in this scope, that MY_EMAIL is an approver for and hasn't decided on yet
 // — exactly the set "Approve All" acts on, so the button's own count always matches its effect.
 function pendingForMe(){
-  return paymentPlansInScope().filter(p=>p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL));
+  return paymentPlansInScope().filter(p=>p.status==='pending'&&p.checkedAt&&isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL));
 }
 // Column-filter state for the Daily Payment Plan list — persists across reopens within the
 // session (like the rest of the filter bar), reset only via the explicit "Clear filters" link.
@@ -3793,7 +3874,7 @@ function openPaymentPlanHistory(){
 // common reason to open this at all is to clear their own queue, so landing here defaults straight
 // to "Needs My Approval" instead of the full list — a non-approver still gets the old default.
 function openPaymentPlansDefault(){
-  DPP_FILTER={entity:'',vendor:'',category:'',status:isApproverAnywhere(MY_EMAIL)?'mine':'',paidFrom:'',paidTo:''};
+  DPP_FILTER={entity:'',vendor:'',category:'',status:(isChecker(MY_EMAIL)&&pendingCheckForMe().length)?'tocheck':(isApproverAnywhere(MY_EMAIL)?'mine':''),paidFrom:'',paidTo:''};
   openPaymentPlans();
 }
 const DPP_TABLE_HEAD='<tr><th>Date</th><th>Due Date</th><th>Entity</th><th>Vendor</th><th>Category</th><th>Description</th><th class="num">Amount Purpose</th><th class="num">Amount Approve</th><th>Doc</th><th>Approvals</th><th>Status</th><th>Comment</th><th></th></tr></thead>';
@@ -3816,7 +3897,7 @@ function openSharedPlan(id){
     return;
   }
   let h=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:12px;color:var(--muted)">Plan #${id} (dari link)</span>${back}</div>`;
-  if(isMobileViewport()&&isApproverAnywhere(MY_EMAIL)) h+=paymentPlanMobileCardHtml(p);
+  if(isMobileViewport()&&(isApproverAnywhere(MY_EMAIL)||isChecker(MY_EMAIL))) h+=paymentPlanMobileCardHtml(p);
   else h+='<div class="table-scroll"><table><thead>'+DPP_TABLE_HEAD+'<tbody>'+paymentPlanRowHtml(p)+'</tbody></table></div>';
   showModal('Daily Payment Plan',h,true);
   hydrateDppAttachments();
@@ -3851,7 +3932,8 @@ function openPaymentPlans(){
   else if(DPP_FILTER.status==='approved') rows=rows.filter(p=>p.status==='approved'&&!p.paidAt);
   // Same definition as pendingForMe() (and the "Approve All" button it drives) — pending, in scope,
   // this viewer is an active approver for that entity, and hasn't recorded a decision yet.
-  else if(DPP_FILTER.status==='mine') rows=rows.filter(p=>p.status==='pending'&&isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL));
+  else if(DPP_FILTER.status==='mine') rows=rows.filter(p=>p.status==='pending'&&p.checkedAt&&isActiveApprover(MY_EMAIL,p.e)&&!DPP_APPROVALS.some(a=>a.planId===p.id&&a.email===MY_EMAIL));
+  else if(DPP_FILTER.status==='tocheck') rows=rows.filter(dppAwaitingCheck);
   else if(DPP_FILTER.status) rows=rows.filter(p=>p.status===DPP_FILTER.status);
   // Default view (no status picked): a plan already paid belongs in Payment History, not cluttering
   // the working list of what still needs attention — pick "Paid" from the Status filter, or "Paid
@@ -3878,7 +3960,7 @@ function openPaymentPlans(){
   const entOpts=[...new Set(scoped.map(p=>p.e))].sort((a,b)=>(ENT[a]?ENT[a].name:a).localeCompare(ENT[b]?ENT[b].name:b));
   const vendorOpts=[...new Set(scoped.map(p=>p.vendor).filter(Boolean))].sort();
   const catOpts=[...new Set(scoped.map(p=>p.category).filter(Boolean))].sort();
-  const statusOpts=[...(isApproverAnywhere(MY_EMAIL)?[['mine','Needs My Approval']]:[]),['pending','Pending'],['approved','Approved'],['paid','Paid'],['rejected','Rejected'],['cancelled','Cancelled']];
+  const statusOpts=[...((isChecker(MY_EMAIL)||!isApproverAnywhere(MY_EMAIL))?[['tocheck',isChecker(MY_EMAIL)?'Needs My Check':'Awaiting Check']]:[]),...(isApproverAnywhere(MY_EMAIL)?[['mine','Needs My Approval']]:[]),['pending','Pending'],['approved','Approved'],['paid','Paid'],['rejected','Rejected'],['cancelled','Cancelled']];
   const selStyle='padding:6px 10px;border:1px solid #e4e7ef;border-radius:8px;font-size:12px;background:#fff;color:#3a4254';
   const anyFilter=DPP_FILTER.entity||DPP_FILTER.vendor||DPP_FILTER.category||DPP_FILTER.status||dppQ;
   let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">`
@@ -3899,7 +3981,7 @@ function openPaymentPlans(){
   // don't fit a phone screen at all, and an approver opening this on their phone is almost always
   // here to do exactly one thing (read what it's for, see the amount, decide), not audit every
   // column. Anyone else (desktop, or a non-approver on a phone) keeps the normal table.
-  if(isMobileViewport()&&isApproverAnywhere(MY_EMAIL)){
+  if(isMobileViewport()&&(isApproverAnywhere(MY_EMAIL)||isChecker(MY_EMAIL))){
     h+=rows.length?rows.map(p=>paymentPlanMobileCardHtml(p)).join(''):`<div style="text-align:center;color:var(--muted);padding:20px">${scoped.length?'No payment plans match these filters — note Paid ones are hidden by default, pick "Paid" from the Status filter to see them.':'No payment plans in this scope — add one via <b>Update Data → Add a Daily Payment Plan</b>.'}</div>`;
     showModal(DPP_FILTER.status==='paid'?'Payment History':'Daily Payment Plan',h,true);
     restoreDppSearchFocus();
@@ -3960,7 +4042,7 @@ function hydrateDppAttachments(){
 }
 function paymentPlanMobileCardHtml(p){
   const myDecision=DPP_APPROVALS.find(a=>a.planId===p.id&&a.email===MY_EMAIL);
-  const canQuickDecide=p.status!=='cancelled'&&!p.paidAt&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision;
+  const canQuickDecide=p.status!=='cancelled'&&!p.paidAt&&p.checkedAt&&isActiveApprover(MY_EMAIL,p.e)&&!myDecision;
   const who=p.planType==='loan_affiliate'?((p.icType?p.icType+' — ':'')+(p.counterparty||'—')):(p.vendor||'—');
   // Vendor, description, amount, attached document(s) and the action — entity/category/comments/
   // due date are all one tap away via Discussion, not shown here by default (see how this was asked for).
@@ -3976,6 +4058,7 @@ function paymentPlanMobileCardHtml(p){
         </div>`
       :paymentPlanStatusBadge(p)}
     ${myDecisionButtons(p,true)}
+    ${checkButtonsHtml(p,true)}
   </div>`;
 }
 function openApproveAllModal(){
@@ -4052,6 +4135,8 @@ function openPlanThread(id){
     if(it.d){
       const d=it.d, col=d.decision==='approved'?'var(--green)':((d.decision==='withdrawn'||d.decision==='rejection_cancelled')?'#9a6f0a':'var(--red)');
       const amtNote=(d.decision==='approved'&&d.approvedAmt!=null&&d.approvedAmt<p.amt)?` — approved amount ${fmt(d.approvedAmt)}`:'';
+      if(d.decision==='checked') return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:#2f6fb0">✓ ${escH(nameOf(d.email))} checked this plan</span> — now visible to the approvers${d.note?': “'+escH(d.note)+'”':''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
+      if(d.decision==='check_cancelled') return `<div style="margin-bottom:10px;font-size:12.5px;background:#fff7e6;border-radius:10px;padding:8px 12px"><span style="font-weight:700;color:#9a6f0a">↩ ${escH(nameOf(d.email))} cancelled their check</span> — plan back to awaiting check${d.note?`<div style="margin-top:2px">Reason: “${escH(d.note)}”</div>`:''}<div style="color:var(--muted);font-size:11px;margin-top:2px">${fmtTs(d.decidedAt)}</div></div>`;
       if(d.decision==='rejection_cancelled') return `<div style="margin-bottom:10px;font-size:12.5px;background:#fff7e6;border-radius:10px;padding:8px 12px"><span style="font-weight:700;color:${col}">↩ ${escH(nameOf(d.email))} cancelled their rejection</span> — plan back to waiting for approval${d.note?`<div style="margin-top:2px">Reason: “${escH(d.note)}”</div>`:''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
       if(d.decision==='withdrawn') return `<div style="margin-bottom:10px;font-size:12.5px;background:#fff7e6;border-radius:10px;padding:8px 12px"><span style="font-weight:700;color:${col}">↩ ${escH(nameOf(d.email))} cancelled their approval</span> — plan back to pending${d.note?`<div style="margin-top:2px">Reason: “${escH(d.note)}”</div>`:''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
       return `<div style="margin-bottom:10px;font-size:12.5px"><span style="font-weight:700;color:${col}">${escH(nameOf(d.email))} ${d.decision}</span> this plan${amtNote}${d.note?': “'+escH(d.note)+'”':''}<div style="color:var(--muted);font-size:11px">${fmtTs(d.decidedAt)}</div></div>`;
@@ -9242,7 +9327,7 @@ async function refreshOpexGroupMap(){
   return OPEX_CAT_TO_GROUP;
 }
 async function loadFromSupabase(){
-  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,approverEntities,dpp,dppApprovals,dppLog,dppComments,dppReads,dppAttLog]=await Promise.all([
+  const [ents,li,tots,loans,hls,txAll,outs,opays,fixc,approvers,approverEntities,dpp,dppApprovals,dppLog,dppComments,dppReads,dppAttLog,plCheckers]=await Promise.all([
     sbFetch('entities?select=*&order=sort_order'),
     sbFetch('line_items?select=*&period_code=eq.MAY&limit=2000'),
     sbFetch('entity_period_totals?select=*&limit=2000'),
@@ -9260,6 +9345,7 @@ async function loadFromSupabase(){
     sbFetchAll('daily_payment_plan_comments?select=*&order=created_at').catch(()=>[]),
     sbFetchAll('daily_payment_plan_reads?select=*').catch(()=>[]),
     sbFetchAll('daily_payment_plan_attachment_log?select=*&order=at').catch(()=>[]),
+    sbFetch('payment_plan_checkers?select=*').catch(()=>[]),
     refreshOpexGroupMap()
   ]);
   const fk={revenue:'rev',opex:'opex',financing_in:'finIn',financing_out:'finOut'};
@@ -9289,6 +9375,7 @@ async function loadFromSupabase(){
     DPP_APPROVALS:(dppApprovals||[]).map(mkDppApproval),
     DPP_LOG:(dppLog||[]).map(mkDppLog),
     DPP_ATT_LOG:(dppAttLog||[]).map(mkDppAttLog),
+    PLAN_CHECKERS:(plCheckers||[]).map(c=>({email:c.email,name:c.name||c.email,active:c.is_active!==false})),
     DPP_COMMENTS:(dppComments||[]).map(mkDppComment),
     DPP_READS:(dppReads||[]).map(r=>({planId:r.plan_id,email:r.email,lastReadAt:r.last_read_at})),
     TX:Object.values(bs).flat(),
@@ -9324,6 +9411,7 @@ let OUTSTANDING=[];
 let OUTSTANDING_PAYMENTS=[];
 let FIXCOST=[];
 let PAYMENT_APPROVERS=[];
+let PLAN_CHECKERS=[];   // people who must check a plan before Stan/Igor can see it (payment_plan_checkers)
 let DPP=[];
 let DPP_APPROVALS=[];
 let DPP_ATT_LOG=[];   // every attachment add / replace / remove on a plan, oldest first
@@ -9334,7 +9422,7 @@ function mkApprover(r,approverEntities){
   const entities=(approverEntities||[]).filter(e=>e.approver_email===r.email).map(e=>e.entity_code);
   return {email:r.email,name:r.name||r.email,active:r.is_active!==false,entities};
 }
-function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[],paidAt:r.paid_at||null,paidBy:r.paid_by||null,paidTxId:r.paid_tx_id||null,paidAmountIdr:r.paid_amount_idr==null?null:+r.paid_amount_idr,sourceOutstandingId:r.source_outstanding_id||null,planType:r.plan_type||'opex',counterparty:r.counterparty||null,icType:r.ic_type||null,paidIcTxId:r.paid_ic_tx_id||null}; }
+function mkDpp(r){ return {id:r.id,e:r.entity_code,date:r.plan_date,due:r.due_date,vendor:r.vendor,category:r.category,desc:r.description,amt:+r.amount_idr,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr,status:r.status,approvedCount:r.approved_count||0,requestedBy:r.requested_by,attachments:Array.isArray(r.attachments)?r.attachments:[],paidAt:r.paid_at||null,paidBy:r.paid_by||null,paidTxId:r.paid_tx_id||null,paidAmountIdr:r.paid_amount_idr==null?null:+r.paid_amount_idr,sourceOutstandingId:r.source_outstanding_id||null,planType:r.plan_type||'opex',counterparty:r.counterparty||null,icType:r.ic_type||null,paidIcTxId:r.paid_ic_tx_id||null,checkedAt:r.checked_at||null,checkedBy:r.checked_by||null,checkNote:r.check_note||null}; }
 function mkDppComment(r){ return {id:r.id,planId:r.plan_id,email:r.author_email,body:r.body,createdAt:r.created_at}; }
 function mkDppAttLog(r){ return {id:r.id,planId:r.plan_id,email:r.actor_email,action:r.action,name:r.file_name,path:r.file_path,oldName:r.old_file_name,oldPath:r.old_file_path,note:r.note,at:r.at}; }
 function mkDppLog(r){ return {id:r.id,planId:r.plan_id,email:r.approver_email,action:r.action,note:r.note,at:r.at,approvedAmt:r.approved_amount_idr==null?null:+r.approved_amount_idr}; }
@@ -9937,6 +10025,7 @@ async function runDashboard(){
   DPP_APPROVALS=D.DPP_APPROVALS;
   DPP_LOG=D.DPP_LOG||[];
   DPP_ATT_LOG=D.DPP_ATT_LOG||[];
+  PLAN_CHECKERS=D.PLAN_CHECKERS||[];
   DPP_COMMENTS=D.DPP_COMMENTS;
   DPP_READS=D.DPP_READS;
   EIDS=Object.keys(ENT);
