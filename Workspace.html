@@ -3642,8 +3642,7 @@ function paymentPlanStatusBadge(p){
     return `<div style="font-size:11px;font-weight:600;color:var(--muted);white-space:normal;margin-top:2px" title="${escH(last.note||'')}">↩ ${escH(nm)} cancelled their ${last.action==='withdrawn'?'approval':'rejection'} (${day})</div>`
       +(last.note?`<div style="font-size:11px;font-weight:400;color:var(--muted);white-space:normal;margin-top:1px">“${escH(last.note)}”</div>`:'');
   })():'';
-  const chk=dppHasRealCheck(p)?`<div style="font-size:11px;font-weight:600;color:var(--muted);white-space:normal;margin-top:2px" title="${escH(p.checkNote||'')}">✓ Checked by ${escH(checkedByName(p))}</div>`:'';
-  return `<span style="color:#9a6f0a;font-weight:700">Pending</span>${chk}${wd}`;
+  return `<span style="color:#9a6f0a;font-weight:700">Pending</span>${wd}`;
 }
 // ---- Checker step: finance uploads a plan -> the checker (Diana) checks it -> only then does it show up
 // for Stan and Igor to approve. The database enforces this (plans are hidden from them and their
@@ -3653,6 +3652,16 @@ const dppAwaitingCheck=p=>p.status==='pending'&&!p.checkedAt;
 const dppHasRealCheck=p=>!!p.checkedAt&&String(p.checkedBy||'').includes('@');
 function checkedByName(p){ return (PLAN_CHECKERS.find(c=>c.email===p.checkedBy)||PAYMENT_APPROVERS.find(a=>a.email===p.checkedBy)||{}).name||String(p.checkedBy||'').split('@')[0]; }
 function checkerNames(){ const n=PLAN_CHECKERS.filter(c=>c.active).map(c=>c.name); return n.length?n.join(', '):'the checker'; }
+// The "checked by" proof every viewer (approvers above all) sees on the plan itself: who, when, and
+// their note. A plan that predates the checker step says so instead of showing nothing.
+function checkedLineHtml(p,big){
+  if(!p.checkedAt) return '';
+  const fs=big?12:11;
+  if(!dppHasRealCheck(p)) return `<div style="font-size:${fs}px;color:var(--muted);margin-top:2px">Plan from before the checker step</div>`;
+  const day=new Date(p.checkedAt).toLocaleDateString('en-CA',{timeZone:'Asia/Makassar'});
+  return `<div style="font-size:${fs}px;font-weight:700;color:var(--green);white-space:normal;margin-top:2px">✓ Checked by ${escH(checkedByName(p))} · ${day}</div>`
+    +(p.checkNote?`<div style="font-size:${fs}px;color:var(--muted);white-space:normal">“${escH(p.checkNote)}”</div>`:'');
+}
 function pendingCheckForMe(){ return isChecker(MY_EMAIL)?paymentPlansInScope().filter(dppAwaitingCheck):[]; }
 function checkButtonsHtml(p,big){
   if(!isChecker(MY_EMAIL)||!dppAwaitingCheck(p)) return '';
@@ -3798,7 +3807,7 @@ function paymentPlanRowHtml(p){
     <td class="num">${fmt(p.amt)}</td>
     <td class="num">${(p.status!=='approved'||p.approvedAmt==null)?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
-    <td style="font-size:12px">${paymentPlanProgressText(p)}${(()=>{
+    <td style="font-size:12px">${paymentPlanProgressText(p)}${checkedLineHtml(p)}${(()=>{
       if(p.status!=='pending') return '';
       if(!p.checkedAt) return `<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Awaiting check: ${escH(checkerNames())}</div>`;
       const pendingNames=approversForEntity(p.e).filter(a=>!DPP_APPROVALS.some(d=>d.planId===p.id&&d.email===a.email)).map(a=>a.name);
@@ -4051,6 +4060,7 @@ function paymentPlanMobileCardHtml(p){
     <div style="font-size:13.5px;color:var(--ink);line-height:1.4;margin-bottom:8px">${escH(p.desc||'—')}</div>
     <div style="font-size:19px;font-weight:800;color:var(--ink);margin-bottom:10px">${fmt(p.amt)}</div>
     ${dppMobileAttachmentsHtml(p)}
+    ${checkedLineHtml(p,true)}<div style="height:8px"></div>
     ${canQuickDecide
       ?`<div style="display:flex;gap:8px" onclick="event.stopPropagation()">
           <button type="button" onclick="quickDecidePlan(${p.id},'approved',this)" style="flex:1;border:0;border-radius:10px;background:#2f6fb0;color:#fff;font-size:13.5px;font-weight:700;padding:10px;cursor:pointer">✓ Approve</button>
@@ -4129,6 +4139,8 @@ function openPlanThread(id){
   const approveFinal=p.status==='approved'&&p.approvedAmt!=null;
   const editApproveLink=(canEditThread&&approveFinal&&!p.paidAt)?` <a href="#" onclick="event.preventDefault();openEditApprovedAmount(${id},'openPlanThread(${id})')" style="font-size:11px;color:var(--blue-300);text-decoration:none">✏️ edit</a>`:'';
   h+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${escH(p.vendor||'—')} — ${escH(p.desc||'')} &nbsp;·&nbsp; Purpose <b style="color:var(--ink)">${fmt(p.amt)}</b>${approveFinal?` &nbsp;·&nbsp; Approve <b style="color:${p.approvedAmt<p.amt?'#9a6f0a':'var(--ink)'}">${fmt(p.approvedAmt)}</b>${editApproveLink}`:''}${p.due?` &nbsp;·&nbsp; Due ${escH(p.due)}`:''} &nbsp;·&nbsp; ${paymentPlanProgressText(p)} approved &nbsp;·&nbsp; ${paymentPlanStatusBadge(p)}</div>`;
+  if(p.checkedAt) h+=`<div style="margin:-4px 0 12px">${checkedLineHtml(p,true)}</div>`;
+  else if(p.status==='pending') h+=`<div style="margin:-4px 0 12px;font-size:12px;font-weight:700;color:#2f6fb0">Awaiting check by ${escH(checkerNames())}</div>`;
   if(canEditThread&&!dppAttLocked(p)) h+=`<div style="margin:-4px 0 12px"><a href="#" onclick="event.preventDefault();openManageAttachments(${id},'openPlanThread(${id})')" style="font-size:12px;color:var(--blue-300);text-decoration:none">📎 Manage attachments (${(p.attachments||[]).length})</a></div>`;
   h+='<div style="max-height:340px;overflow-y:auto;border:1px solid #eef2f7;border-radius:10px;padding:12px;margin-bottom:12px">';
   h+=items.length?items.map(it=>{
