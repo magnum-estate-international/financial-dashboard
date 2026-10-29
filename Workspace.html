@@ -3786,9 +3786,9 @@ function paymentPlanRowHtml(p){
     <td class="num">${fmt(p.amt)}</td>
     <td class="num">${(p.status!=='approved'||p.approvedAmt==null)?'—':(p.approvedAmt<p.amt?`<span style="color:#9a6f0a;font-weight:700">${fmt(p.approvedAmt)}</span>`:fmt(p.approvedAmt))}</td>
     ${docCell}
-    <td style="font-size:12px">${paymentPlanProgressText(p)}${checkedLineHtml(p)}${(()=>{
+    <td style="font-size:12px">${(p.status==='pending'&&!p.checkedAt)?'<span style="color:var(--muted)">—</span>':paymentPlanProgressText(p)}${checkedLineHtml(p)}${(()=>{
       if(p.status!=='pending') return '';
-      if(!p.checkedAt) return `<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Awaiting check: ${escH(checkerNames())}</div>`;
+      if(!p.checkedAt) return '';
       const pendingNames=approversForEntity(p.e).filter(a=>!DPP_APPROVALS.some(d=>d.planId===p.id&&d.email===a.email)).map(a=>a.name);
       return pendingNames.length?`<div style="color:var(--muted);font-size:11px;white-space:normal;margin-top:2px">Pending: ${escH(pendingNames.join(', '))}</div>`:'';
     })()}</td>
