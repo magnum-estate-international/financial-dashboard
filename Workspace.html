@@ -10157,6 +10157,67 @@ async function checkAdmin(){
   catch(e){ MY_ROLE='viewer'; }
   if(IS_ADMIN) MY_ROLE='editor';
 }
+/* ── Profile photo ─────────────────────────────────────────────────────── */
+// Stored as a small (256px JPEG) data URL in user_avatars, one row per user. Cached in
+// localStorage so the header paints the photo immediately instead of flashing the initial.
+const AVATAR_KEY=e=>'mag_avatar_'+e;
+function avatarCacheGet(e){ try{ return localStorage.getItem(AVATAR_KEY(e))||''; }catch(_){ return ''; } }
+function avatarCacheSet(e,v){ try{ if(v) localStorage.setItem(AVATAR_KEY(e),v); else localStorage.removeItem(AVATAR_KEY(e)); }catch(_){} }
+function paintAvatar(photo){
+  const el=document.getElementById('mag-avatar'); if(!el) return;
+  const email=SESSION?jwtEmail(SESSION.access_token):'';
+  if(photo){ el.style.background='url("'+photo+'") center/cover no-repeat'; el.textContent=''; }
+  else { el.style.background='linear-gradient(135deg,#c89a4a,#ecd7a3)'; el.textContent=(email||'?').charAt(0).toUpperCase(); }
+  const rm=document.getElementById('mag-photo-remove'); if(rm) rm.style.display=photo?'flex':'none';
+}
+function resizeToAvatar(file){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      const S=256, c=document.createElement('canvas'); c.width=c.height=S;
+      const side=Math.min(img.naturalWidth,img.naturalHeight);
+      const sx=(img.naturalWidth-side)/2, sy=(img.naturalHeight-side)/2;
+      const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,S,S);
+      g.drawImage(img,sx,sy,side,side,0,0,S,S);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg',0.85));
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('This image format is not supported. Please use a JPG or PNG photo.')); };
+    img.src=url;
+  });
+}
+async function saveAvatar(file){
+  const email=SESSION?jwtEmail(SESSION.access_token):'';
+  if(!file||!email) return;
+  if(!/^image\//.test(file.type)){ alert('Please choose an image file (JPG or PNG).'); return; }
+  try{
+    const photo=await resizeToAvatar(file);
+    const r=await authedFetch(SB_URL+'/rest/v1/user_avatars?on_conflict=email',{method:'POST',
+      headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify({email,photo,updated_at:new Date().toISOString()})});
+    if(!r.ok) throw new Error('Could not save the photo ('+r.status+').');
+    avatarCacheSet(email,photo); paintAvatar(photo);
+  }catch(err){ alert(err.message||'Could not save the photo.'); }
+}
+async function removeAvatar(){
+  const email=SESSION?jwtEmail(SESSION.access_token):'';
+  if(!email) return;
+  try{
+    const r=await authedFetch(SB_URL+'/rest/v1/user_avatars?email=eq.'+encodeURIComponent(email),{method:'DELETE'});
+    if(!r.ok) throw new Error('Could not remove the photo ('+r.status+').');
+    avatarCacheSet(email,''); paintAvatar('');
+  }catch(err){ alert(err.message||'Could not remove the photo.'); }
+}
+async function loadAvatar(){
+  const email=SESSION?jwtEmail(SESSION.access_token):'';
+  if(!email) return;
+  try{
+    const rows=await sbFetch('user_avatars?select=photo&email=eq.'+encodeURIComponent(email));
+    const photo=(rows&&rows[0]&&rows[0].photo)||'';
+    avatarCacheSet(email,photo); paintAvatar(photo);
+  }catch(_){}
+}
 function showUserBar(){
   if(document.getElementById('mag-userbar')) return;
   const email=SESSION?jwtEmail(SESSION.access_token):'';
@@ -10178,7 +10239,7 @@ function showUserBar(){
     +'<button id="mag-history-open" style="'+pill+'">'+icClock+' History</button>'
     +'<div style="position:relative;margin-left:2px">'
       +'<button id="mag-profile-btn" style="border:0;background:none;cursor:pointer;padding:4px 6px;border-radius:12px;display:flex;align-items:center;gap:9px;font-family:inherit">'
-        +'<span style="width:32px;height:32px;flex:none;border-radius:50%;background:linear-gradient(135deg,#c89a4a,#ecd7a3);color:#20170a;font-weight:700;font-size:13px;display:inline-grid;place-items:center">'+initial+'</span>'
+        +'<span id="mag-avatar" style="width:32px;height:32px;flex:none;border-radius:50%;background:linear-gradient(135deg,#c89a4a,#ecd7a3);color:#20170a;font-weight:700;font-size:13px;display:inline-grid;place-items:center;overflow:hidden">'+initial+'</span>'
         +'<span style="text-align:left;line-height:1.3"><span style="display:block;font-size:13px;font-weight:700;color:#f6f7fb">'+escH(name)+'</span><span style="display:block;font-size:11px;color:#9098af">'+roleLabel+'</span></span>'
         +icChevron
       +'</button>'
@@ -10192,9 +10253,19 @@ function showUserBar(){
   const pm=document.createElement('div');
   pm.id='mag-profile-menu';
   pm.style.cssText='display:none;position:fixed;min-width:220px;background:#fff;border:1px solid #ece5d6;border-radius:14px;box-shadow:0 16px 40px -18px rgba(20,27,45,.35);padding:10px;z-index:9999;font-family:Plus Jakarta Sans,system-ui,sans-serif';
-  pm.innerHTML=(IS_ADMIN?'<button id="mag-admin-open" style="'+menuItem+'">'+icGear+' Manage access</button>':'')
+  const icCamera='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>';
+  const icTrash='<svg class="svgic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.75"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+  pm.innerHTML='<button id="mag-photo-change" style="'+menuItem+'">'+icCamera+' Change photo</button>'
+    +'<button id="mag-photo-remove" style="'+menuItem+';display:none">'+icTrash+' Remove photo</button>'
+    +'<input id="mag-photo-file" type="file" accept="image/*" style="display:none">'
+    +(IS_ADMIN?'<button id="mag-admin-open" style="'+menuItem+'">'+icGear+' Manage access</button>':'')
     +'<button id="mag-signout" style="'+menuItem+'">'+icLogout+' Sign out</button>';
   document.body.appendChild(pm);
+  const pf=document.getElementById('mag-photo-file');
+  document.getElementById('mag-photo-change').onclick=()=>pf.click();
+  pf.onchange=()=>{ const f=pf.files&&pf.files[0]; pf.value=''; pm.style.display='none'; saveAvatar(f); };
+  document.getElementById('mag-photo-remove').onclick=()=>{ pm.style.display='none'; removeAvatar(); };
+  paintAvatar(avatarCacheGet(email)); loadAvatar();
   document.getElementById('mag-signout').onclick=signOut;
   const ab=document.getElementById('mag-admin-open'); if(ab) ab.onclick=openAdminPanel;
   const eb=document.getElementById('mag-entry-open'); if(eb) eb.onclick=openEntryPanel;
