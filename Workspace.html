@@ -273,22 +273,29 @@ a{color:#9a6f0a}
 @media(max-width:980px){.kpi3{grid-template-columns:repeat(2,1fr)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
 @media print{.toolbar{display:none}}
-/* "PDF" button in the modal header prints just the open modal (whatever filters/search are applied
-   to it), via the browser's Save as PDF. Everything else on the page is hidden while printing. */
+/* "PDF" button in the modal header: printModalPdf() builds a clean #print-sheet (letterhead, title,
+   active filters, the view's tables without any controls) and prints only that, via Save as PDF. */
+#print-sheet{display:none}
 @media print{
-  @page{size:A4 landscape;margin:10mm}
+  @page{size:A4 landscape;margin:12mm 12mm 14mm;@bottom-right{content:"Page " counter(page) " of " counter(pages);font:9px 'Plus Jakarta Sans',system-ui,sans-serif;color:#6b7390}}
   body.printing-modal{background:#fff!important}
-  body.printing-modal>*:not(#overlay){display:none!important}
-  body.printing-modal #overlay{position:static!important;display:block!important;background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;padding:0!important}
-  body.printing-modal .modal{max-height:none!important;overflow:visible!important;max-width:none!important;box-shadow:none!important;border:0!important;border-radius:0!important}
-  body.printing-modal .modal-head{position:static!important;padding:0 0 10px!important}
-  body.printing-modal .modal-head .x,body.printing-modal #mBody button[title="Actions"]{display:none!important}
-  body.printing-modal .modal-body{padding:10px 0 0!important}
-  body.printing-modal #mBody *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  body.printing-modal #mBody .table-scroll{max-height:none!important;overflow:visible!important}
-  body.printing-modal #mBody thead{display:table-header-group}
-  body.printing-modal #mBody tr{break-inside:avoid}
-  body.printing-modal #mBody details>summary{list-style:none}
+  body.printing-modal>*:not(#print-sheet){display:none!important}
+  body.printing-modal #print-sheet{display:block!important;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#141b2d;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print-sheet .ps-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #c89a4a;padding-bottom:8px;margin-bottom:14px}
+  #print-sheet .ps-brand{font-size:9px;font-weight:800;letter-spacing:1.6px;color:#9a6f0a;text-transform:uppercase}
+  #print-sheet .ps-brand b{display:block;font-size:11px;letter-spacing:.4px;color:#141b2d;text-transform:none;margin-top:2px}
+  #print-sheet .ps-meta{font-size:9px;color:#6b7390;text-align:right;line-height:1.5}
+  #print-sheet h1{font-size:20px;font-weight:800;letter-spacing:-.3px;margin:0 0 6px}
+  #print-sheet .ps-filters{font-size:10.5px;color:#3a4254;margin-bottom:12px}
+  #print-sheet .ps-filters span{display:inline-block;background:#faf3e2;color:#7a5a08;border-radius:10px;padding:2px 9px;margin:0 5px 3px 0;font-weight:700}
+  #print-sheet .table-scroll{max-height:none!important;overflow:visible!important;border-radius:0}
+  #print-sheet table{font-size:10.5px;width:100%;border-collapse:collapse}
+  #print-sheet thead{display:table-header-group}
+  #print-sheet th{border-bottom:1.5px solid #141b2d;padding:6px 8px;color:#3a4254;font-size:8.5px;position:static!important;background:none!important}
+  #print-sheet td{padding:5px 8px;border-bottom:1px solid #e4e7ef;vertical-align:top}
+  #print-sheet tr{break-inside:avoid}
+  #print-sheet *{box-shadow:none!important;cursor:auto!important}
+  #print-sheet .ps-foot{margin-top:14px;font-size:9px;color:#8891a8;border-top:1px solid #e4e7ef;padding-top:6px}
 }
 </style>
 <meta property="og:title" content="Group Consolidated Financial Dashboard · May 2026 · 17 Entities" data-id="th-modified" ><meta name="description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:description" content="Group Consolidated May - 22 June 2026 (corrected)" data-id="th-modified" ><meta property="og:url" content="https://salmon-emmie-62.tiiny.site/" data-id="th-modified" ><meta property="og:type" content="website" data-id="th-modified" ></head>
@@ -4934,13 +4941,27 @@ function showModal(title,html,wide,opts){
 }
 function printModalPdf(){
   const title=document.getElementById('mTitle').textContent, oldTitle=document.title;
-  const stamp=document.createElement('div');
-  stamp.style.cssText='margin-top:14px;font-size:10px;color:#6b7390;border-top:1px solid #e4e7ef;padding-top:6px';
-  stamp.textContent='Magnum Group Financial Dashboard · generated '+new Date().toLocaleString('en-GB',{timeZone:'Asia/Makassar',dateStyle:'medium',timeStyle:'short'})+' WITA'+(MY_EMAIL?' by '+MY_EMAIL:'');
-  document.getElementById('mBody').appendChild(stamp);
+  const stampTxt=new Date().toLocaleString('en-GB',{timeZone:'Asia/Makassar',dateStyle:'long',timeStyle:'short'})+' WITA';
+  const body=document.getElementById('mBody').cloneNode(true); body.removeAttribute('id'); body.className='';
+  // Active filter chips (buttons not styled ghost) + a typed search become a "Filters" line; every
+  // other control (buttons, inputs, menus, drill-down chevrons, sort carets) is dropped from the copy.
+  const filters=[...body.querySelectorAll('button.btn:not(.btn-ghost)')].map(b=>b.textContent.trim()).filter(t=>t&&t.length<40);
+  body.querySelectorAll('input[type=search],input[type=text],input:not([type])').forEach(i=>{ if(i.value&&i.value.trim()) filters.push('Search: “'+i.value.trim()+'”'); });
+  body.querySelectorAll('button,input,select,textarea,svg,script,style').forEach(el=>el.remove());
+  body.querySelectorAll('span,a,b').forEach(el=>{ if(/^[›▸▾▴↗]$/.test(el.textContent.trim())) el.remove(); });
+  body.querySelectorAll('th').forEach(th=>{ th.textContent=th.textContent.replace(/[⇅▲▼▾▴]/g,'').replace(/\s+/g,' ').trim(); });
+  body.querySelectorAll('details').forEach(d=>d.open=true);
+  body.querySelectorAll('tr').forEach(tr=>{ if(tr.style.display==='none') tr.style.display=''; });
+  body.querySelectorAll('[style*="max-height"],[style*="overflow"]').forEach(el=>{ el.style.maxHeight='none'; el.style.overflow='visible'; });
+  const sheet=document.createElement('div'); sheet.id='print-sheet';
+  const filt=filters.length?'<div class="ps-filters">'+filters.map(f=>'<span>'+escH(f)+'</span>').join('')+'</div>':'';
+  sheet.innerHTML='<div class="ps-top"><div class="ps-brand">Magnum Group<b>Financial Dashboard</b></div><div class="ps-meta">Generated '+escH(stampTxt)+(MY_EMAIL?'<br>by '+escH(MY_EMAIL):'')+'</div></div>'
+    +'<h1>'+escH(title)+'</h1>'+filt;
+  sheet.appendChild(body);
+  document.body.appendChild(sheet);
   document.title=title.replace(/[\\/:*?"<>|]+/g,' ').trim()+' — '+new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Makassar'});
   document.body.classList.add('printing-modal');
-  const done=()=>{ document.body.classList.remove('printing-modal'); document.title=oldTitle; stamp.remove(); window.removeEventListener('afterprint',done); };
+  const done=()=>{ document.body.classList.remove('printing-modal'); document.title=oldTitle; sheet.remove(); window.removeEventListener('afterprint',done); };
   window.addEventListener('afterprint',done);
   setTimeout(()=>window.print(),50);
 }
