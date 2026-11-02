@@ -3899,7 +3899,7 @@ function openSharedPlan(id){
   const p=DPP.find(x=>x.id===id);
   const back=`<button type="button" onclick="openPaymentPlansDefault()" style="border:0;background:none;color:var(--blue-300);font-size:12px;font-weight:700;cursor:pointer">Lihat semua plan ›</button>`;
   if(!p){
-    showModal('Daily Payment Plan',`<div style="color:var(--muted);padding:12px 0">Plan #${id} tidak ditemukan — kemungkinan sudah dihapus, atau Anda tidak punya akses ke PT-nya.</div>${back}`,true);
+    showModal('Daily Payment Plan',`<div style="color:var(--muted);padding:12px 0">Plan #${id} tidak ditemukan — kemungkinan sudah dihapus, atau Anda tidak punya akses ke PT-nya.${(isApproverAnywhere(MY_EMAIL)&&!isChecker(MY_EMAIL))?`<div style="margin-top:8px"><b>Jika Anda approver:</b> plan baru muncul untuk approver setelah dicek oleh ${escH(checkerNames())}. Kalau plan ini belum dicek, ia belum bisa dilihat dan akan muncul otomatis begitu sudah dicek.</div>`:''}</div>${back}`,true);
     return;
   }
   let h=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:12px;color:var(--muted)">Plan #${id} (dari link)</span>${back}</div>`;
