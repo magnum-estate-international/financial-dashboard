@@ -4106,6 +4106,23 @@ async function doApproveAll(){
 // Merges approve/reject decisions and free-text comments into one shared, chronological
 // timeline — anyone who can view this plan (any role, not just approvers) can read it, and
 // can post a comment, per the "everyone with view access can participate" requirement.
+const DPP_TRANSLATIONS={};
+async function translateComment(cid){
+  const out=document.getElementById('tr-out-'+cid), btn=document.getElementById('tr-btn-'+cid);
+  if(!out||!btn) return;
+  if(DPP_TRANSLATIONS[cid]){ delete DPP_TRANSLATIONS[cid]; out.style.display='none'; btn.textContent='🌐 Translate to English'; return; }
+  const c=DPP_COMMENTS.find(x=>x.id===cid); if(!c) return;
+  btn.textContent='Translating…'; btn.style.pointerEvents='none';
+  try{
+    const r=await authedFetch(SB_URL+'/functions/v1/translate-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:c.body})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||!d.translation) throw new Error(d.error||('HTTP '+r.status));
+    DPP_TRANSLATIONS[cid]=d.translation;
+    out.querySelector('span').textContent=d.translation;
+    out.style.display='block'; btn.textContent='Hide translation';
+  }catch(e){ btn.textContent='🌐 Translate to English'; alert('Could not translate: '+e.message); }
+  finally{ btn.style.pointerEvents=''; }
+}
 function openPlanThread(id){
   const p=DPP.find(x=>x.id===id); if(!p) return;
   markPlanThreadRead(id);
@@ -4168,7 +4185,8 @@ function openPlanThread(id){
     return `<div style="margin-bottom:10px;background:#f7f8fd;border-radius:10px;padding:8px 12px">
       <div style="font-size:12.5px;font-weight:700;color:var(--blue-900)">${escH(nameOf(c.email))}</div>
       <div style="font-size:12.5px;color:var(--ink);white-space:pre-wrap">${escH(c.body)}</div>
-      <div style="color:var(--muted);font-size:11px;margin-top:2px">${fmtTs(c.createdAt)}</div>
+      <div id="tr-out-${c.id}" style="display:${DPP_TRANSLATIONS[c.id]?'block':'none'};margin-top:6px;padding:6px 10px;background:#fff;border:1px solid #e4e7ef;border-radius:8px;font-size:12.5px;color:var(--ink);white-space:pre-wrap"><div style="font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--muted);margin-bottom:2px">ENGLISH</div><span>${escH(DPP_TRANSLATIONS[c.id]||'')}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:2px"><span style="color:var(--muted);font-size:11px">${fmtTs(c.createdAt)}</span><a href="#" id="tr-btn-${c.id}" onclick="event.preventDefault();translateComment(${c.id})" style="font-size:11px;font-weight:600;color:var(--blue-300);text-decoration:none">${DPP_TRANSLATIONS[c.id]?'Hide translation':'🌐 Translate to English'}</a></div>
     </div>`;
   }).join(''):'<div style="text-align:center;color:var(--muted);padding:20px;font-size:12.5px">No activity yet — be the first to comment.</div>';
   h+='</div>';
