@@ -282,12 +282,14 @@ a{color:#9a6f0a}
   body.printing-modal>*:not(#print-sheet){display:none!important}
   body.printing-modal #print-sheet{display:block!important;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#141b2d;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   #print-sheet .ps-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #c89a4a;padding-bottom:8px;margin-bottom:14px}
-  #print-sheet .ps-brand{font-size:9px;font-weight:800;letter-spacing:1.6px;color:#9a6f0a;text-transform:uppercase}
-  #print-sheet .ps-brand b{display:block;font-size:11px;letter-spacing:.4px;color:#141b2d;text-transform:none;margin-top:2px}
+  #print-sheet .ps-brand{font-size:8.5px;font-weight:800;letter-spacing:1.6px;color:#9a6f0a;text-transform:uppercase}
+  #print-sheet .ps-org{font-size:17px;font-weight:800;letter-spacing:-.2px;margin-top:3px}
+  #print-sheet .ps-sub{font-size:10px;color:#6b7390;margin-top:1px}
   #print-sheet .ps-meta{font-size:9px;color:#6b7390;text-align:right;line-height:1.5}
   #print-sheet h1{font-size:20px;font-weight:800;letter-spacing:-.3px;margin:0 0 6px}
   #print-sheet .ps-filters{font-size:10.5px;color:#3a4254;margin-bottom:12px}
   #print-sheet .ps-filters span{display:inline-block;background:#faf3e2;color:#7a5a08;border-radius:10px;padding:2px 9px;margin:0 5px 3px 0;font-weight:700}
+  #print-sheet .ps-filters span.k{background:#eef2f7;color:#3a4254}
   #print-sheet .table-scroll{max-height:none!important;overflow:visible!important;border-radius:0}
   #print-sheet table{font-size:10.5px;width:100%;border-collapse:collapse}
   #print-sheet thead{display:table-header-group}
@@ -4954,9 +4956,22 @@ function printModalPdf(){
   body.querySelectorAll('tr').forEach(tr=>{ if(tr.style.display==='none') tr.style.display=''; });
   body.querySelectorAll('[style*="max-height"],[style*="overflow"]').forEach(el=>{ el.style.maxHeight='none'; el.style.overflow='visible'; });
   const sheet=document.createElement('div'); sheet.id='print-sheet';
-  const filt=filters.length?'<div class="ps-filters">'+filters.map(f=>'<span>'+escH(f)+'</span>').join('')+'</div>':'';
-  sheet.innerHTML='<div class="ps-top"><div class="ps-brand">Magnum Group<b>Financial Dashboard</b></div><div class="ps-meta">Generated '+escH(stampTxt)+(MY_EMAIL?'<br>by '+escH(MY_EMAIL):'')+'</div></div>'
-    +'<h1>'+escH(title)+'</h1>'+filt;
+  // Letterhead follows the dashboard's current View (group / single entity), so a report on one PT
+  // is headed by that PT rather than a generic name. Period is only stated for views that are
+  // actually driven by the Period selector — standing lists (payment plans, fix costs, liabilities,
+  // …) aren't, and a period on them would imply a date range their data doesn't have.
+  const clean=t=>String(t||'').replace(/\u00a0/g,' ').replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF▸]/gu,'').replace(/\s+/g,' ').trim();
+  const scSel=document.getElementById('scopeSel'), scVal=scSel?scSel.value:'all';
+  const scTxt=clean(scSel&&scSel.selectedOptions[0]?scSel.selectedOptions[0].text:'All Groups — Consolidated');
+  const orgName=scVal==='all'?'Magnum Group':scVal.startsWith('g:')?scTxt.split(' — ')[0]:scTxt;
+  const orgSub=scVal==='all'?'Consolidated · all entities':scVal.startsWith('g:')?'Group consolidated':'Single entity';
+  const standing=/payment plan|discussion|payment history|fix cost|outstanding|liabilit|approver|vendor|categor|bank|loan|receivable/i.test(title);
+  const per=MONTH==='CUSTOM'?(CUSTOM_MONTHS.map(m=>MONTHS[m]||m).join(', ')||'Custom range'):(MONTHS[MONTH]||'');
+  const ctx=[['View',scTxt]].concat(standing||!per?[]:[['Period',per]]);
+  const chips=ctx.map(([k,v])=>'<span class="k">'+escH(k)+': '+escH(v)+'</span>').concat(filters.map(f=>'<span>'+escH(f)+'</span>')).join('');
+  sheet.innerHTML='<div class="ps-top"><div><div class="ps-brand">Magnum Group · Financial Dashboard</div><div class="ps-org">'+escH(orgName)+'</div><div class="ps-sub">'+escH(orgSub)+'</div></div>'
+    +'<div class="ps-meta">Generated '+escH(stampTxt)+(MY_EMAIL?'<br>by '+escH(MY_EMAIL):'')+'</div></div>'
+    +'<h1>'+escH(title)+'</h1><div class="ps-filters">'+chips+'</div>';
   sheet.appendChild(body);
   document.body.appendChild(sheet);
   document.title=title.replace(/[\\/:*?"<>|]+/g,' ').trim()+' — '+new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Makassar'});
