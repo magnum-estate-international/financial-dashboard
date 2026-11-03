@@ -3553,7 +3553,7 @@ const DPP_REQUIRED_APPROVER_EMAILS=['stan@magnumestate.pro','igor@magnumestate.p
 // still sitting in the data (kept for history, per how the cutover was done) must not inflate this.
 function paymentPlanProgressText(p){
   const liveCount=DPP_APPROVALS.filter(a=>a.planId===p.id&&a.decision==='approved'&&DPP_REQUIRED_APPROVER_EMAILS.includes(a.email)).length;
-  return `${liveCount}/${DPP_REQUIRED_APPROVALS}`;
+  return `${liveCount}/${DPP_REQUIRED_APPROVALS} approved`;
 }
 function paymentPlansInScope(){
   const ids=new Set(scopeIds());
